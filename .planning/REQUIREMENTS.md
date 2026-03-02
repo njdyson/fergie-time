@@ -96,44 +96,44 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ENG-01 | — | Pending |
-| ENG-02 | — | Pending |
-| ENG-03 | — | Pending |
-| ENG-04 | — | Pending |
-| ENG-05 | — | Pending |
-| ENG-06 | — | Pending |
-| ENG-07 | — | Pending |
-| ENG-08 | — | Pending |
-| ENG-09 | — | Pending |
-| ENG-10 | — | Pending |
-| ENG-11 | — | Pending |
-| ENG-12 | — | Pending |
-| ENG-13 | — | Pending |
-| ENG-14 | — | Pending |
-| ENG-15 | — | Pending |
-| TAC-01 | — | Pending |
-| TAC-02 | — | Pending |
-| TAC-03 | — | Pending |
-| TAC-04 | — | Pending |
-| TAC-05 | — | Pending |
-| SQD-01 | — | Pending |
-| SQD-02 | — | Pending |
-| SQD-03 | — | Pending |
-| SQD-04 | — | Pending |
-| SQD-05 | — | Pending |
-| SQD-06 | — | Pending |
-| DEV-01 | — | Pending |
-| DEV-02 | — | Pending |
-| DEV-03 | — | Pending |
-| DEV-04 | — | Pending |
-| DEV-05 | — | Pending |
-| DEV-06 | — | Pending |
+| ENG-01 | Phase 1 | Pending |
+| ENG-02 | Phase 1 | Pending |
+| ENG-03 | Phase 1 | Pending |
+| ENG-04 | Phase 1 | Pending |
+| ENG-05 | Phase 1 | Pending |
+| ENG-06 | Phase 1 | Pending |
+| ENG-07 | Phase 1 | Pending |
+| ENG-08 | Phase 1 | Pending |
+| ENG-09 | Phase 1 | Pending |
+| ENG-10 | Phase 1 | Pending |
+| ENG-11 | Phase 1 | Pending |
+| ENG-12 | Phase 1 | Pending |
+| ENG-13 | Phase 1 | Pending |
+| ENG-14 | Phase 1 | Pending |
+| ENG-15 | Phase 1 | Pending |
+| TAC-01 | Phase 2 | Pending |
+| TAC-02 | Phase 2 | Pending |
+| TAC-03 | Phase 2 | Pending |
+| TAC-04 | Phase 2 | Pending |
+| TAC-05 | Phase 2 | Pending |
+| SQD-01 | Phase 3 | Pending |
+| SQD-02 | Phase 3 | Pending |
+| SQD-03 | Phase 3 | Pending |
+| SQD-04 | Phase 3 | Pending |
+| SQD-05 | Phase 3 | Pending |
+| SQD-06 | Phase 3 | Pending |
+| DEV-01 | Phase 4 | Pending |
+| DEV-02 | Phase 4 | Pending |
+| DEV-03 | Phase 4 | Pending |
+| DEV-04 | Phase 4 | Pending |
+| DEV-05 | Phase 4 | Pending |
+| DEV-06 | Phase 4 | Pending |
 
 **Coverage:**
 - v1 requirements: 32 total
-- Mapped to phases: 0
-- Unmapped: 32
+- Mapped to phases: 32
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-02*
-*Last updated: 2026-03-02 after initial definition*
+*Last updated: 2026-03-02 after roadmap creation*
