@@ -29,7 +29,17 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. A player with high directness and risk_appetite makes different decisions in the same situation than a player with low values — the personality vector is observable in behavior
   4. The match runs at 30+ ticks/sec with 22 agents evaluating utility scores every tick, with no stutter visible on the Canvas renderer
   5. A debug overlay shows per-agent decision scores on click — the match is not a black box
-**Plans**: TBD
+**Plans**: 10 plans
+  - [ ] 01-01-PLAN.md — Project scaffolding, core types, Vec2, math utilities
+  - [ ] 01-02-PLAN.md — 2.5D ball physics (TDD)
+  - [ ] 01-03-PLAN.md — Steering behaviors (TDD)
+  - [ ] 01-04-PLAN.md — Match state machine and goal detection (TDD)
+  - [ ] 01-05-PLAN.md — Simulation engine, game loop, and Canvas renderer
+  - [ ] 01-06-PLAN.md — Utility AI agent system with personality weights (TDD)
+  - [ ] 01-07-PLAN.md — Fatigue system with personality erosion (TDD)
+  - [ ] 01-08-PLAN.md — Contact resolution and spatial grid (TDD)
+  - [ ] 01-09-PLAN.md — Match statistics, decision log, and debug overlay
+  - [ ] 01-10-PLAN.md — Full integration: watchable match with human verification
 
 ### Phase 2: Tactical Layer
 **Goal**: Formation and role decisions by the manager mechanically alter how the team plays — changing shape produces a measurably different spatial footprint, not a cosmetic label
@@ -72,7 +82,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Engine Core | 0/TBD | Not started | - |
+| 1. Engine Core | 0/10 | Planned | - |
 | 2. Tactical Layer | 0/TBD | Not started | - |
 | 3. Management Shell | 0/TBD | Not started | - |
 | 4. Development Systems | 0/TBD | Not started | - |
