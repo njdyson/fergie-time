@@ -73,8 +73,9 @@ describe('resolveTackle', () => {
     it('strong defender tackling weak dribbler from front succeeds >70% of time', () => {
       // defender.tackling=0.8, strength=0.7 vs attacker.dribbling=0.4, strength=0.5
       // Defender faces the attacker from the front (defender velocity points toward attacker)
+      // Attacker is 1m away — typical contact distance for a frontal tackle
       const defPos = new Vec2(50, 34);
-      const attPos = new Vec2(52, 34); // attacker is in front of defender (same Y, slightly ahead)
+      const attPos = new Vec2(51, 34); // attacker is 1m in front of defender
       // Defender velocity points toward attacker (+x direction)
       const defVel = new Vec2(1, 0);
       const defender = makePlayer('d1', defPos, 0.8, 0.5, 0.7);
@@ -119,7 +120,7 @@ describe('resolveTackle', () => {
   describe('angle effect', () => {
     it('frontal tackle has higher success rate than side tackle', () => {
       const baseDefender = makePlayer('d1', new Vec2(50, 34), 0.6, 0.5, 0.6);
-      const attacker = makePlayer('a1', new Vec2(52, 34), 0.5, 0.6, 0.5);
+      const attacker = makePlayer('a1', new Vec2(51, 34), 0.5, 0.6, 0.5);
 
       // Frontal: defender velocity points toward attacker (+x)
       const frontalDefender: PlayerState = { ...baseDefender, velocity: new Vec2(1, 0) };
@@ -139,12 +140,12 @@ describe('resolveTackle', () => {
 
     it('side tackle has higher success rate than behind tackle', () => {
       const baseDefender = makePlayer('d1', new Vec2(50, 34), 0.6, 0.5, 0.6);
-      const attacker = makePlayer('a1', new Vec2(52, 34), 0.5, 0.6, 0.5);
+      const attacker = makePlayer('a1', new Vec2(51, 34), 0.5, 0.6, 0.5);
 
-      // Side: defender velocity perpendicular (+y)
+      // Side: defender velocity perpendicular (+y), attacker 1m ahead (+x)
       const sideDefender: PlayerState = { ...baseDefender, velocity: new Vec2(0, 1) };
-      // Behind: defender at (52,34), attacker at (52,34)... need defender behind attacker
-      const defBehind = makePlayer('d1', new Vec2(54, 34), 0.6, 0.5, 0.6);
+      // Behind: defender at (52,34) pointing forward (+x), attacker at (51,34) = 1m behind defender
+      const defBehind = makePlayer('d1', new Vec2(52, 34), 0.6, 0.5, 0.6);
       const defBehindVel: PlayerState = { ...defBehind, velocity: new Vec2(1, 0) }; // pointing away from attacker
 
       let sideSuccess = 0;
