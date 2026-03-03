@@ -10,27 +10,27 @@ See: .planning/PROJECT.md (updated 2026-03-02)
 ## Current Position
 
 Phase: 1 of 4 (Engine Core)
-Plan: 0 of 10 in current phase
-Status: Planned — ready to execute
-Last activity: 2026-03-02 — Phase 1 planned: 10 plans in 6 waves
+Plan: 1 of 10 in current phase
+Status: In progress — executing
+Last activity: 2026-03-03 — Plan 01-01 complete: project scaffold + math foundations
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█░░░░░░░░░] 10%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0
-- Average duration: —
-- Total execution time: —
+- Total plans completed: 1
+- Average duration: ~6 min
+- Total execution time: ~6 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 1. Engine Core | 1 | ~6 min | ~6 min |
 
 **Recent Trend:**
-- Last 5 plans: —
+- Last 5 plans: 01-01 (6 min)
 - Trend: —
 
 *Updated after each plan completion*
@@ -45,6 +45,8 @@ Recent decisions affecting current work:
 - [Roadmap]: Engine-first build order — no management screen has value until the match engine produces genuine emergent football. Research unanimous on this.
 - [Roadmap]: Observability tooling (per-agent decision logging, score range audit) is Phase 1 work, not a later addition — emergent behavior cannot be tuned in a black box.
 - [Roadmap]: Utility AI calibration thresholds (goals per match: mean ~2.5, action domination cap: ~40%) are literature-informed estimates, not empirically derived. Treat as starting targets.
+- [01-01]: Use const-object pattern instead of TypeScript enum — Vite 7 tsconfig has `erasableSyntaxOnly: true`. Pattern: `const X = { ... } as const; type X = (typeof X)[keyof typeof X]`. Apply to all future plans.
+- [01-01]: ActionType has 8 values (PASS_FORWARD + PASS_SAFE separate) despite ENG-03 "7 actions" — the count is behavioral, not structural. More granular options = better utility AI decisions.
 
 ### Pending Todos
 
@@ -58,6 +60,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-02
-Stopped at: Phase 1 planned. Ready to run /gsd:execute-phase 1.
+Last session: 2026-03-03
+Stopped at: 01-01-PLAN.md complete. Ready to execute 01-02-PLAN.md.
 Resume file: None

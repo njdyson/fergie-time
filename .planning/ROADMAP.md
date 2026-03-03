@@ -30,7 +30,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. The match runs at 30+ ticks/sec with 22 agents evaluating utility scores every tick, with no stutter visible on the Canvas renderer
   5. A debug overlay shows per-agent decision scores on click — the match is not a black box
 **Plans**: 10 plans
-  - [ ] 01-01-PLAN.md — Project scaffolding, core types, Vec2, math utilities
+  - [x] 01-01-PLAN.md — Project scaffolding, core types, Vec2, math utilities
   - [ ] 01-02-PLAN.md — 2.5D ball physics (TDD)
   - [ ] 01-03-PLAN.md — Steering behaviors (TDD)
   - [ ] 01-04-PLAN.md — Match state machine and goal detection (TDD)
@@ -82,7 +82,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Engine Core | 0/10 | Planned | - |
+| 1. Engine Core | 1/10 | In progress | - |
 | 2. Tactical Layer | 0/TBD | Not started | - |
 | 3. Management Shell | 0/TBD | Not started | - |
 | 4. Development Systems | 0/TBD | Not started | - |

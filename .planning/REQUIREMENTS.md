@@ -23,7 +23,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **ENG-12**: Match statistics accumulated from agent decisions (shots, possession, passes, tackles)
 - [ ] **ENG-13**: Match progresses through kickoff, first half, halftime, second half, full-time states
 - [ ] **ENG-14**: 2D top-down Canvas rendering with ball Z conveyed via sprite scaling and shadow offset
-- [ ] **ENG-15**: Simulation runs at 30+ ticks/sec, separated from 60fps rendering
+- [x] **ENG-15**: Simulation runs at 30+ ticks/sec, separated from 60fps rendering
 
 ### Tactical System
 
@@ -110,7 +110,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ENG-12 | Phase 1 | Pending |
 | ENG-13 | Phase 1 | Pending |
 | ENG-14 | Phase 1 | Pending |
-| ENG-15 | Phase 1 | Pending |
+| ENG-15 | Phase 1 | Complete (01-01) |
 | TAC-01 | Phase 2 | Pending |
 | TAC-02 | Phase 2 | Pending |
 | TAC-03 | Phase 2 | Pending |
@@ -136,4 +136,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-03-02*
-*Last updated: 2026-03-02 after roadmap creation*
+*Last updated: 2026-03-03 after 01-01 completion — ENG-15 marked complete*
