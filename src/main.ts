@@ -4,6 +4,8 @@ import { DebugOverlay } from './renderer/debug.ts';
 import { startGameLoop, stopGameLoop, getIsPaused, setPaused, setSpeedMultiplier } from './loop/gameLoop.ts';
 import { MatchPhase } from './simulation/types.ts';
 import { auditScoreRanges } from './simulation/ai/decisionLog.ts';
+import { TUNING } from './simulation/tuning.ts';
+import type { TuningConfig } from './simulation/tuning.ts';
 import type { SimSnapshot } from './simulation/types.ts';
 
 // ============================================================
@@ -28,6 +30,7 @@ const btn4x      = document.getElementById('btn-4x')      as HTMLButtonElement |
 const btnStats   = document.getElementById('btn-stats')   as HTMLButtonElement | null;
 const btnDebug   = document.getElementById('btn-debug')   as HTMLButtonElement | null;
 const btnHeatmap = document.getElementById('btn-heatmap') as HTMLButtonElement | null;
+const btnTuning  = document.getElementById('btn-tuning')  as HTMLButtonElement | null;
 
 // ============================================================
 // Renderer (created once, reused across resets)
@@ -56,7 +59,7 @@ function startMatch(): void {
   // Build engine and debug overlay
   const { home, away } = createMatchRosters();
   engine = new SimulationEngine({
-    seed: 'fergie-time-match-01',
+    seed: 'fergie-time-match-' + Date.now(),
     homeRoster: home,
     awayRoster: away,
   });
@@ -66,8 +69,6 @@ function startMatch(): void {
   const originalDraw = renderer.draw.bind(renderer);
   renderer.draw = (prev: SimSnapshot, curr: SimSnapshot, alpha: number): void => {
     originalDraw(prev, curr, alpha);
-    // Access ctx via the renderer instance (it is exposed via pitchToCanvas, but ctx is private)
-    // We use a casting approach — debug overlay draws on the same canvas context
     if (renderer.showDebug) {
       const canvas2d = canvasEl.getContext('2d');
       if (canvas2d) {
@@ -177,7 +178,45 @@ btnHeatmap?.addEventListener('click', () => {
   btnHeatmap.classList.toggle('active', renderer.showHeatmap);
 });
 
-// Sync button state on keyboard events (keep keys working alongside buttons)
+// ============================================================
+// Tuning panel
+// ============================================================
+
+const tuningPanel = document.getElementById('tuning-panel');
+
+btnTuning?.addEventListener('click', () => {
+  tuningPanel?.classList.toggle('open');
+  btnTuning.classList.toggle('active', tuningPanel?.classList.contains('open') ?? false);
+});
+
+// Wire each slider to its TUNING property
+const sliderBindings: { id: string; key: keyof TuningConfig; decimals: number }[] = [
+  { id: 't-hysteresis',         key: 'hysteresisBonus',      decimals: 2 },
+  { id: 't-noiseScale',         key: 'noiseScale',           decimals: 2 },
+  { id: 't-moveToPosIntercept', key: 'moveToPosIntercept',   decimals: 2 },
+  { id: 't-moveToPosSlope',     key: 'moveToPosSlope',       decimals: 2 },
+  { id: 't-pressDecayK',        key: 'pressDecayK',          decimals: 1 },
+  { id: 't-pressNorm',          key: 'pressNorm',            decimals: 0 },
+  { id: 't-controlRadius',      key: 'controlRadius',        decimals: 1 },
+  { id: 't-passSpeed',          key: 'passSpeed',            decimals: 0 },
+  { id: 't-shootSpeed',         key: 'shootSpeed',           decimals: 0 },
+  { id: 't-separationRadius',   key: 'separationRadius',     decimals: 1 },
+  { id: 't-separationScale',    key: 'separationScale',      decimals: 1 },
+];
+
+for (const binding of sliderBindings) {
+  const slider = document.getElementById(binding.id) as HTMLInputElement | null;
+  const valueEl = document.getElementById('v-' + binding.key) as HTMLElement | null;
+  if (!slider || !valueEl) continue;
+
+  slider.addEventListener('input', () => {
+    const val = parseFloat(slider.value);
+    (TUNING as Record<string, number>)[binding.key] = val;
+    valueEl.textContent = val.toFixed(binding.decimals);
+  });
+}
+
+// Sync button state on keyboard events
 document.addEventListener('keydown', (e) => {
   if (e.key === 'p' || e.key === 'P') {
     updatePauseButton();
@@ -193,6 +232,9 @@ document.addEventListener('keydown', (e) => {
     btnDebug?.classList.toggle('active', renderer.showDebug);
   } else if (e.key === 'h' || e.key === 'H') {
     btnHeatmap?.classList.toggle('active', renderer.showHeatmap);
+  } else if (e.key === 't' || e.key === 'T') {
+    tuningPanel?.classList.toggle('open');
+    btnTuning?.classList.toggle('active', tuningPanel?.classList.contains('open') ?? false);
   }
 });
 
@@ -203,6 +245,7 @@ document.addEventListener('keydown', (e) => {
 startMatch();
 
 console.log('[Fergie Time] Match started. Controls:');
-console.log('  Buttons: Pause, Reset, 1x/2x/4x speed, Stats, Debug, Heatmap');
-console.log('  Keys: 1/2/3 = speed, P = pause, S = stats, D = debug, H = heatmap');
+console.log('  Buttons: Pause, Reset, 1x/2x/4x speed, Stats, Debug, Heatmap, Tuning');
+console.log('  Keys: 1/2/3 = speed, P = pause, S = stats, D = debug, H = heatmap, T = tuning');
 console.log('  Debug mode: click a player to inspect action scores');
+console.log('  Tuning: adjust sliders live — changes take effect immediately');

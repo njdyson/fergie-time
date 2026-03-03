@@ -74,11 +74,83 @@
         background: #334155;
       }
 
-      #speed-label {
-        color: #64748b;
-        font: 12px monospace;
+      /* ── Tuning panel ─────────────────────────────────────── */
+      #tuning-panel {
+        position: fixed;
+        top: 0;
+        right: 0;
+        width: 280px;
+        height: 100%;
+        background: #0f172a;
+        border-left: 1px solid #334155;
+        overflow-y: auto;
+        transform: translateX(100%);
+        transition: transform 0.2s ease;
+        z-index: 100;
+        padding: 12px;
+      }
+
+      #tuning-panel.open {
+        transform: translateX(0);
+      }
+
+      #tuning-panel h3 {
+        color: #94a3b8;
+        font: bold 11px/1 monospace;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin: 14px 0 6px;
+        padding-bottom: 4px;
+        border-bottom: 1px solid #1e293b;
+      }
+
+      #tuning-panel h3:first-child {
+        margin-top: 0;
+      }
+
+      .tuning-row {
+        display: flex;
+        flex-direction: column;
+        margin-bottom: 8px;
+      }
+
+      .tuning-row label {
+        display: flex;
+        justify-content: space-between;
+        color: #cbd5e1;
+        font: 11px monospace;
+        margin-bottom: 2px;
+      }
+
+      .tuning-row label span {
+        color: #60a5fa;
         min-width: 40px;
-        text-align: center;
+        text-align: right;
+      }
+
+      .tuning-row input[type="range"] {
+        width: 100%;
+        height: 16px;
+        -webkit-appearance: none;
+        appearance: none;
+        background: transparent;
+        cursor: pointer;
+      }
+
+      .tuning-row input[type="range"]::-webkit-slider-track {
+        height: 4px;
+        background: #334155;
+        border-radius: 2px;
+      }
+
+      .tuning-row input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 14px;
+        height: 14px;
+        background: #3b82f6;
+        border-radius: 50%;
+        margin-top: -5px;
       }
     </style>
   </head>
@@ -96,8 +168,68 @@
         <button class="ctrl-btn" id="btn-stats" title="Toggle stats overlay (S)">Stats</button>
         <button class="ctrl-btn" id="btn-debug" title="Toggle debug overlay (D)">Debug</button>
         <button class="ctrl-btn" id="btn-heatmap" title="Toggle heatmap (H)">Heatmap</button>
+        <div class="ctrl-sep"></div>
+        <button class="ctrl-btn" id="btn-tuning" title="Toggle tuning panel (T)">Tuning</button>
       </div>
     </div>
+
+    <!-- Tuning panel (slides in from right) -->
+    <div id="tuning-panel">
+      <h3>Decision Engine</h3>
+      <div class="tuning-row">
+        <label>Hysteresis <span id="v-hysteresis">0.12</span></label>
+        <input type="range" id="t-hysteresis" min="0" max="0.4" step="0.01" value="0.12">
+      </div>
+      <div class="tuning-row">
+        <label>Noise scale <span id="v-noiseScale">0.12</span></label>
+        <input type="range" id="t-noiseScale" min="0" max="0.3" step="0.01" value="0.12">
+      </div>
+
+      <h3>Move to Position</h3>
+      <div class="tuning-row">
+        <label>Base score <span id="v-moveToPosIntercept">0.25</span></label>
+        <input type="range" id="t-moveToPosIntercept" min="0.05" max="0.6" step="0.01" value="0.25">
+      </div>
+      <div class="tuning-row">
+        <label>Urgency slope <span id="v-moveToPosSlope">0.65</span></label>
+        <input type="range" id="t-moveToPosSlope" min="0.1" max="1.0" step="0.05" value="0.65">
+      </div>
+
+      <h3>Press</h3>
+      <div class="tuning-row">
+        <label>Decay rate <span id="v-pressDecayK">2.5</span></label>
+        <input type="range" id="t-pressDecayK" min="0.5" max="5.0" step="0.1" value="2.5">
+      </div>
+      <div class="tuning-row">
+        <label>Range (m) <span id="v-pressNorm">25</span></label>
+        <input type="range" id="t-pressNorm" min="10" max="50" step="1" value="25">
+      </div>
+
+      <h3>Ball</h3>
+      <div class="tuning-row">
+        <label>Control radius (m) <span id="v-controlRadius">2.5</span></label>
+        <input type="range" id="t-controlRadius" min="1.0" max="5.0" step="0.1" value="2.5">
+      </div>
+      <div class="tuning-row">
+        <label>Pass speed (m/s) <span id="v-passSpeed">14</span></label>
+        <input type="range" id="t-passSpeed" min="5" max="30" step="1" value="14">
+      </div>
+      <div class="tuning-row">
+        <label>Shot speed (m/s) <span id="v-shootSpeed">22</span></label>
+        <input type="range" id="t-shootSpeed" min="10" max="40" step="1" value="22">
+      </div>
+
+      <h3>Movement</h3>
+      <div class="tuning-row">
+        <label>Separation radius <span id="v-separationRadius">2.0</span></label>
+        <input type="range" id="t-separationRadius" min="0.5" max="5.0" step="0.1" value="2.0">
+      </div>
+      <div class="tuning-row">
+        <label>Separation force <span id="v-separationScale">0.5</span></label>
+        <input type="range" id="t-separationScale" min="0.1" max="2.0" step="0.1" value="0.5">
+      </div>
+    </div>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

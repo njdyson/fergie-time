@@ -1,6 +1,7 @@
 import type { AgentContext, ActionIntent, PersonalityVector, PersonalityWeightMatrix, ActionType } from '../types.ts';
 import { gaussianNoise } from '../math/random.ts';
-import { dotProduct, NOISE_SCALE } from './personality.ts';
+import { dotProduct } from './personality.ts';
+import { TUNING } from '../tuning.ts';
 import type { Action } from './actions.ts';
 
 /**
@@ -16,13 +17,6 @@ import type { Action } from './actions.ts';
  *   modFactor = 1 - (1 / N)
  *   makeUp    = (1 - product) * modFactor
  *   final     = product + makeUp * product
- *
- * @param action - Action definition with consideration functions
- * @param ctx - The agent's current world context
- * @param personality - The agent's personality vector
- * @param weights - Personality weight matrix for all actions
- * @param rng - Seeded random number generator (for reproducibility)
- * @returns Utility score — can be negative due to noise or negative personality weights
  */
 export function evaluateAction(
   action: Action,
@@ -35,7 +29,6 @@ export function evaluateAction(
   let product = 1.0;
   for (const consideration of action.considerations) {
     product *= consideration(ctx);
-    // Short-circuit: once a hard disqualifier returns 0, product stays 0
     if (product === 0) break;
   }
 
@@ -47,38 +40,19 @@ export function evaluateAction(
     product = product + makeUp * product;
   }
 
-  // Step 3: Personality bonus (action-specific dot product)
+  // Step 3: Personality bonus
   const personalityBonus = dotProduct(weights[action.id], personality);
 
-  // Step 4: Gaussian noise scaled by (1 - composure)
-  //         High composure → low stdDev → consistent decisions
-  //         Low composure → high stdDev → erratic decisions
-  const noise = gaussianNoise(0, (1 - personality.composure) * NOISE_SCALE, rng);
+  // Step 4: Gaussian noise — reads TUNING.noiseScale live
+  const noise = gaussianNoise(0, (1 - personality.composure) * TUNING.noiseScale, rng);
 
   return product + personalityBonus + noise;
 }
 
 /**
- * Hysteresis bonus added to the score of the agent's previous action.
- * Prevents oscillation by requiring a new action to beat the current one by this margin.
- * Value of 0.12 means ~12% advantage to current action — enough to prevent jitter
- * from noise and minor context changes, but not enough to lock into bad decisions.
- */
-export const HYSTERESIS_BONUS = 0.12;
-
-/**
  * Selects the best action for an agent given its current context.
  * Evaluates all actions and returns an ActionIntent for the highest-scoring one.
- *
- * This is the core agent decision loop — called once per tick per player.
- *
- * @param actions - All available actions (typically the full ACTIONS array)
- * @param ctx - The agent's current world context
- * @param personality - The agent's personality vector
- * @param weights - Personality weight matrix for all actions
- * @param rng - Seeded random number generator
- * @param previousAction - The action this agent selected last tick (for hysteresis)
- * @returns ActionIntent identifying the selected action and the acting agent
+ * Applies hysteresis bonus from TUNING to the previous action to prevent oscillation.
  */
 export function selectAction(
   actions: readonly Action[],
@@ -93,9 +67,9 @@ export function selectAction(
 
   for (const action of actions) {
     let score = evaluateAction(action, ctx, personality, weights, rng);
-    // Hysteresis: bonus for continuing the current action
+    // Hysteresis: bonus for continuing the current action — reads TUNING live
     if (previousAction !== undefined && action.id === previousAction) {
-      score += HYSTERESIS_BONUS;
+      score += TUNING.hysteresisBonus;
     }
     if (score > bestScore) {
       bestScore = score;

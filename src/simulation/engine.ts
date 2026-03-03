@@ -30,24 +30,7 @@ export interface MatchConfig {
   readonly initialBallPosition?: { x: number; y: number };
 }
 
-// ============================================================
-// Constants
-// ============================================================
-
-/** Control radius: how close a player must be to pick up a loose ball */
-const CONTROL_RADIUS = 2.5; // metres
-
-/** Separation force radius: minimum distance between players */
-const SEPARATION_RADIUS = 2.0; // metres
-
-/** Separation force scale factor applied after intent movement */
-const SEPARATION_SCALE = 0.5;
-
-/** Ball kick speed for passes (m/s) */
-const PASS_SPEED = 14.0;
-
-/** Ball kick speed for shots (m/s) */
-const SHOOT_SPEED = 22.0;
+import { TUNING } from './tuning.ts';
 
 
 // ============================================================
@@ -470,9 +453,9 @@ export class SimulationEngine {
     let ball = current.ball;
     const updatedPlayers: PlayerState[] = [...playersWithAnchors];
 
-    // 10a. Ball pickup: if ball is loose and a player is within CONTROL_RADIUS, they pick it up
+    // 10a. Ball pickup: if ball is loose and a player is within control radius, they pick it up
     if (ball.carrierId === null) {
-      let closestDist = CONTROL_RADIUS;
+      let closestDist = TUNING.controlRadius;
       let closestIdx = -1;
       for (let i = 0; i < updatedPlayers.length; i++) {
         const p = updatedPlayers[i]!;
@@ -575,7 +558,7 @@ export class SimulationEngine {
               const passDir = target.position.subtract(p.position).normalize();
               ball = {
                 ...ball,
-                velocity: passDir.scale(PASS_SPEED),
+                velocity: passDir.scale(TUNING.passSpeed),
                 carrierId: null,
               };
               // Passer becomes stationary briefly
@@ -592,7 +575,7 @@ export class SimulationEngine {
             const shootDir = new Vec2(goalX, goalY).subtract(p.position).normalize();
             ball = {
               ...ball,
-              velocity: shootDir.scale(SHOOT_SPEED),
+              velocity: shootDir.scale(TUNING.shootSpeed),
               carrierId: null,
               vz: 2 + this.rng() * 3, // loft ball slightly
             };
@@ -614,7 +597,7 @@ export class SimulationEngine {
             // Ball follows dribbler
             ball = {
               ...ball,
-              position: clampedPos.add(dribbleDir.scale(CONTROL_RADIUS * 0.8)),
+              position: clampedPos.add(dribbleDir.scale(TUNING.controlRadius * 0.8)),
               velocity: newVel,
             };
             updatedPlayers[i] = {
@@ -674,12 +657,12 @@ export class SimulationEngine {
         .filter((_op, j) => j !== i)
         .map(op => op.position);
 
-      const sepForce = separation(p.position, neighborPositions, SEPARATION_RADIUS);
+      const sepForce = separation(p.position, neighborPositions, TUNING.separationRadius);
 
       if (sepForce.length() > 0.001) {
         const dtSec = dt / 1000;
         const correctedPos = clampToPitch(
-          p.position.add(sepForce.scale(SEPARATION_SCALE * dtSec))
+          p.position.add(sepForce.scale(TUNING.separationScale * dtSec))
         );
         updatedPlayers[i] = { ...p, position: correctedPos };
       }
