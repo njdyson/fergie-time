@@ -1,4 +1,4 @@
-import type { SimSnapshot, PlayerState, BallState, ActionIntent, AgentContext, TeamId } from './types.ts';
+import type { SimSnapshot, PlayerState, BallState, ActionIntent, AgentContext, TeamId, FormationId, Role, Duty } from './types.ts';
 import { Vec2 } from './math/vec2.ts';
 import { createRng } from './math/random.ts';
 import { integrateBall } from './physics/ball.ts';
@@ -13,10 +13,35 @@ import { SpatialGrid } from './physics/spatial.ts';
 import { seek, arrive, separation, clampVelocity } from './physics/steering.ts';
 import { resolveTackle, isShielded } from './physics/contact.ts';
 import { computeFormationAnchors } from './tactical/formation.ts';
+import { getDutyWeightModifier } from './tactical/roles.ts';
 import { StatsAccumulator } from './match/stats.ts';
 import { DecisionLog } from './ai/decisionLog.ts';
 import type { AgentDecisionEntry } from './ai/decisionLog.ts';
 import { GameEventLog } from './match/gameLog.ts';
+
+// ============================================================
+// TacticalConfig
+// ============================================================
+
+/**
+ * Tactical configuration for one team.
+ * Controls formation shape, role assignments, and duty levels.
+ */
+export interface TacticalConfig {
+  /** Formation identifier or custom Vec2[] positions */
+  readonly formation: FormationId | Vec2[];
+  /** Role label for each of the 11 players (index-aligned with roster order) */
+  readonly roles: Role[];
+  /** Duty level for each of the 11 players (index-aligned with roster order) */
+  readonly duties: Duty[];
+}
+
+/** Default tactical config: 4-4-2 with SUPPORT duties */
+const DEFAULT_TACTICAL_CONFIG: TacticalConfig = {
+  formation: '4-4-2',
+  roles: ['GK', 'LB', 'CB', 'CB', 'RB', 'LW', 'CM', 'CM', 'RW', 'ST', 'ST'],
+  duties: ['SUPPORT', 'SUPPORT', 'SUPPORT', 'SUPPORT', 'SUPPORT', 'SUPPORT', 'SUPPORT', 'SUPPORT', 'SUPPORT', 'SUPPORT', 'SUPPORT'],
+};
 
 // ============================================================
 // MatchConfig
@@ -30,6 +55,10 @@ export interface MatchConfig {
   readonly initialBallVelocity?: { x: number; y: number };
   /** Optional initial ball position override for testing */
   readonly initialBallPosition?: { x: number; y: number };
+  /** Optional tactical configuration for home team (defaults to 4-4-2 SUPPORT) */
+  readonly homeTacticalConfig?: TacticalConfig;
+  /** Optional tactical configuration for away team (defaults to 4-4-2 SUPPORT) */
+  readonly awayTacticalConfig?: TacticalConfig;
 }
 
 import { TUNING } from './tuning.ts';
@@ -62,7 +91,7 @@ const DEFAULT_PERSONALITY = {
   flair: 0.4,
 } as const;
 
-const ROLES = ['GK', 'CB', 'CB', 'LB', 'RB', 'CM', 'CM', 'LM', 'RM', 'ST', 'ST'] as const;
+const ROLES = ['GK', 'CB', 'CB', 'LB', 'RB', 'CM', 'CM', 'LW', 'RW', 'ST', 'ST'] as const;
 
 /**
  * Creates 22 test players in a 4-4-2 formation for both teams.
@@ -175,9 +204,9 @@ export function createMatchRosters(): { home: PlayerState[]; away: PlayerState[]
     archetypes.maverick,           // ST
   ];
 
-  const roleLabels = ['GK', 'LB', 'CB', 'CB', 'RB', 'LM', 'CM', 'CM', 'RM', 'ST', 'ST'];
-  const names = ['Home GK', 'Home LB', 'Home CB', 'Home CB', 'Home RB', 'Home LM', 'Home CM', 'Home CM', 'Home RM', 'Home ST', 'Home ST'];
-  const awayNames = ['Away GK', 'Away LB', 'Away CB', 'Away CB', 'Away RB', 'Away LM', 'Away CM', 'Away CM', 'Away RM', 'Away ST', 'Away ST'];
+  const roleLabels = ['GK', 'LB', 'CB', 'CB', 'RB', 'LW', 'CM', 'CM', 'RW', 'ST', 'ST'];
+  const names = ['Home GK', 'Home LB', 'Home CB', 'Home CB', 'Home RB', 'Home LW', 'Home CM', 'Home CM', 'Home RW', 'Home ST', 'Home ST'];
+  const awayNames = ['Away GK', 'Away LB', 'Away CB', 'Away CB', 'Away RB', 'Away LW', 'Away CM', 'Away CM', 'Away RW', 'Away ST', 'Away ST'];
 
   const home: PlayerState[] = homePositions.map((pos, i) => ({
     id: `home-${i}`,
@@ -247,6 +276,8 @@ export class SimulationEngine {
   private kickCooldownUntil: number = 0;          // tick until which lastKicker can't pick up the ball
   private pickupCooldownUntil: number = 0;        // global: nobody picks up until this tick (prevents possession loops)
   private carrierKickLockoutUntil: number = 0;    // carrier can't kick until this tick (prevents micro-pass spam)
+  private homeTacticalConfig: TacticalConfig;
+  private awayTacticalConfig: TacticalConfig;
 
   constructor(config: MatchConfig) {
     let initialSnapshot = createInitialSnapshot(config.homeRoster, config.awayRoster);
@@ -271,6 +302,48 @@ export class SimulationEngine {
     this.decisionLog = new DecisionLog();
     this.gameLog = new GameEventLog();
     this.grid = new SpatialGrid(PITCH_WIDTH, PITCH_HEIGHT, 10);
+    this.homeTacticalConfig = config.homeTacticalConfig ?? DEFAULT_TACTICAL_CONFIG;
+    this.awayTacticalConfig = config.awayTacticalConfig ?? DEFAULT_TACTICAL_CONFIG;
+  }
+
+  /**
+   * Set new tactical configuration for the home team.
+   * Takes effect from the next tick onwards.
+   */
+  setHomeTactics(config: TacticalConfig): void {
+    this.homeTacticalConfig = config;
+    // Update player role and duty fields in current snapshot
+    this.snapshot = this._applyTacticConfigToSnapshot(this.snapshot, config, 'home');
+  }
+
+  /**
+   * Set new tactical configuration for the away team.
+   * Takes effect from the next tick onwards.
+   */
+  setAwayTactics(config: TacticalConfig): void {
+    this.awayTacticalConfig = config;
+    // Update player role and duty fields in current snapshot
+    this.snapshot = this._applyTacticConfigToSnapshot(this.snapshot, config, 'away');
+  }
+
+  /**
+   * Apply a new TacticalConfig to a snapshot's players for a given team.
+   * Updates role and duty fields for all players of that team.
+   */
+  private _applyTacticConfigToSnapshot(
+    snapshot: SimSnapshot,
+    config: TacticalConfig,
+    teamId: TeamId,
+  ): SimSnapshot {
+    let teamIdx = 0;
+    const updatedPlayers = snapshot.players.map(p => {
+      if (p.teamId !== teamId) return p;
+      const role = config.roles[teamIdx] ?? p.role;
+      const duty = config.duties[teamIdx] ?? p.duty;
+      teamIdx++;
+      return { ...p, role, duty };
+    });
+    return { ...snapshot, players: updatedPlayers };
   }
 
   /**
@@ -353,27 +426,33 @@ export class SimulationEngine {
     const awayPossession = ballCarrier?.teamId === 'away';
 
     const homeAnchors = computeFormationAnchors(
-      '4-4-2',
+      this.homeTacticalConfig.formation,
       'home',
       current.ball.position,
       homePossession,
     );
     const awayAnchors = computeFormationAnchors(
-      '4-4-2',
+      this.awayTacticalConfig.formation,
       'away',
       current.ball.position,
       awayPossession,
     );
 
-    // Assign updated formation anchors to players
+    // Assign updated formation anchors and tactical role/duty to players
     // Home players are first 11, away are next 11
+    let homeIdx = 0;
+    let awayIdx = 0;
+
     const playersWithAnchors: PlayerState[] = playersWithFatigue.map((p) => {
-      const anchors = p.teamId === 'home' ? homeAnchors : awayAnchors;
-      // Find role index within team
-      const teamPlayers = playersWithFatigue.filter(tp => tp.teamId === p.teamId);
-      const roleIdx = teamPlayers.indexOf(p);
+      const isHome = p.teamId === 'home';
+      const tacticalConfig = isHome ? this.homeTacticalConfig : this.awayTacticalConfig;
+      const anchors = isHome ? homeAnchors : awayAnchors;
+      const roleIdx = isHome ? homeIdx++ : awayIdx++;
       const anchor = anchors[roleIdx] ?? p.formationAnchor;
-      return { ...p, formationAnchor: anchor };
+      // Update role and duty from tactical config
+      const role = tacticalConfig.roles[roleIdx] ?? p.role;
+      const duty = tacticalConfig.duties[roleIdx] ?? p.duty;
+      return { ...p, formationAnchor: anchor, role, duty };
     });
 
     // ── 7. Build AgentContext for each player ─────────────────────────────────
@@ -430,9 +509,15 @@ export class SimulationEngine {
 
     // ── 8. Select action for each player ─────────────────────────────────────
     const intents: ActionIntent[] = contexts.map((ctx, i) => {
-      const playerId = playersWithAnchors[i]!.id;
+      const player = playersWithAnchors[i]!;
+      const playerId = player.id;
       const prevAction = this.previousActions.get(playerId);
-      return selectAction(ACTIONS, ctx, effectivePersonality[i]!, PERSONALITY_WEIGHTS, this.rng, prevAction);
+      // Build duty modifier from player's current role and duty
+      const role = player.role;
+      const duty = (player.duty as Duty) ?? 'SUPPORT';
+      const dutyModifier = (actionType: ActionType) =>
+        getDutyWeightModifier(role, duty, actionType);
+      return selectAction(ACTIONS, ctx, effectivePersonality[i]!, PERSONALITY_WEIGHTS, this.rng, prevAction, dutyModifier);
     });
 
     // Store selected actions for next tick's hysteresis

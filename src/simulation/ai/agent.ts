@@ -53,6 +53,10 @@ export function evaluateAction(
  * Selects the best action for an agent given its current context.
  * Evaluates all actions and returns an ActionIntent for the highest-scoring one.
  * Applies hysteresis bonus from TUNING to the previous action to prevent oscillation.
+ *
+ * @param dutyModifier - Optional function that returns an additive bonus for each action type.
+ *                       Used to apply role/duty weight modifiers from the tactical system.
+ *                       If omitted, no duty bonus is applied (backward-compatible).
  */
 export function selectAction(
   actions: readonly Action[],
@@ -61,6 +65,7 @@ export function selectAction(
   weights: PersonalityWeightMatrix,
   rng: () => number,
   previousAction?: ActionType,
+  dutyModifier?: (actionType: ActionType) => number,
 ): ActionIntent {
   let bestAction = actions[0]!;
   let bestScore = -Infinity;
@@ -70,6 +75,18 @@ export function selectAction(
     // Hysteresis: bonus for continuing the current action — reads TUNING live
     if (previousAction !== undefined && action.id === previousAction) {
       score += TUNING.hysteresisBonus;
+    }
+    // Pass bias: flat bonus to encourage passing over dribbling/shielding
+    if (action.id === 'PASS_FORWARD' || action.id === 'PASS_SAFE') {
+      score += TUNING.passBias;
+    }
+    // Goal urgency: proximity-scaled bonus for attacking actions near opponent goal
+    if (action.id === 'SHOOT' || action.id === 'DRIBBLE') {
+      score += TUNING.goalUrgency * (1 - ctx.distanceToOpponentGoal / 105);
+    }
+    // Duty modifier: role/duty specific bonus from tactical configuration
+    if (dutyModifier) {
+      score += dutyModifier(action.id);
     }
     if (score > bestScore) {
       bestScore = score;

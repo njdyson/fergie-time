@@ -343,3 +343,51 @@ describe('selectAction — pass bias', () => {
     expect(passEffectiveWithBias - passEffectiveNoBias).toBeCloseTo(0.15, 5);
   });
 });
+
+describe('selectAction — duty modifiers', () => {
+  it('duty modifier shifts action selection when provided', () => {
+    // Use a far-from-goal context where SHOOT has a low base score
+    // but a strong duty modifier should flip things
+    const ctx = makeCtx({
+      distanceToOpponentGoal: 60, // far from goal — SHOOT naturally penalised
+      ball: {
+        position: new Vec2(50, 34),
+        velocity: Vec2.zero(),
+        z: 0,
+        vz: 0,
+        carrierId: 'p1',
+      },
+    });
+    // dutyModifier that strongly boosts PRESS (normally low when in possession)
+    const pressBoostModifier = (actionType: ActionType) =>
+      actionType === ActionType.PRESS ? 1.0 : 0;
+
+    const N = 50;
+    let withModifierPressCount = 0;
+    let withoutModifierPressCount = 0;
+
+    for (let i = 0; i < N; i++) {
+      const rng = createRng(`duty-seed-${i}`);
+      const intent = selectAction(ACTIONS, ctx, highComposure, PERSONALITY_WEIGHTS, rng, undefined, pressBoostModifier);
+      if (intent.action === ActionType.PRESS) withModifierPressCount++;
+    }
+
+    for (let i = 0; i < N; i++) {
+      const rng = createRng(`duty-seed-${i}`);
+      const intent = selectAction(ACTIONS, ctx, highComposure, PERSONALITY_WEIGHTS, rng);
+      if (intent.action === ActionType.PRESS) withoutModifierPressCount++;
+    }
+
+    // With a strong PRESS boost, we should see PRESS selected more often
+    expect(withModifierPressCount).toBeGreaterThan(withoutModifierPressCount);
+  });
+
+  it('existing tests pass without duty modifier (backward compatible)', () => {
+    const ctx = makeCtx();
+    const rng = createRng('backward-compat');
+    // No dutyModifier argument — should work exactly as before
+    const intent = selectAction(ACTIONS, ctx, highComposure, PERSONALITY_WEIGHTS, rng);
+    expect(intent.agentId).toBe('p1');
+    expect(Object.values(ActionType)).toContain(intent.action);
+  });
+});

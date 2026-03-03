@@ -15,8 +15,8 @@ describe('ROLES_442', () => {
     expect(ROLES_442[0]).toBe('GK');
   });
 
-  it('includes GK, LB, CB, CB, RB, LM, CM, CM, RM, ST, ST', () => {
-    expect(ROLES_442).toEqual(['GK', 'LB', 'CB', 'CB', 'RB', 'LM', 'CM', 'CM', 'RM', 'ST', 'ST']);
+  it('includes GK, LB, CB, CB, RB, LW, CM, CM, RW, ST, ST', () => {
+    expect(ROLES_442).toEqual(['GK', 'LB', 'CB', 'CB', 'RB', 'LW', 'CM', 'CM', 'RW', 'ST', 'ST']);
   });
 });
 

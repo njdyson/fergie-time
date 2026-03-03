@@ -45,15 +45,15 @@ export const FORMATION_TEMPLATES: Record<FormationId, FormationTemplate> = {
       new Vec2(25, MID_Y + 7),                // CB
       new Vec2(25, MID_Y + 21),               // RB
       // MID (4)
-      new Vec2(45, MID_Y - 20),               // LM
+      new Vec2(45, MID_Y - 20),               // LW (wide mid)
       new Vec2(45, MID_Y - 6.67),             // CM
       new Vec2(45, MID_Y + 6.67),             // CM
-      new Vec2(45, MID_Y + 20),               // RM
+      new Vec2(45, MID_Y + 20),               // RW (wide mid)
       // FWD (2)
       new Vec2(65, MID_Y - 6),                // ST
       new Vec2(65, MID_Y + 6),                // ST
     ],
-    roles: ['GK', 'LB', 'CB', 'CB', 'RB', 'LM', 'CM', 'CM', 'RM', 'ST', 'ST'],
+    roles: ['GK', 'LB', 'CB', 'CB', 'RB', 'LW', 'CM', 'CM', 'RW', 'ST', 'ST'],
   },
 
   '4-3-3': {
