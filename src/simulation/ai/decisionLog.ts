@@ -103,6 +103,27 @@ export class DecisionLog {
   }
 
   /**
+   * Returns the last `count` entries for an agent in chronological order (oldest → newest).
+   * More efficient than getEntries() when only a small window is needed (e.g., 30 ticks).
+   */
+  getRecent(agentId: string, count: number): readonly AgentDecisionEntry[] {
+    const buf = this.buffers.get(agentId);
+    if (!buf) return [];
+
+    const head = this.heads.get(agentId)!;
+    const size = this.sizes.get(agentId)!;
+    const n = Math.min(count, size);
+    if (n === 0) return [];
+
+    const result: AgentDecisionEntry[] = [];
+    for (let i = 0; i < n; i++) {
+      const idx = (head - n + i + BUFFER_SIZE) % BUFFER_SIZE;
+      result.push(buf[idx]!);
+    }
+    return result;
+  }
+
+  /**
    * Returns the most recently logged entry for an agent, or undefined if none.
    */
   getLatest(agentId: string): AgentDecisionEntry | undefined {

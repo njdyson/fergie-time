@@ -70,10 +70,10 @@ describe('ACTIONS', () => {
     }
   });
 
-  it('should have 3-4 consideration functions per action', () => {
+  it('should have 3-5 consideration functions per action', () => {
     for (const action of ACTIONS) {
       expect(action.considerations.length).toBeGreaterThanOrEqual(3);
-      expect(action.considerations.length).toBeLessThanOrEqual(4);
+      expect(action.considerations.length).toBeLessThanOrEqual(5);
     }
   });
 

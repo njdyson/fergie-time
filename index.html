@@ -177,56 +177,73 @@
     <div id="tuning-panel">
       <h3>Decision Engine</h3>
       <div class="tuning-row">
-        <label>Hysteresis <span id="v-hysteresis">0.12</span></label>
-        <input type="range" id="t-hysteresis" min="0" max="0.4" step="0.01" value="0.12">
+        <label title="Bonus added to previous action score to prevent flip-flopping between actions. Higher = more committed to current action.">Hysteresis <span id="v-hysteresisBonus">0.12</span></label>
+        <input type="range" id="t-hysteresis" min="0" max="1.0" step="0.01" value="0.12">
       </div>
       <div class="tuning-row">
-        <label>Noise scale <span id="v-noiseScale">0.12</span></label>
-        <input type="range" id="t-noiseScale" min="0" max="0.3" step="0.01" value="0.12">
+        <label title="Gaussian noise multiplied by (1 - composure). Higher = more random/unpredictable decisions.">Noise scale <span id="v-noiseScale">0.12</span></label>
+        <input type="range" id="t-noiseScale" min="0" max="0.5" step="0.01" value="0.12">
       </div>
 
       <h3>Move to Position</h3>
       <div class="tuning-row">
-        <label>Base score <span id="v-moveToPosIntercept">0.25</span></label>
-        <input type="range" id="t-moveToPosIntercept" min="0.05" max="0.6" step="0.01" value="0.25">
+        <label title="Base score for holding formation position when at anchor. Higher = players stay in position more stubbornly.">Base score <span id="v-moveToPosIntercept">0.25</span></label>
+        <input type="range" id="t-moveToPosIntercept" min="0" max="1.0" step="0.01" value="0.25">
       </div>
       <div class="tuning-row">
-        <label>Urgency slope <span id="v-moveToPosSlope">0.65</span></label>
-        <input type="range" id="t-moveToPosSlope" min="0.1" max="1.0" step="0.05" value="0.65">
+        <label title="How urgently players return to position as they drift away. Higher = faster return, less roaming.">Urgency slope <span id="v-moveToPosSlope">0.65</span></label>
+        <input type="range" id="t-moveToPosSlope" min="0" max="2.0" step="0.05" value="0.65">
       </div>
 
       <h3>Press</h3>
       <div class="tuning-row">
-        <label>Decay rate <span id="v-pressDecayK">2.5</span></label>
-        <input type="range" id="t-pressDecayK" min="0.5" max="5.0" step="0.1" value="2.5">
+        <label title="Exponential decay rate for pressing. Higher = only very close players will press. Lower = players press from further away.">Decay rate <span id="v-pressDecayK">2.5</span></label>
+        <input type="range" id="t-pressDecayK" min="0.1" max="10.0" step="0.1" value="2.5">
       </div>
       <div class="tuning-row">
-        <label>Range (m) <span id="v-pressNorm">25</span></label>
-        <input type="range" id="t-pressNorm" min="10" max="50" step="1" value="25">
+        <label title="Distance normalisation for press reach (metres). Higher = pressing triggers from further away.">Range (m) <span id="v-pressNorm">25</span></label>
+        <input type="range" id="t-pressNorm" min="5" max="100" step="1" value="25">
+      </div>
+
+      <div class="tuning-row">
+        <label title="Press rank penalty per closer teammate. 0.3 = 2nd nearest gets 30% score, 3rd gets 9%. Lower = fewer players press. 1.0 = no penalty (everyone presses).">Rank decay <span id="v-pressRankDecay">0.30</span></label>
+        <input type="range" id="t-pressRankDecay" min="0.01" max="1.0" step="0.01" value="0.30">
       </div>
 
       <h3>Ball</h3>
       <div class="tuning-row">
-        <label>Control radius (m) <span id="v-controlRadius">2.5</span></label>
-        <input type="range" id="t-controlRadius" min="1.0" max="5.0" step="0.1" value="2.5">
+        <label title="How close (metres) a player must be to pick up a loose ball. Higher = easier ball control.">Control radius (m) <span id="v-controlRadius">2.5</span></label>
+        <input type="range" id="t-controlRadius" min="0.5" max="10.0" step="0.1" value="2.5">
       </div>
       <div class="tuning-row">
-        <label>Pass speed (m/s) <span id="v-passSpeed">14</span></label>
-        <input type="range" id="t-passSpeed" min="5" max="30" step="1" value="14">
+        <label title="Speed of pass kicks in metres/second. Higher = faster passes that reach further.">Pass speed (m/s) <span id="v-passSpeed">14</span></label>
+        <input type="range" id="t-passSpeed" min="2" max="50" step="1" value="14">
       </div>
       <div class="tuning-row">
-        <label>Shot speed (m/s) <span id="v-shootSpeed">22</span></label>
-        <input type="range" id="t-shootSpeed" min="10" max="40" step="1" value="22">
+        <label title="Speed of shot kicks in metres/second. Higher = harder shots.">Shot speed (m/s) <span id="v-shootSpeed">22</span></label>
+        <input type="range" id="t-shootSpeed" min="5" max="60" step="1" value="22">
       </div>
 
       <h3>Movement</h3>
       <div class="tuning-row">
-        <label>Separation radius <span id="v-separationRadius">2.0</span></label>
-        <input type="range" id="t-separationRadius" min="0.5" max="5.0" step="0.1" value="2.0">
+        <label title="Base top speed of all players (m/s), scaled by pace attribute. Affects overall game tempo.">Player speed (m/s) <span id="v-playerBaseSpeed">8.0</span></label>
+        <input type="range" id="t-playerBaseSpeed" min="3" max="15" step="0.5" value="8.0">
       </div>
       <div class="tuning-row">
-        <label>Separation force <span id="v-separationScale">0.5</span></label>
-        <input type="range" id="t-separationScale" min="0.1" max="2.0" step="0.1" value="0.5">
+        <label title="Dribble speed as fraction of max speed. 0.5 = half speed while dribbling, 1.0 = full speed.">Dribble speed ratio <span id="v-dribbleSpeedRatio">0.70</span></label>
+        <input type="range" id="t-dribbleSpeedRatio" min="0.2" max="1.0" step="0.05" value="0.70">
+      </div>
+      <div class="tuning-row">
+        <label title="Minimum distance (metres) between players before separation force kicks in. Higher = more spread out.">Separation radius <span id="v-separationRadius">2.0</span></label>
+        <input type="range" id="t-separationRadius" min="0.5" max="10.0" step="0.1" value="2.0">
+      </div>
+      <div class="tuning-row">
+        <label title="Strength of the force pushing overlapping players apart. Higher = stronger repulsion.">Separation force <span id="v-separationScale">0.5</span></label>
+        <input type="range" id="t-separationScale" min="0" max="5.0" step="0.1" value="0.5">
+      </div>
+
+      <div style="margin-top: 16px; padding-top: 8px; border-top: 1px solid #334155;">
+        <button class="ctrl-btn" id="btn-copy-settings" style="width: 100%; text-align: center;">Copy Settings</button>
       </div>
     </div>
 

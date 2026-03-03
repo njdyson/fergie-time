@@ -197,9 +197,12 @@ const sliderBindings: { id: string; key: keyof TuningConfig; decimals: number }[
   { id: 't-moveToPosSlope',     key: 'moveToPosSlope',       decimals: 2 },
   { id: 't-pressDecayK',        key: 'pressDecayK',          decimals: 1 },
   { id: 't-pressNorm',          key: 'pressNorm',            decimals: 0 },
+  { id: 't-pressRankDecay',     key: 'pressRankDecay',        decimals: 2 },
   { id: 't-controlRadius',      key: 'controlRadius',        decimals: 1 },
   { id: 't-passSpeed',          key: 'passSpeed',            decimals: 0 },
   { id: 't-shootSpeed',         key: 'shootSpeed',           decimals: 0 },
+  { id: 't-playerBaseSpeed',    key: 'playerBaseSpeed',      decimals: 1 },
+  { id: 't-dribbleSpeedRatio',  key: 'dribbleSpeedRatio',    decimals: 2 },
   { id: 't-separationRadius',   key: 'separationRadius',     decimals: 1 },
   { id: 't-separationScale',    key: 'separationScale',      decimals: 1 },
 ];
@@ -215,6 +218,18 @@ for (const binding of sliderBindings) {
     valueEl.textContent = val.toFixed(binding.decimals);
   });
 }
+
+// Copy settings to clipboard
+const btnCopySettings = document.getElementById('btn-copy-settings') as HTMLButtonElement | null;
+btnCopySettings?.addEventListener('click', () => {
+  const settings = JSON.stringify(TUNING, null, 2);
+  navigator.clipboard.writeText(settings).then(() => {
+    if (btnCopySettings) {
+      btnCopySettings.textContent = 'Copied!';
+      setTimeout(() => { btnCopySettings.textContent = 'Copy Settings'; }, 1500);
+    }
+  });
+});
 
 // Sync button state on keyboard events
 document.addEventListener('keydown', (e) => {

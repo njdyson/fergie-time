@@ -21,6 +21,8 @@ export const TUNING = {
   pressDecayK: 2.5,
   /** Distance normalization (metres). Higher = pressing reaches further */
   pressNorm: 25,
+  /** Press rank decay — score multiplied by this^(closerTeammates). Lower = fewer pressers */
+  pressRankDecay: 0.3,
 
   // ── Ball control ────────────────────────────────────────────────────
   /** How close (metres) a player must be to pick up a loose ball */
@@ -35,6 +37,10 @@ export const TUNING = {
   separationRadius: 2.0,
   /** Separation force multiplier */
   separationScale: 0.5,
+  /** Base player speed (m/s) — multiplied by pace attribute */
+  playerBaseSpeed: 8.0,
+  /** Dribble speed as fraction of max speed */
+  dribbleSpeedRatio: 0.7,
 };
 
 /** Type for the tuning config — used by the settings panel */

@@ -1,5 +1,5 @@
-import type { SimSnapshot, PlayerState } from '../simulation/types.ts';
-import type { DecisionLog, AgentDecisionEntry } from '../simulation/ai/decisionLog.ts';
+import type { SimSnapshot, PlayerState, ActionType } from '../simulation/types.ts';
+import type { DecisionLog } from '../simulation/ai/decisionLog.ts';
 
 // ============================================================
 // Debug overlay constants
@@ -10,10 +10,10 @@ const HIGHLIGHT_RADIUS = 10;  // yellow highlight ring radius in canvas pixels
 const HIGHLIGHT_COLOR = '#ffff00';
 const HIGHLIGHT_LINE_WIDTH = 2;
 
-const PANEL_WIDTH = 180;
+const PANEL_WIDTH = 260;
 const PANEL_PADDING = 8;
 const PANEL_LINE_HEIGHT = 16;
-const PANEL_BG = 'rgba(0, 0, 0, 0.85)';
+const PANEL_BG = 'rgba(0, 0, 0, 0.88)';
 const TEXT_COLOR = '#ffffff';
 const FONT = '12px monospace';
 const FONT_SMALL = '11px monospace';
@@ -21,10 +21,21 @@ const FONT_SMALL = '11px monospace';
 // Action bar
 const BAR_SELECTED_BORDER = '#ffffff';
 const BAR_HEIGHT = 10;
-const BAR_MAX_WIDTH = PANEL_WIDTH - PANEL_PADDING * 2 - 60; // leave room for label
+const BAR_MAX_WIDTH = 70; // fixed bar width for consistency
+
+// Averaging window: 30 ticks = 1 second of sim time
+const AVG_WINDOW = 30;
 
 // Coordinate mapper type used by the renderer
 type PitchToCanvas = (v: { x: number; y: number }) => { x: number; y: number };
+
+// Averaged action data for display
+interface ActionAverage {
+  action: string;
+  avgScore: number;
+  selectionPct: number;
+  isCurrent: boolean;
+}
 
 // ============================================================
 // DebugOverlay
@@ -33,21 +44,9 @@ type PitchToCanvas = (v: { x: number; y: number }) => { x: number; y: number };
 /**
  * Click-to-inspect debug overlay for the Canvas renderer.
  *
- * Usage:
- *   const overlay = new DebugOverlay(canvas, decisionLog);
- *   // In the render loop, AFTER the main renderer draw call:
- *   overlay.draw(ctx, snapshot, (v) => renderer.pitchToCanvas(v));
- *
- * Clicking on a player within INSPECT_RADIUS_PX pixels shows a panel with:
- *   - Player ID and role
- *   - Current fatigue level (bar)
- *   - Top 3 scored actions with score bars
- *   - Currently selected action highlighted
- *
- * Clicking on empty space or pressing Escape deselects the current agent.
- *
- * Key bindings (registered on document):
- *   'H' — toggle spatial heat map (delegated to CanvasRenderer)
+ * Shows averaged scores over the last 30 ticks (1 second) so the panel
+ * is stable and readable. Displays ALL 8 actions sorted by average score,
+ * with selection frequency % and the current action highlighted.
  */
 export class DebugOverlay {
   private readonly canvas: HTMLCanvasElement;
@@ -83,11 +82,6 @@ export class DebugOverlay {
   /**
    * Draw the debug overlay onto the canvas context.
    * Call this AFTER the main renderer draw() call.
-   *
-   * @param ctx - Canvas 2D rendering context
-   * @param snapshot - Current simulation snapshot
-   * @param pitchToCanvas - Coordinate mapper from simulation metres to canvas pixels
-   * @param debugEnabled - Whether debug overlay is currently active
    */
   draw(
     ctx: CanvasRenderingContext2D,
@@ -104,7 +98,6 @@ export class DebugOverlay {
     // Find the inspected player in the snapshot
     const player = snapshot.players.find(p => p.id === this.inspectedAgentId);
     if (!player) {
-      // Player no longer in snapshot — deselect
       this.inspectedAgentId = null;
       return;
     }
@@ -114,11 +107,57 @@ export class DebugOverlay {
     // 1. Draw highlight circle
     this.drawHighlight(ctx, canvasPos);
 
-    // 2. Get latest decision entry for this agent
-    const entry = this.decisionLog.getLatest(this.inspectedAgentId);
+    // 2. Compute averaged decision data over last 30 ticks
+    const averaged = this.computeAveraged(this.inspectedAgentId);
 
-    // 3. Draw info panel
-    this.drawPanel(ctx, player, entry, canvasPos);
+    // 3. Get current action from latest entry
+    const latest = this.decisionLog.getLatest(this.inspectedAgentId);
+
+    // 4. Draw info panel
+    this.drawPanel(ctx, player, averaged, latest?.selected, canvasPos);
+  }
+
+  // ============================================================
+  // Averaging logic
+  // ============================================================
+
+  private computeAveraged(agentId: string): ActionAverage[] {
+    const entries = this.decisionLog.getRecent(agentId, AVG_WINDOW);
+    if (entries.length === 0) return [];
+
+    // Accumulate scores and selection counts per action
+    const scoreAccum = new Map<string, { total: number; count: number; selections: number }>();
+
+    for (const entry of entries) {
+      for (const { action, score } of entry.scores) {
+        let acc = scoreAccum.get(action);
+        if (!acc) {
+          acc = { total: 0, count: 0, selections: 0 };
+          scoreAccum.set(action, acc);
+        }
+        acc.total += score;
+        acc.count += 1;
+      }
+      const sel = scoreAccum.get(entry.selected);
+      if (sel) sel.selections += 1;
+    }
+
+    const totalEntries = entries.length;
+    const currentAction = entries[entries.length - 1]?.selected;
+    const result: ActionAverage[] = [];
+
+    for (const [action, acc] of scoreAccum) {
+      result.push({
+        action,
+        avgScore: acc.count > 0 ? acc.total / acc.count : 0,
+        selectionPct: totalEntries > 0 ? (acc.selections / totalEntries) * 100 : 0,
+        isCurrent: action === currentAction,
+      });
+    }
+
+    // Sort by average score descending
+    result.sort((a, b) => b.avgScore - a.avgScore);
+    return result;
   }
 
   // ============================================================
@@ -141,16 +180,13 @@ export class DebugOverlay {
   private drawPanel(
     ctx: CanvasRenderingContext2D,
     player: PlayerState,
-    entry: AgentDecisionEntry | undefined,
+    averaged: ActionAverage[],
+    currentAction: ActionType | undefined,
     playerCanvasPos: { x: number; y: number },
   ): void {
-    // Top 3 actions sorted by score
-    const topActions = entry
-      ? [...entry.scores].sort((a, b) => b.score - a.score).slice(0, 3)
-      : [];
-
-    // Lines: player ID + role, fatigue bar, divider, top 3 actions or "no data"
-    const lineCount = 2 + 1 + (topActions.length > 0 ? topActions.length : 1);
+    // Lines: header + fatigue + divider + actions (or "no data")
+    const actionLines = averaged.length > 0 ? averaged.length : 1;
+    const lineCount = 2 + 1 + actionLines;
     const panelHeight = PANEL_PADDING * 2 + lineCount * PANEL_LINE_HEIGHT + 6;
 
     // Position panel to avoid going off-canvas
@@ -178,22 +214,27 @@ export class DebugOverlay {
 
     let lineY = panelY + PANEL_PADDING + PANEL_LINE_HEIGHT - 4;
 
-    // Line 1: Player ID + role (truncated if needed)
-    const idLabel = `${player.id.slice(0, 8)} [${player.role}]`;
+    // Line 1: Player ID + role + team
+    const teamLabel = player.teamId === 'home' ? 'H' : 'A';
+    const idLabel = `${player.id.slice(0, 8)} [${player.role}] ${teamLabel}`;
     ctx.fillText(idLabel, panelX + PANEL_PADDING, lineY);
     lineY += PANEL_LINE_HEIGHT;
 
     // Line 2: Fatigue bar
+    ctx.font = FONT_SMALL;
     ctx.fillText('fatigue:', panelX + PANEL_PADDING, lineY);
+    const fatPct = `${(player.fatigue * 100).toFixed(0)}%`;
     this.drawBar(
       ctx,
-      panelX + PANEL_PADDING + 52,
+      panelX + PANEL_PADDING + 56,
       lineY - BAR_HEIGHT + 2,
       player.fatigue,
       BAR_MAX_WIDTH,
-      false,  // fatigue is not "selected"
-      true,   // invert: high fatigue = more red
+      false,
+      true,
     );
+    ctx.fillStyle = TEXT_COLOR;
+    ctx.fillText(fatPct, panelX + PANEL_PADDING + 56 + BAR_MAX_WIDTH + 4, lineY);
     lineY += PANEL_LINE_HEIGHT;
 
     // Divider
@@ -203,29 +244,35 @@ export class DebugOverlay {
     ctx.moveTo(panelX + PANEL_PADDING, lineY - 4);
     ctx.lineTo(panelX + PANEL_WIDTH - PANEL_PADDING, lineY - 4);
     ctx.stroke();
-    lineY += 2;
 
-    // Action scores (top 3)
-    if (topActions.length === 0) {
+    // Column header
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.font = '10px monospace';
+    ctx.fillText('action', panelX + PANEL_PADDING, lineY + 2);
+    ctx.fillText('avg score', panelX + PANEL_PADDING + 96, lineY + 2);
+    ctx.fillText('sel%', panelX + PANEL_WIDTH - PANEL_PADDING - 30, lineY + 2);
+    lineY += PANEL_LINE_HEIGHT - 2;
+
+    // Action rows — all 8, averaged over last 30 ticks
+    if (averaged.length === 0) {
       ctx.fillStyle = 'rgba(255,255,255,0.5)';
       ctx.font = FONT_SMALL;
       ctx.fillText('no decisions yet', panelX + PANEL_PADDING, lineY);
     } else {
-      const selected = entry!.selected;
-      for (const scored of topActions) {
-        const isSelected = scored.action === selected;
-        const scoreClamped = Math.max(0, Math.min(1, scored.score));
+      for (const row of averaged) {
+        const isSelected = row.action === currentAction;
 
-        // Action label (shortened to 8 chars)
-        const label = scored.action.slice(0, 8);
+        // Action label (show full name, formatted)
+        const label = this.formatAction(row.action);
         ctx.fillStyle = isSelected ? '#ffff44' : TEXT_COLOR;
         ctx.font = isSelected ? `bold ${FONT_SMALL}` : FONT_SMALL;
         ctx.fillText(label, panelX + PANEL_PADDING, lineY);
 
         // Score bar
+        const scoreClamped = Math.max(0, Math.min(1, row.avgScore));
         this.drawBar(
           ctx,
-          panelX + PANEL_PADDING + 62,
+          panelX + PANEL_PADDING + 96,
           lineY - BAR_HEIGHT + 2,
           scoreClamped,
           BAR_MAX_WIDTH,
@@ -233,11 +280,29 @@ export class DebugOverlay {
           false,
         );
 
+        // Selection percentage
+        const pctText = row.selectionPct > 0 ? `${row.selectionPct.toFixed(0)}%` : '-';
+        ctx.fillStyle = isSelected ? '#ffff44' : 'rgba(255,255,255,0.7)';
+        ctx.font = FONT_SMALL;
+        ctx.fillText(pctText, panelX + PANEL_WIDTH - PANEL_PADDING - 28, lineY);
+
         lineY += PANEL_LINE_HEIGHT;
       }
     }
 
     ctx.restore();
+  }
+
+  private formatAction(action: string): string {
+    // Convert SCREAMING_SNAKE to Title Case abbreviation
+    switch (action) {
+      case 'MOVE_TO_POSITION': return 'MoveToPos';
+      case 'PASS_FORWARD':     return 'PassFwd';
+      case 'PASS_SAFE':        return 'PassSafe';
+      case 'HOLD_SHIELD':      return 'Shield';
+      case 'MAKE_RUN':         return 'MakeRun';
+      default:                 return action.charAt(0) + action.slice(1).toLowerCase();
+    }
   }
 
   /**

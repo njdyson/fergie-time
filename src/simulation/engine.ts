@@ -10,7 +10,7 @@ import { selectAction, evaluateAction } from './ai/agent.ts';
 import { PERSONALITY_WEIGHTS } from './ai/personality.ts';
 import { accumulateFatigue, applyFatigueToAttributes, applyFatigueToPersonality } from './ai/fatigue.ts';
 import { SpatialGrid } from './physics/spatial.ts';
-import { seek, arrive, separation, BASE_PLAYER_SPEED, clampVelocity } from './physics/steering.ts';
+import { seek, arrive, separation, clampVelocity } from './physics/steering.ts';
 import { computeFormationAnchors } from './tactical/formation.ts';
 import { StatsAccumulator } from './match/stats.ts';
 import { DecisionLog } from './ai/decisionLog.ts';
@@ -475,7 +475,7 @@ export class SimulationEngine {
       const p = updatedPlayers[i]!;
       const intent = intents[i]!;
       const effAttr = effectiveAttributes[i]!;
-      const maxSpeed = effAttr.pace * BASE_PLAYER_SPEED * (1 - p.fatigue * 0.5);
+      const maxSpeed = effAttr.pace * TUNING.playerBaseSpeed * (1 - p.fatigue * 0.5);
 
       switch (intent.action) {
         case 'MOVE_TO_POSITION': {
@@ -589,7 +589,7 @@ export class SimulationEngine {
             // Move toward opponent goal with ball
             const opponentGoalX = p.teamId === 'home' ? PITCH_WIDTH : 0;
             const dribbleDir = new Vec2(opponentGoalX - p.position.x, 0).normalize();
-            const newVel = dribbleDir.scale(maxSpeed * 0.7);
+            const newVel = dribbleDir.scale(maxSpeed * TUNING.dribbleSpeedRatio);
             const dtSec = dt / 1000;
             const newPos = p.position.add(newVel.scale(dtSec));
             const clampedPos = clampToPitch(newPos);

@@ -95,6 +95,15 @@ const pressConsiderations: readonly ConsiderationFn[] = [
   (ctx) => exponentialDecay(ctx.distanceToBall / TUNING.pressNorm, TUNING.pressDecayK),
   (ctx) => linear(ctx.distanceToOpponentGoal / 105, 0.6, 0.2),
   (ctx) => ctx.self.attributes.tackling,
+  // Press rank: penalise if teammates are already closer to ball (prevents clumping)
+  (ctx) => {
+    const myDist = ctx.distanceToBall;
+    let closerCount = 0;
+    for (const tm of ctx.teammates) {
+      if (tm.position.distanceTo(ctx.ball.position) < myDist) closerCount++;
+    }
+    return Math.pow(TUNING.pressRankDecay, closerCount);
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
