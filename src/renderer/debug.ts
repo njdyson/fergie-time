@@ -45,6 +45,9 @@ type PitchToCanvas = (v: { x: number; y: number }) => { x: number; y: number };
  *   - Currently selected action highlighted
  *
  * Clicking on empty space or pressing Escape deselects the current agent.
+ *
+ * Key bindings (registered on document):
+ *   'H' — toggle spatial heat map (delegated to CanvasRenderer)
  */
 export class DebugOverlay {
   private readonly canvas: HTMLCanvasElement;
@@ -84,17 +87,19 @@ export class DebugOverlay {
    * @param ctx - Canvas 2D rendering context
    * @param snapshot - Current simulation snapshot
    * @param pitchToCanvas - Coordinate mapper from simulation metres to canvas pixels
+   * @param debugEnabled - Whether debug overlay is currently active
    */
   draw(
     ctx: CanvasRenderingContext2D,
     snapshot: SimSnapshot,
     pitchToCanvas: PitchToCanvas,
+    debugEnabled: boolean = true,
   ): void {
     // Cache snapshot for click hit testing
     this.cachedSnapshot = snapshot;
     this.cachedPitchToCanvas = pitchToCanvas;
 
-    if (!this.inspectedAgentId) return;
+    if (!debugEnabled || !this.inspectedAgentId) return;
 
     // Find the inspected player in the snapshot
     const player = snapshot.players.find(p => p.id === this.inspectedAgentId);
@@ -237,14 +242,6 @@ export class DebugOverlay {
 
   /**
    * Draws a horizontal score bar.
-   *
-   * @param ctx - Canvas context
-   * @param x - Left edge of bar
-   * @param y - Top edge of bar
-   * @param value - 0..1 fill ratio
-   * @param maxWidth - Maximum bar width in pixels
-   * @param isSelected - Whether to draw white border highlight
-   * @param invertColor - Whether high value = red (e.g. fatigue)
    */
   private drawBar(
     ctx: CanvasRenderingContext2D,
@@ -257,9 +254,6 @@ export class DebugOverlay {
   ): void {
     const fillWidth = Math.floor(value * maxWidth);
 
-    // Bar fill color: lerp between green and red based on value
-    // invertColor=true: high value = red (fatigue)
-    // invertColor=false: high value = green (score)
     const r = invertColor
       ? Math.floor(value * 204) + 22
       : Math.floor((1 - value) * 204) + 22;

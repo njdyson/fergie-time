@@ -75,7 +75,7 @@ const BASE_442_Y: number[] = [
  * @returns Array of 11 Vec2 anchor positions
  */
 export function computeFormationAnchors(
-  formation: Formation,
+  _formation: Formation,
   teamId: TeamId,
   ballPosition: Vec2,
   isInPossession: boolean,
