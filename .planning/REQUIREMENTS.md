@@ -11,9 +11,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [ ] **ENG-01**: Ball moves in 2.5D (X/Y ground position + Z height via projectile motion)
 - [x] **ENG-02**: Players move using steering behaviors (seek, arrive, avoid, separation) with physical attribute caps
-- [ ] **ENG-03**: Each player agent evaluates 7 actions per tick via utility AI and selects highest-scoring
-- [ ] **ENG-04**: Personality vector (directness, risk_appetite, composure, creativity, work_rate, aggression, anticipation, flair) weights every action score
-- [ ] **ENG-05**: Gaussian noise added to utility scores, scaled by (1 - composure), producing realistic decision variance
+- [x] **ENG-03**: Each player agent evaluates 7 actions per tick via utility AI and selects highest-scoring
+- [x] **ENG-04**: Personality vector (directness, risk_appetite, composure, creativity, work_rate, aggression, anticipation, flair) weights every action score
+- [x] **ENG-05**: Gaussian noise added to utility scores, scaled by (1 - composure), producing realistic decision variance
 - [ ] **ENG-06**: Fatigue attenuates physical attributes on a glycogen-depletion curve (gradual through 60min, steep final quarter)
 - [ ] **ENG-07**: Fatigue interpolates personality values toward conservative defaults (personality erosion)
 - [ ] **ENG-08**: Tackle success resolved by comparing physical/technical attributes with positional geometry modifiers
@@ -98,9 +98,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 |-------------|-------|--------|
 | ENG-01 | Phase 1 | Pending |
 | ENG-02 | Phase 1 | Complete |
-| ENG-03 | Phase 1 | Pending |
-| ENG-04 | Phase 1 | Pending |
-| ENG-05 | Phase 1 | Pending |
+| ENG-03 | Phase 1 | Complete |
+| ENG-04 | Phase 1 | Complete |
+| ENG-05 | Phase 1 | Complete |
 | ENG-06 | Phase 1 | Pending |
 | ENG-07 | Phase 1 | Pending |
 | ENG-08 | Phase 1 | Pending |

@@ -1,3 +1,16 @@
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: unknown
+last_updated: "2026-03-03T00:41:05.410Z"
+progress:
+  total_phases: 1
+  completed_phases: 0
+  total_plans: 10
+  completed_plans: 6
+---
+
 # Project State
 
 ## Project Reference
@@ -10,28 +23,28 @@ See: .planning/PROJECT.md (updated 2026-03-02)
 ## Current Position
 
 Phase: 1 of 4 (Engine Core)
-Plan: 5 of 10 in current phase
+Plan: 6 of 10 in current phase
 Status: In progress — executing
-Last activity: 2026-03-03 — Plan 01-05 complete: SimulationEngine shell, game loop, Canvas renderer (33 tests)
+Last activity: 2026-03-03 — Plan 01-06 complete: utility AI agent system, consideration functions, personality weights (44 tests)
 
-Progress: [█████░░░░░] 50%
+Progress: [██████░░░░] 60%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5
-- Average duration: ~4.6 min
-- Total execution time: ~23 min
+- Total plans completed: 6
+- Average duration: ~4.7 min
+- Total execution time: ~30 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 1. Engine Core | 5 | ~23 min | ~4.6 min |
+| 1. Engine Core | 6 | ~30 min | ~5 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (6 min), 01-02 (n/a — skipped to 01-03), 01-03 (3 min), 01-04 (3 min), 01-05 (5 min)
-- Trend: consistent ~3-5 min per plan
+- Last 5 plans: 01-02 (n/a), 01-03 (3 min), 01-04 (3 min), 01-05 (5 min), 01-06 (7 min)
+- Trend: consistent ~3-7 min per plan
 
 *Updated after each plan completion*
 
@@ -55,6 +68,8 @@ Recent decisions affecting current work:
 - [01-05]: MatchConfig supports initialBallVelocity and initialBallPosition for testing and dev init — enables goal-detection tests without waiting 3500 ticks.
 - [01-05]: Physics paused during HALFTIME and FULL_TIME — engine returns early without integrateBall/checkGoal during breaks.
 - [01-05]: Fixed-timestep accumulator at FIXED_DT_MS=33.33ms with 200ms spiral-of-death guard. Alpha interpolation gives smooth 60fps from 30 tick/sec simulation.
+- [Phase 01-06]: Scale PERSONALITY_WEIGHTS by ~0.3x — original 0.40-0.50 weights caused personality to dominate consideration product; scaled to max ~0.15 per trait to preserve trait differentiation without overriding context-driven scores
+- [Phase 01-06]: NOISE_SCALE = 0.12 — gives composure=0.2 stdDev=0.096, sufficient for >30% action variance in ambiguous contexts (research recommendation was 0.08 but proved insufficient for the variance spec)
 
 ### Pending Todos
 
@@ -69,5 +84,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: 01-05-PLAN.md complete. Ready to execute 01-06-PLAN.md.
+Stopped at: 01-06-PLAN.md complete. Ready to execute 01-07-PLAN.md.
 Resume file: None
