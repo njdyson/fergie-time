@@ -1,0 +1,24 @@
+{
+  "name": "fergie-time",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/seedrandom": "^3.0.8",
+    "@vitest/coverage-v8": "^3.2.3",
+    "typescript": "~5.9.3",
+    "vite": "^7.3.1",
+    "vitest": "^3.2.3"
+  },
+  "dependencies": {
+    "seedrandom": "^3.0.5",
+    "zod": "^3.24.2"
+  }
+}
