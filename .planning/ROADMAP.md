@@ -12,7 +12,7 @@ Four phases derived directly from the dependency chain in the match engine: phys
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Engine Core** - A watchable match with emergent goals, realistic player movement, and observable possession changes
+- [x] **Phase 1: Engine Core** - A watchable match with emergent goals, realistic player movement, and observable possession changes
 - [ ] **Phase 2: Tactical Layer** - Formation drag-and-drop and role assignments that visibly and measurably change team behavior
 - [ ] **Phase 3: Management Shell** - A full playable season with squad management, fixtures, league table, and a champion declared
 - [ ] **Phase 4: Development Systems** - Training, youth graduates, retirements, and procedural portraits that make seasons 2+ meaningfully different
@@ -31,15 +31,15 @@ Decimal phases appear between their surrounding integers in numeric order.
   5. A debug overlay shows per-agent decision scores on click — the match is not a black box
 **Plans**: 10 plans
   - [x] 01-01-PLAN.md — Project scaffolding, core types, Vec2, math utilities
-  - [ ] 01-02-PLAN.md — 2.5D ball physics (TDD)
+  - [x] 01-02-PLAN.md — 2.5D ball physics (TDD)
   - [x] 01-03-PLAN.md — Steering behaviors (TDD)
   - [x] 01-04-PLAN.md — Match state machine and goal detection (TDD)
-  - [ ] 01-05-PLAN.md — Simulation engine, game loop, and Canvas renderer
-  - [ ] 01-06-PLAN.md — Utility AI agent system with personality weights (TDD)
-  - [ ] 01-07-PLAN.md — Fatigue system with personality erosion (TDD)
-  - [ ] 01-08-PLAN.md — Contact resolution and spatial grid (TDD)
-  - [ ] 01-09-PLAN.md — Match statistics, decision log, and debug overlay
-  - [ ] 01-10-PLAN.md — Full integration: watchable match with human verification
+  - [x] 01-05-PLAN.md — Simulation engine, game loop, and Canvas renderer
+  - [x] 01-06-PLAN.md — Utility AI agent system with personality weights (TDD)
+  - [x] 01-07-PLAN.md — Fatigue system with personality erosion (TDD)
+  - [x] 01-08-PLAN.md — Contact resolution and spatial grid (TDD)
+  - [x] 01-09-PLAN.md — Match statistics, decision log, and debug overlay
+  - [x] 01-10-PLAN.md — Full integration: watchable match with human verification
 
 ### Phase 2: Tactical Layer
 **Goal**: Formation and role decisions by the manager mechanically alter how the team plays — changing shape produces a measurably different spatial footprint, not a cosmetic label
@@ -82,7 +82,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Engine Core | 9/10 | In Progress|  |
+| 1. Engine Core | 10/10 | Complete (approved with known issues) | 2026-03-03 |
 | 2. Tactical Layer | 0/TBD | Not started | - |
 | 3. Management Shell | 0/TBD | Not started | - |
 | 4. Development Systems | 0/TBD | Not started | - |

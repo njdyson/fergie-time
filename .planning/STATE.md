@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-last_updated: "2026-03-03T07:44:00.000Z"
+status: phase-complete
+last_updated: "2026-03-03T08:10:00.000Z"
 progress:
   total_phases: 1
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 10
-  completed_plans: 9
+  completed_plans: 10
 ---
 
 # Project State
@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-03-02)
 
 ## Current Position
 
-Phase: 1 of 4 (Engine Core)
-Plan: 9 of 10 in current phase
-Status: In progress — executing
-Last activity: 2026-03-03 — Plan 01-09 complete: match stats accumulation, decision log ring buffer + audit, Canvas debug overlay (45 tests, build succeeds)
+Phase: 1 of 4 (Engine Core) — COMPLETE
+Plan: 10 of 10 in current phase — COMPLETE
+Status: Phase 1 complete — approved with known calibration concerns
+Last activity: 2026-03-03 — Plan 01-10 complete: full engine integration, formation anchors, UI controls (372 tests, build succeeds). Human-verified: structural integration confirmed working; player oscillation identified as calibration concern for Phase 2.
 
-Progress: [█████████░] 90%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -40,11 +40,11 @@ Progress: [█████████░] 90%
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 1. Engine Core | 9 | ~44 min | ~4.9 min |
+| 1. Engine Core | 10 | ~64 min | ~6.4 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-05 (5 min), 01-06 (7 min), 01-07 (3 min), 01-08 (8 min), 01-09 (7 min)
-- Trend: consistent ~3-8 min per plan
+- Last 5 plans: 01-06 (7 min), 01-07 (3 min), 01-08 (8 min), 01-09 (7 min), 01-10 (20 min incl. checkpoint)
+- Trend: consistent ~3-8 min per plan; plan 10 longer due to human-verify checkpoint
 
 *Updated after each plan completion*
 
@@ -78,6 +78,10 @@ Recent decisions affecting current work:
 - [Phase 01-09]: Possession denominator excludes loose ball ticks: homeTicksWithBall / (home + away) not /totalTicks — meaningful possession stat even during dead ball periods
 - [Phase 01-09]: auditScoreRanges with empty entries returns no flags — zero-data state is not meaningful for calibration audit
 - [Phase 01-09]: DebugOverlay caches snapshot on draw() for click hit testing — correct async pattern for canvas event handling
+- [Phase 01-10]: Ball stopped (velocity zeroed) at HALFTIME/FULL_TIME/SECOND_HALF transition — matches physical reality, fixes test regression from AI-generated ball velocity
+- [Phase 01-10]: Intent resolution synchronous — all agents select simultaneously from read-only context, then intents applied sequentially
+- [Phase 01-10]: createMatchRosters() uses 8 named archetypes (not random) — ensures observable behavioral differences from the start
+- [Phase 01-10]: Player oscillation/jitter is a known calibration concern (action scores flip each tick) — deferred to Phase 2 tuning pass
 
 ### Pending Todos
 
@@ -85,12 +89,12 @@ None yet.
 
 ### Blockers/Concerns
 
-- [Phase 1]: Utility AI calibration for football simulation is poorly documented — response curve design for consideration normalization needs focused research during Phase 1 planning.
+- [Phase 2 - PRIORITY]: Player oscillation / jitter — utility AI action scores flip each tick causing players to run back and forth. Root cause: context signals (distanceToBall, formationAnchor) produce different winning actions on alternating ticks. Fix approaches: (a) action hysteresis bonus; (b) EMA-smoothed context distances; (c) recalibrate consideration curves; (d) action cooldowns.
 - [Phase 3]: AI manager heuristic complexity is under-specified — needs scoping during Phase 3 planning to bound how simple "simple heuristics" can be.
 - [Phase 4]: Pixel-art procedural portrait generation has no standard approach — needs dedicated research before Phase 4 planning begins.
 
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: 01-09-PLAN.md complete. Ready to execute 01-10-PLAN.md.
+Stopped at: 01-10-PLAN.md complete. Phase 1 (Engine Core) fully complete. Ready for Phase 2 planning.
 Resume file: None
