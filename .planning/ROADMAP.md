@@ -50,7 +50,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. A compact low block genuinely reduces space for a possession-heavy opponent — the tactical counter-system produces statistically distinguishable outcomes over 10+ matches
   3. A halftime formation change takes effect at kickoff of the second half
   4. Substituting a player mid-match replaces the agent on the pitch with the bench player's attributes and personality
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 02-01-PLAN.md -- Formation templates, role auto-assignment, duty weight modifiers
+- [ ] 02-02-PLAN.md -- Tactics board UI with drag-and-drop and formation presets
+- [ ] 02-03-PLAN.md -- Halftime flow, substitutions, and human verification
 
 ### Phase 3: Management Shell
 **Goal**: A full playable season gives the match engine narrative stakes — the manager picks squads, plays fixtures, watches the table move, and a champion is declared
