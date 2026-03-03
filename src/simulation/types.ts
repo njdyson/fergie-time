@@ -66,6 +66,39 @@ export interface BallState {
   readonly carrierId: string | null; // player holding ball, or null
 }
 
+// Formation identifiers — 5 supported formations (TAC-01)
+export const FormationId = {
+  '4-4-2': '4-4-2',
+  '4-3-3': '4-3-3',
+  '4-5-1': '4-5-1',
+  '3-5-2': '3-5-2',
+  '4-2-3-1': '4-2-3-1',
+} as const;
+export type FormationId = (typeof FormationId)[keyof typeof FormationId];
+
+// Positional role — 10 distinct roles covering all formation positions
+export const Role = {
+  GK: 'GK',
+  CB: 'CB',
+  LB: 'LB',
+  RB: 'RB',
+  CDM: 'CDM',
+  CM: 'CM',
+  CAM: 'CAM',
+  LW: 'LW',
+  RW: 'RW',
+  ST: 'ST',
+} as const;
+export type Role = (typeof Role)[keyof typeof Role];
+
+// Duty levels — modify utility AI action score weights
+export const Duty = {
+  DEFEND: 'DEFEND',
+  SUPPORT: 'SUPPORT',
+  ATTACK: 'ATTACK',
+} as const;
+export type Duty = (typeof Duty)[keyof typeof Duty];
+
 // Player state
 export interface PlayerState {
   readonly id: string;
@@ -75,7 +108,8 @@ export interface PlayerState {
   readonly attributes: PlayerAttributes;
   readonly personality: PersonalityVector;
   readonly fatigue: number;         // 0..1 (0=fresh, 1=exhausted)
-  readonly role: string;            // positional role string
+  readonly role: Role | string;     // positional role (Role type or legacy string)
+  readonly duty: Duty;              // tactical duty (default: SUPPORT)
   readonly formationAnchor: Vec2;   // tactical home position
 }
 

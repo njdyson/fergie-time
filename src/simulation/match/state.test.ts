@@ -183,6 +183,7 @@ describe('createInitialSnapshot', () => {
       },
       fatigue: 0,
       role: 'midfielder',
+      duty: 'SUPPORT',
       formationAnchor: positions[i] ?? new Vec2(52.5, 34),
     }));
   }
@@ -264,6 +265,7 @@ describe('applyGoal', () => {
       },
       fatigue: 0,
       role: 'midfielder',
+      duty: 'SUPPORT',
       formationAnchor: positions[i] ?? new Vec2(52.5, 34),
     }));
   }

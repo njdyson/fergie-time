@@ -35,6 +35,7 @@ function makeCtx(overrides: Partial<AgentContext> = {}): AgentContext {
       },
       fatigue: 0,
       role: 'MID',
+      duty: 'SUPPORT',
       formationAnchor: new Vec2(50, 34),
     },
     teammates: [],
@@ -134,6 +135,38 @@ describe('PRESS action', () => {
     const closeScore = action.considerations.reduce((acc, c) => acc * c(closeCtx), 1);
     const farScore = action.considerations.reduce((acc, c) => acc * c(farCtx), 1);
     expect(closeScore).toBeGreaterThan(farScore);
+  });
+
+  it('scores higher for distant loose ball than distant carried ball', () => {
+    const action = pressAction();
+    // Loose ball at 30m
+    const looseBallCtx = makeCtx({
+      isInPossessionTeam: false,
+      distanceToBall: 30,
+      ball: {
+        position: new Vec2(80, 34),
+        velocity: Vec2.zero(),
+        z: 0,
+        vz: 0,
+        carrierId: null, // loose ball
+      },
+    });
+    // Carried ball at same distance
+    const carriedCtx = makeCtx({
+      isInPossessionTeam: false,
+      distanceToBall: 30,
+      ball: {
+        position: new Vec2(80, 34),
+        velocity: Vec2.zero(),
+        z: 0,
+        vz: 0,
+        carrierId: 'opponent-1',
+      },
+    });
+
+    const looseScore = action.considerations.reduce((acc, c) => acc * c(looseBallCtx), 1);
+    const carriedScore = action.considerations.reduce((acc, c) => acc * c(carriedCtx), 1);
+    expect(looseScore).toBeGreaterThan(carriedScore);
   });
 });
 

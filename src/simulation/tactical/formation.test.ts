@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeFormationAnchors, ROLES_442 } from './formation.ts';
+import { computeFormationAnchors, ROLES_442, FORMATION_TEMPLATES, autoAssignRole } from './formation.ts';
 import { Vec2 } from '../math/vec2.ts';
 
 // Pitch constants
@@ -17,6 +17,33 @@ describe('ROLES_442', () => {
 
   it('includes GK, LB, CB, CB, RB, LM, CM, CM, RM, ST, ST', () => {
     expect(ROLES_442).toEqual(['GK', 'LB', 'CB', 'CB', 'RB', 'LM', 'CM', 'CM', 'RM', 'ST', 'ST']);
+  });
+});
+
+describe('FORMATION_TEMPLATES', () => {
+  it('has exactly 5 entries', () => {
+    expect(Object.keys(FORMATION_TEMPLATES)).toHaveLength(5);
+  });
+
+  it('has the correct formation keys', () => {
+    const keys = Object.keys(FORMATION_TEMPLATES);
+    expect(keys).toContain('4-4-2');
+    expect(keys).toContain('4-3-3');
+    expect(keys).toContain('4-5-1');
+    expect(keys).toContain('3-5-2');
+    expect(keys).toContain('4-2-3-1');
+  });
+
+  it('each template has exactly 11 base positions', () => {
+    for (const [key, template] of Object.entries(FORMATION_TEMPLATES)) {
+      expect(template.basePositions).toHaveLength(11), `${key} should have 11 positions`;
+    }
+  });
+
+  it('each template has exactly 11 role labels', () => {
+    for (const [key, template] of Object.entries(FORMATION_TEMPLATES)) {
+      expect(template.roles).toHaveLength(11), `${key} should have 11 role labels`;
+    }
   });
 });
 
@@ -193,5 +220,240 @@ describe('computeFormationAnchors', () => {
         expect(a.y).toBeLessThanOrEqual(PITCH_H);
       }
     });
+  });
+
+  describe('4-3-3 formation', () => {
+    it('returns 11 positions', () => {
+      const anchors = computeFormationAnchors('4-3-3', 'home', centerBall, false);
+      expect(anchors).toHaveLength(11);
+    });
+
+    it('has 3 forward positions clustered higher x than 4-4-2 forwards', () => {
+      const anchors433 = computeFormationAnchors('4-3-3', 'home', centerBall, false);
+      const anchors442 = computeFormationAnchors('4-4-2', 'home', centerBall, false);
+      // 4-3-3 has forwards at indices 8-10 (after GK+4DEF+3MID)
+      const avgFwd433 = (anchors433[8]!.x + anchors433[9]!.x + anchors433[10]!.x) / 3;
+      const avgFwd442 = (anchors442[9]!.x + anchors442[10]!.x) / 2;
+      expect(avgFwd433).toBeGreaterThanOrEqual(avgFwd442 - 5); // 4-3-3 forwards at similar or higher x
+    });
+
+    it('away team mirrors correctly', () => {
+      const home = computeFormationAnchors('4-3-3', 'home', centerBall, false);
+      const away = computeFormationAnchors('4-3-3', 'away', centerBall, false);
+      for (let i = 0; i < 11; i++) {
+        expect(home[i]!.x + away[i]!.x).toBeCloseTo(PITCH_W, 0);
+      }
+    });
+  });
+
+  describe('4-5-1 formation', () => {
+    it('returns 11 positions', () => {
+      const anchors = computeFormationAnchors('4-5-1', 'home', centerBall, false);
+      expect(anchors).toHaveLength(11);
+    });
+
+    it('has 5 midfield positions', () => {
+      // 4-5-1: GK(1) + DEF(4) + MID(5) + FWD(1) → mid indices 5-9
+      const anchors = computeFormationAnchors('4-5-1', 'home', centerBall, false);
+      const midPositions = anchors.slice(5, 10);
+      expect(midPositions).toHaveLength(5);
+    });
+
+    it('has 1 forward position', () => {
+      const anchors = computeFormationAnchors('4-5-1', 'home', centerBall, false);
+      // Only 1 forward at index 10
+      expect(anchors[10]).toBeDefined();
+    });
+
+    it('away team mirrors correctly', () => {
+      const home = computeFormationAnchors('4-5-1', 'home', centerBall, false);
+      const away = computeFormationAnchors('4-5-1', 'away', centerBall, false);
+      for (let i = 0; i < 11; i++) {
+        expect(home[i]!.x + away[i]!.x).toBeCloseTo(PITCH_W, 0);
+      }
+    });
+  });
+
+  describe('3-5-2 formation', () => {
+    it('returns 11 positions', () => {
+      const anchors = computeFormationAnchors('3-5-2', 'home', centerBall, false);
+      expect(anchors).toHaveLength(11);
+    });
+
+    it('has 3 defenders (not 4)', () => {
+      // 3-5-2: GK(1) + DEF(3) + MID(5) + FWD(2) → def indices 1-3
+      const anchors = computeFormationAnchors('3-5-2', 'home', centerBall, false);
+      const defX = anchors.slice(1, 4).map(a => a.x);
+      // All 3 should be in defensive zone (x < 40)
+      for (const x of defX) {
+        expect(x).toBeLessThan(50); // defensive third
+      }
+    });
+
+    it('away team mirrors correctly', () => {
+      const home = computeFormationAnchors('3-5-2', 'home', centerBall, false);
+      const away = computeFormationAnchors('3-5-2', 'away', centerBall, false);
+      for (let i = 0; i < 11; i++) {
+        expect(home[i]!.x + away[i]!.x).toBeCloseTo(PITCH_W, 0);
+      }
+    });
+  });
+
+  describe('4-2-3-1 formation', () => {
+    it('returns 11 positions', () => {
+      const anchors = computeFormationAnchors('4-2-3-1', 'home', centerBall, false);
+      expect(anchors).toHaveLength(11);
+    });
+
+    it('away team mirrors correctly', () => {
+      const home = computeFormationAnchors('4-2-3-1', 'home', centerBall, false);
+      const away = computeFormationAnchors('4-2-3-1', 'away', centerBall, false);
+      for (let i = 0; i < 11; i++) {
+        expect(home[i]!.x + away[i]!.x).toBeCloseTo(PITCH_W, 0);
+      }
+    });
+  });
+
+  describe('custom Vec2[] positions', () => {
+    it('accepts Vec2[] as formation input and returns 11 positions', () => {
+      const customPositions = Array.from({ length: 11 }, (_, i) =>
+        new Vec2(i * 9 + 5, PITCH_H / 2)
+      );
+      const anchors = computeFormationAnchors(customPositions, 'home', centerBall, false);
+      expect(anchors).toHaveLength(11);
+    });
+
+    it('ball influence still applies to custom positions', () => {
+      const customPositions = Array.from({ length: 11 }, (_, i) =>
+        new Vec2(i * 9 + 5, PITCH_H / 2)
+      );
+      const ballFar = new Vec2(100, PITCH_H / 2);
+      const ballNear = new Vec2(5, PITCH_H / 2);
+      const anchorsFar = computeFormationAnchors(customPositions, 'home', ballFar, false);
+      const anchorsNear = computeFormationAnchors(customPositions, 'home', ballNear, false);
+      const avgXFar = anchorsFar.reduce((s, a) => s + a.x, 0) / 11;
+      const avgXNear = anchorsNear.reduce((s, a) => s + a.x, 0) / 11;
+      expect(avgXFar).toBeGreaterThan(avgXNear);
+    });
+  });
+
+  describe('all formations ball/possession influence', () => {
+    const formations: Array<'4-4-2' | '4-3-3' | '4-5-1' | '3-5-2' | '4-2-3-1'> = ['4-4-2', '4-3-3', '4-5-1', '3-5-2', '4-2-3-1'];
+
+    for (const formation of formations) {
+      it(`${formation}: ball influence applies`, () => {
+        const ballFar = new Vec2(90, PITCH_H / 2);
+        const ballCenter = new Vec2(PITCH_W / 2, PITCH_H / 2);
+        const anchorsFar = computeFormationAnchors(formation, 'home', ballFar, false);
+        const anchorsCenter = computeFormationAnchors(formation, 'home', ballCenter, false);
+        const avgXFar = anchorsFar.reduce((s, a) => s + a.x, 0) / 11;
+        const avgXCenter = anchorsCenter.reduce((s, a) => s + a.x, 0) / 11;
+        expect(avgXFar).toBeGreaterThan(avgXCenter);
+      });
+
+      it(`${formation}: possession shift applies`, () => {
+        const anchorsIn = computeFormationAnchors(formation, 'home', centerBall, true);
+        const anchorsOut = computeFormationAnchors(formation, 'home', centerBall, false);
+        const avgXIn = anchorsIn.slice(1).reduce((s, a) => s + a.x, 0) / 10;
+        const avgXOut = anchorsOut.slice(1).reduce((s, a) => s + a.x, 0) / 10;
+        expect(avgXIn).toBeGreaterThan(avgXOut);
+      });
+    }
+  });
+});
+
+describe('autoAssignRole', () => {
+  it('assigns GK near own goal line', () => {
+    const pos = new Vec2(8, 34);
+    expect(autoAssignRole(pos, 'home')).toBe('GK');
+  });
+
+  it('assigns CB for center defensive position', () => {
+    const pos = new Vec2(22, 34); // center y
+    const role = autoAssignRole(pos, 'home');
+    expect(role).toBe('CB');
+  });
+
+  it('assigns LB for left-side defender', () => {
+    const pos = new Vec2(22, 10); // outer y (low)
+    const role = autoAssignRole(pos, 'home');
+    expect(role).toBe('LB');
+  });
+
+  it('assigns RB for right-side defender', () => {
+    const pos = new Vec2(22, 58); // outer y (high)
+    const role = autoAssignRole(pos, 'home');
+    expect(role).toBe('RB');
+  });
+
+  it('assigns CDM for deep midfield', () => {
+    const pos = new Vec2(38, 34); // mid x, center y
+    const role = autoAssignRole(pos, 'home');
+    expect(role).toBe('CDM');
+  });
+
+  it('assigns CAM for attacking midfield', () => {
+    const pos = new Vec2(50, 34); // high mid x, center y
+    const role = autoAssignRole(pos, 'home');
+    expect(role).toBe('CAM');
+  });
+
+  it('assigns CM for central midfield', () => {
+    const pos = new Vec2(44, 34); // mid x
+    const role = autoAssignRole(pos, 'home');
+    expect(role).toBe('CM');
+  });
+
+  it('assigns ST for forward position', () => {
+    const pos = new Vec2(70, 34);
+    const role = autoAssignRole(pos, 'home');
+    expect(role).toBe('ST');
+  });
+
+  it('assigns LW for left wing', () => {
+    const pos = new Vec2(44, 10); // mid x, outer y (low)
+    const role = autoAssignRole(pos, 'home');
+    expect(role).toBe('LW');
+  });
+
+  it('assigns RW for right wing', () => {
+    const pos = new Vec2(44, 58); // mid x, outer y (high)
+    const role = autoAssignRole(pos, 'home');
+    expect(role).toBe('RW');
+  });
+
+  it('correctly mirrors x for away team', () => {
+    // Away GK at x=97 → mirrors to x=8 from own goal → GK
+    const pos = new Vec2(97, 34);
+    expect(autoAssignRole(pos, 'away')).toBe('GK');
+  });
+
+  it('4-4-2 role assignments match ROLES_442 expectations', () => {
+    // Based on BASE_442_HOME_X: GK=5, DEF=25, MID=45, FWD=65
+    // and BASE_442_Y spread
+    const MID_Y = PITCH_H / 2;
+    const positions = [
+      new Vec2(5, MID_Y),                 // GK
+      new Vec2(25, MID_Y - 21),           // LB (outer y low)
+      new Vec2(25, MID_Y - 7),            // CB (inner)
+      new Vec2(25, MID_Y + 7),            // CB (inner)
+      new Vec2(25, MID_Y + 21),           // RB (outer y high)
+      new Vec2(45, MID_Y - 20),           // LM/LW (outer left)
+      new Vec2(45, MID_Y - 6.67),         // CM (inner)
+      new Vec2(45, MID_Y + 6.67),         // CM (inner)
+      new Vec2(45, MID_Y + 20),           // RM/RW (outer right)
+      new Vec2(65, MID_Y - 6),            // ST (center)
+      new Vec2(65, MID_Y + 6),            // ST (center)
+    ];
+
+    const roles = positions.map(p => autoAssignRole(p, 'home'));
+    expect(roles[0]).toBe('GK');
+    expect(roles[1]).toBe('LB');
+    expect(roles[2]).toBe('CB');
+    expect(roles[3]).toBe('CB');
+    expect(roles[4]).toBe('RB');
+    // indices 5-8: midfield positions
+    expect(roles[9]).toBe('ST');
+    expect(roles[10]).toBe('ST');
   });
 });

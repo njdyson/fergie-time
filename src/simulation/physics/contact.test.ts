@@ -42,6 +42,7 @@ function makePlayer(
     },
     fatigue: 0,
     role: 'midfielder',
+    duty: 'SUPPORT',
     formationAnchor: Vec2.zero(),
   };
 }
