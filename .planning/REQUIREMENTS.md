@@ -22,7 +22,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **ENG-11**: Goals detected when ball crosses goal line below crossbar height
 - [ ] **ENG-12**: Match statistics accumulated from agent decisions (shots, possession, passes, tackles)
 - [x] **ENG-13**: Match progresses through kickoff, first half, halftime, second half, full-time states
-- [ ] **ENG-14**: 2D top-down Canvas rendering with ball Z conveyed via sprite scaling and shadow offset
+- [x] **ENG-14**: 2D top-down Canvas rendering with ball Z conveyed via sprite scaling and shadow offset
 - [x] **ENG-15**: Simulation runs at 30+ ticks/sec, separated from 60fps rendering
 
 ### Tactical System
@@ -109,7 +109,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ENG-11 | Phase 1 | Complete (01-04) |
 | ENG-12 | Phase 1 | Pending |
 | ENG-13 | Phase 1 | Complete (01-04) |
-| ENG-14 | Phase 1 | Pending |
+| ENG-14 | Phase 1 | Complete |
 | ENG-15 | Phase 1 | Complete (01-01) |
 | TAC-01 | Phase 2 | Pending |
 | TAC-02 | Phase 2 | Pending |

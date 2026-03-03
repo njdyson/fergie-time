@@ -10,28 +10,28 @@ See: .planning/PROJECT.md (updated 2026-03-02)
 ## Current Position
 
 Phase: 1 of 4 (Engine Core)
-Plan: 4 of 10 in current phase
+Plan: 5 of 10 in current phase
 Status: In progress — executing
-Last activity: 2026-03-03 — Plan 01-04 complete: match phase state machine and goal detection (63 tests)
+Last activity: 2026-03-03 — Plan 01-05 complete: SimulationEngine shell, game loop, Canvas renderer (33 tests)
 
-Progress: [████░░░░░░] 40%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
-- Average duration: ~4.5 min
-- Total execution time: ~18 min
+- Total plans completed: 5
+- Average duration: ~4.6 min
+- Total execution time: ~23 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 1. Engine Core | 4 | ~18 min | ~4.5 min |
+| 1. Engine Core | 5 | ~23 min | ~4.6 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (6 min), 01-02 (n/a — skipped to 01-03), 01-03 (3 min), 01-04 (3 min)
-- Trend: —
+- Last 5 plans: 01-01 (6 min), 01-02 (n/a — skipped to 01-03), 01-03 (3 min), 01-04 (3 min), 01-05 (5 min)
+- Trend: consistent ~3-5 min per plan
 
 *Updated after each plan completion*
 
@@ -52,6 +52,9 @@ Recent decisions affecting current work:
 - [01-04]: Simulation time compression: 5400 ticks = 90-minute match (3 real minutes at 30/sec). TICKS_PER_HALF=2700.
 - [01-04]: Goal takes priority over halftime — justScored=true always returns KICKOFF even at tick 2700.
 - [01-04]: 4-4-2 kickoff formation as formation anchors — GK at x=5, DEF at x=20, MID at x=35, FWD at x=48. Away mirrors by x-flip.
+- [01-05]: MatchConfig supports initialBallVelocity and initialBallPosition for testing and dev init — enables goal-detection tests without waiting 3500 ticks.
+- [01-05]: Physics paused during HALFTIME and FULL_TIME — engine returns early without integrateBall/checkGoal during breaks.
+- [01-05]: Fixed-timestep accumulator at FIXED_DT_MS=33.33ms with 200ms spiral-of-death guard. Alpha interpolation gives smooth 60fps from 30 tick/sec simulation.
 
 ### Pending Todos
 
@@ -66,5 +69,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: 01-04-PLAN.md complete. Ready to execute 01-05-PLAN.md.
+Stopped at: 01-05-PLAN.md complete. Ready to execute 01-06-PLAN.md.
 Resume file: None
