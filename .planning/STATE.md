@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in-progress
-last_updated: "2026-03-03T14:58:00.000Z"
+last_updated: "2026-03-03T15:08:00.000Z"
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 10
-  completed_plans: 1
+  completed_plans: 2
   current_phase: 02-tactical-layer
-  current_plan: 01
+  current_plan: 02
 ---
 
 # Project State
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-03-02)
 ## Current Position
 
 Phase: 2 of 4 (Tactical Layer) — IN PROGRESS
-Plan: 1 of 10 in current phase — COMPLETE (1/10)
-Status: Phase 2 plan 01 complete — formation templates, role/duty system, TacticalConfig engine wiring
-Last activity: 2026-03-03 — Plan 02-01 complete: 5 formation templates, autoAssignRole, duty weight modifiers wired into selectAction, TacticalConfig per team. 441 tests pass, build succeeds.
+Plan: 2 of 10 in current phase — COMPLETE (2/10)
+Status: Phase 2 plan 02 complete — tactics board UI with draggable player dots, formation presets, duty picker, view switching
+Last activity: 2026-03-03 — Plan 02-02 complete: TacticsBoard canvas class, 5 formation presets, drag-and-drop with autoAssignRole, duty popup, view flow Tactics->Match->Tactics. 457 tests pass, build succeeds.
 
-Progress: [█░░░░░░░░░] 10%
+Progress: [██░░░░░░░░] 20%
 
 ## Performance Metrics
 
@@ -43,7 +43,7 @@ Progress: [█░░░░░░░░░] 10%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1. Engine Core | 10 | ~64 min | ~6.4 min |
-| 2. Tactical Layer | 1 | ~15 min | ~15 min |
+| 2. Tactical Layer | 2 | ~21 min | ~10.5 min |
 
 **Recent Trend:**
 - Last 5 plans: 01-06 (7 min), 01-07 (3 min), 01-08 (8 min), 01-09 (7 min), 01-10 (20 min incl. checkpoint)
@@ -89,6 +89,9 @@ Recent decisions affecting current work:
 - [Phase 02-01]: dutyModifier passed as optional closure to selectAction — backward compatible, zero callsite changes needed in existing code
 - [Phase 02-01]: TacticalConfig per-team stored in engine — setHomeTactics/setAwayTactics enable halftime changes; config applies from next tick
 - [Phase 02-01]: Phase-transition tests given 30s timeout — 5400-tick full-match tests flake at 5s default under parallel test load
+- [Phase 02-02]: D key toggles ALL debug panels together (sidebar + stats + tuning) — per user notes, simpler mental model for developer mode
+- [Phase 02-02]: Formation returns Vec2[] when any player dragged >0.5m from template position — engine accepts both FormationId and Vec2[]
+- [Phase 02-02]: Duties preserved across formation changes — user intent should survive shape changes
 
 ### Pending Todos
 
@@ -103,5 +106,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Completed 02-tactical-layer/02-01-PLAN.md
-Resume file: .planning/phases/02-tactical-layer/02-02-PLAN.md
+Stopped at: Completed 02-tactical-layer/02-02-PLAN.md
+Resume file: .planning/phases/02-tactical-layer/02-03-PLAN.md

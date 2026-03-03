@@ -28,7 +28,7 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Tactical System
 
 - [x] **TAC-01**: Formation defined by positional anchors that create pull targets for each player
-- [ ] **TAC-02**: Manager drags players into positions on a 2D pitch diagram to set formation
+- [x] **TAC-02**: Manager drags players into positions on a 2D pitch diagram to set formation
 - [x] **TAC-03**: Role assignments (striker, CM, LB, etc.) modify agent utility weights
 - [ ] **TAC-04**: Manager can change formation and instructions at halftime
 - [ ] **TAC-05**: Manager can substitute players during a match (up to 3 subs from bench)
@@ -112,7 +112,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ENG-14 | Phase 1 | Complete |
 | ENG-15 | Phase 1 | Complete (01-01) |
 | TAC-01 | Phase 2 | Complete |
-| TAC-02 | Phase 2 | Pending |
+| TAC-02 | Phase 2 | Complete |
 | TAC-03 | Phase 2 | Complete |
 | TAC-04 | Phase 2 | Pending |
 | TAC-05 | Phase 2 | Pending |

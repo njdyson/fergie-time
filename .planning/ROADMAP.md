@@ -87,6 +87,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Engine Core | 10/10 | Complete (approved with known issues) | 2026-03-03 |
-| 2. Tactical Layer | 1/3 | In Progress|  |
+| 2. Tactical Layer | 2/3 | In Progress|  |
 | 3. Management Shell | 0/TBD | Not started | - |
 | 4. Development Systems | 0/TBD | Not started | - |
