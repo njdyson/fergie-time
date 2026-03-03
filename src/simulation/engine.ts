@@ -366,6 +366,8 @@ export class SimulationEngine {
   private awayBench: PlayerState[];
   private homeSubCount: number = 0;  // substitutions made for home team this match
   private awaySubCount: number = 0;  // substitutions made for away team this match
+  private halftimeLatched: boolean = false; // true when in HALFTIME, blocks auto-advance to SECOND_HALF
+  private halftimeHandled: boolean = false; // true after startSecondHalf() — prevents re-latch on post-goal HALFTIME
 
   constructor(config: MatchConfig) {
     let initialSnapshot = createInitialSnapshot(config.homeRoster, config.awayRoster);
@@ -394,6 +396,10 @@ export class SimulationEngine {
     this.awayTacticalConfig = config.awayTacticalConfig ?? DEFAULT_TACTICAL_CONFIG;
     this.homeBench = config.homeBench ? [...config.homeBench] : [];
     this.awayBench = config.awayBench ? [...config.awayBench] : [];
+
+    // Apply tactical config to initial snapshot so players start at correct
+    // formation positions (not hard-coded 4-4-2 kickoff positions)
+    this.snapshot = this._applyInitialFormation(this.snapshot);
   }
 
   /**
@@ -414,6 +420,24 @@ export class SimulationEngine {
     this.awayTacticalConfig = config;
     // Update player role and duty fields in current snapshot
     this.snapshot = this._applyTacticConfigToSnapshot(this.snapshot, config, 'away');
+  }
+
+  /**
+   * Signal that halftime is over and the second half should begin.
+   * Must be called to advance past HALFTIME — the engine latches in
+   * HALFTIME state until this is called.
+   */
+  startSecondHalf(): void {
+    this.halftimeLatched = false;
+    this.halftimeHandled = true;
+  }
+
+  /**
+   * Returns true if the engine is currently latched in HALFTIME state
+   * (waiting for startSecondHalf() to be called).
+   */
+  isHalftimeLatched(): boolean {
+    return this.halftimeLatched;
   }
 
   /**
@@ -502,6 +526,34 @@ export class SimulationEngine {
   }
 
   /**
+   * Apply initial formation positions, roles, and duties from tactical configs
+   * to the snapshot so players start at their correct formation shape
+   * (instead of hard-coded 4-4-2 kickoff positions).
+   */
+  private _applyInitialFormation(snapshot: SimSnapshot): SimSnapshot {
+    const homeAnchors = computeFormationAnchors(
+      this.homeTacticalConfig.formation, 'home', snapshot.ball.position, false,
+    );
+    const awayAnchors = computeFormationAnchors(
+      this.awayTacticalConfig.formation, 'away', snapshot.ball.position, false,
+    );
+
+    let homeIdx = 0;
+    let awayIdx = 0;
+    const updatedPlayers = snapshot.players.map(p => {
+      const isHome = p.teamId === 'home';
+      const config = isHome ? this.homeTacticalConfig : this.awayTacticalConfig;
+      const anchors = isHome ? homeAnchors : awayAnchors;
+      const idx = isHome ? homeIdx++ : awayIdx++;
+      const anchor = anchors[idx] ?? p.formationAnchor;
+      const role = config.roles[idx] ?? p.role;
+      const duty = config.duties[idx] ?? p.duty;
+      return { ...p, position: anchor, formationAnchor: anchor, role, duty };
+    });
+    return { ...snapshot, players: updatedPlayers };
+  }
+
+  /**
    * Advance simulation by one tick of dt milliseconds.
    * Returns the new snapshot.
    */
@@ -510,11 +562,23 @@ export class SimulationEngine {
     const nextTick = current.tick + 1;
 
     // ── 1. Advance match phase ───────────────────────────────────────────────
-    const phaseResult = advancePhase(
+    let phaseResult = advancePhase(
       current.matchPhase,
       nextTick,
       false, // justScored — determined below after goal check
     );
+
+    // ── 1b. Halftime latch ──────────────────────────────────────────────────
+    // When entering HALFTIME, latch the engine so it stays in HALFTIME
+    // until startSecondHalf() is called. Without this, HALFTIME only lasts
+    // 1 tick and the 250ms poll in main.ts can't catch it.
+    if (phaseResult.phase === MatchPhase.HALFTIME && !this.halftimeLatched && !this.halftimeHandled) {
+      this.halftimeLatched = true;
+    }
+    if (this.halftimeLatched) {
+      // Override: stay in HALFTIME regardless of what advancePhase says
+      phaseResult = { phase: MatchPhase.HALFTIME, events: phaseResult.events };
+    }
 
     // ── 2. HALFTIME / FULL_TIME / HALFTIME→SECOND_HALF: skip physics ─────────
     // Physics is also skipped on the first tick of SECOND_HALF (the halftime transition

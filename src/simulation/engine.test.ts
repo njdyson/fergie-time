@@ -267,9 +267,12 @@ describe('engine phase transitions', { timeout: 30000 }, () => {
     const config: MatchConfig = { seed: 'test', homeRoster: home, awayRoster: away };
     const engine = new SimulationEngine(config);
 
-    for (let i = 0; i < TICKS_PER_HALF + 1; i++) {
+    for (let i = 0; i < TICKS_PER_HALF; i++) {
       engine.tick(33.33);
     }
+    expect(engine.isHalftimeLatched()).toBe(true);
+    engine.startSecondHalf();
+    engine.tick(33.33);
     const snap = engine.getCurrentSnapshot();
     expect(snap.matchPhase).toBe(MatchPhase.SECOND_HALF);
   });
@@ -279,7 +282,11 @@ describe('engine phase transitions', { timeout: 30000 }, () => {
     const config: MatchConfig = { seed: 'test', homeRoster: home, awayRoster: away };
     const engine = new SimulationEngine(config);
 
-    for (let i = 0; i < TOTAL_MATCH_TICKS; i++) {
+    for (let i = 0; i < TICKS_PER_HALF; i++) {
+      engine.tick(33.33);
+    }
+    engine.startSecondHalf();
+    for (let i = TICKS_PER_HALF; i < TOTAL_MATCH_TICKS; i++) {
       engine.tick(33.33);
     }
     const snap = engine.getCurrentSnapshot();
@@ -291,7 +298,11 @@ describe('engine phase transitions', { timeout: 30000 }, () => {
     const config: MatchConfig = { seed: 'test', homeRoster: home, awayRoster: away };
     const engine = new SimulationEngine(config);
 
-    for (let i = 0; i < TOTAL_MATCH_TICKS + 10; i++) {
+    for (let i = 0; i < TICKS_PER_HALF; i++) {
+      engine.tick(33.33);
+    }
+    engine.startSecondHalf();
+    for (let i = TICKS_PER_HALF; i < TOTAL_MATCH_TICKS + 10; i++) {
       engine.tick(33.33);
     }
     const snap = engine.getCurrentSnapshot();
@@ -384,7 +395,11 @@ describe('engine pauses physics during breaks', { timeout: 30000 }, () => {
     const config: MatchConfig = { seed: 'test', homeRoster: home, awayRoster: away, initialBallVelocity: { x: 5, y: 0 } };
     const engine = new SimulationEngine(config);
 
-    for (let i = 0; i < TOTAL_MATCH_TICKS; i++) {
+    for (let i = 0; i < TICKS_PER_HALF; i++) {
+      engine.tick(33.33);
+    }
+    engine.startSecondHalf();
+    for (let i = TICKS_PER_HALF; i < TOTAL_MATCH_TICKS; i++) {
       engine.tick(33.33);
     }
     expect(engine.getCurrentSnapshot().matchPhase).toBe(MatchPhase.FULL_TIME);

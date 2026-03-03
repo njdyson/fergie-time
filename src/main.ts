@@ -200,11 +200,10 @@ function startMatch(): void {
     }
   };
 
-  // Poll for halftime
+  // Poll for halftime (engine latches in HALFTIME until startSecondHalf is called)
   halfTimePoll = setInterval(() => {
     if (!engine) return;
-    const snap = engine.getCurrentSnapshot();
-    if (snap.matchPhase === MatchPhase.HALFTIME && !halftimeHandled) {
+    if (engine.isHalftimeLatched() && !halftimeHandled) {
       halftimeHandled = true;
       handleHalftime();
     }
@@ -506,6 +505,9 @@ btnTacticsSecondHalf?.addEventListener('click', () => {
   // Hide bench panel, restore UI
   hideBenchPanel();
   tacticsBoard.resetSubstitutions();
+
+  // Release the engine's halftime latch so ticks advance to SECOND_HALF
+  engine.startSecondHalf();
 
   // Switch to match view and unpause
   showMatchView();
