@@ -126,7 +126,6 @@ describe('evaluateAction', () => {
         carrierId: 'other',
       },
     });
-    const rng = createRng('test');
     const shootAction = ACTIONS.find(a => a.id === ActionType.SHOOT)!;
     // When hard disqualifier fires, product = 0, compensation keeps it near 0
     // noise can make it slightly non-zero, so check consideration product is 0
@@ -202,8 +201,15 @@ describe('selectAction', () => {
   });
 
   it('composure=0.2 player selects different actions with >30% variance', () => {
-    const ctx = makeCtx({ distanceToOpponentGoal: 30 });
-    const N = 200;
+    // Use a mid-field context where multiple actions are plausible (no single clear winner)
+    // Player has the ball at mid-pitch, teammates and defenders at moderate distances
+    const ctx = makeCtx({
+      distanceToOpponentGoal: 40,
+      distanceToFormationAnchor: 15,
+      nearestDefenderDistance: 8,
+      nearestTeammateDistance: 8,
+    });
+    const N = 300;
     const results: string[] = [];
 
     for (let i = 0; i < N; i++) {
