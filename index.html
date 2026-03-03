@@ -28,6 +28,74 @@
         gap: 8px;
       }
 
+      /* ── Tactics screen ────────────────────────────────────── */
+      #tactics-screen {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+      }
+
+      #tactics-canvas {
+        display: block;
+        max-width: 100%;
+      }
+
+      .tactics-controls {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+
+      .formation-btn {
+        padding: 5px 14px;
+        background: #1e293b;
+        color: #cbd5e1;
+        border: 1px solid #334155;
+        border-radius: 4px;
+        font: 13px/1 monospace;
+        cursor: pointer;
+        user-select: none;
+        transition: background 0.1s, color 0.1s;
+      }
+
+      .formation-btn:hover {
+        background: #334155;
+        color: #f1f5f9;
+      }
+
+      .formation-btn.active {
+        background: #1e40af;
+        color: #bfdbfe;
+        border-color: #3b82f6;
+      }
+
+      #btn-tactics-kickoff {
+        padding: 6px 22px;
+        background: #166534;
+        color: #bbf7d0;
+        border: 1px solid #22c55e;
+        border-radius: 4px;
+        font: bold 13px/1 monospace;
+        cursor: pointer;
+        user-select: none;
+        transition: background 0.1s;
+      }
+
+      #btn-tactics-kickoff:hover {
+        background: #15803d;
+      }
+
+      .tactics-sep {
+        width: 1px;
+        height: 22px;
+        background: #334155;
+      }
+
+      /* ── Match view ────────────────────────────────────────── */
       #match-canvas {
         display: block;
         max-width: 100%;
@@ -72,6 +140,115 @@
         width: 1px;
         height: 22px;
         background: #334155;
+      }
+
+      /* ── Speed slider ──────────────────────────────────────── */
+      .speed-group {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .speed-label {
+        color: #60a5fa;
+        font: bold 12px monospace;
+        min-width: 36px;
+        text-align: center;
+      }
+
+      .speed-slider {
+        width: 100px;
+        height: 16px;
+        -webkit-appearance: none;
+        appearance: none;
+        background: transparent;
+        cursor: pointer;
+      }
+
+      .speed-slider::-webkit-slider-track {
+        height: 4px;
+        background: #334155;
+        border-radius: 2px;
+      }
+
+      .speed-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 14px;
+        height: 14px;
+        background: #3b82f6;
+        border-radius: 50%;
+        margin-top: -5px;
+      }
+
+      /* ── Pitch area wrapper ────────────────────────────────── */
+      #pitch-area {
+        display: inline-flex;
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      /* ── Commentary strip (CM2-style) ──────────────────────── */
+      #commentary {
+        height: 56px;
+        overflow-y: hidden;
+        background: #1a1a2eee;
+        border-top: 2px solid #334155;
+        padding: 4px 10px;
+        font: 13px/1.6 monospace;
+        color: #e2e8f0;
+        scroll-behavior: smooth;
+        transition: background-color 0.6s ease;
+      }
+
+      #commentary .line {
+        padding: 1px 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      #commentary .line .minute {
+        color: rgba(255,255,255,0.4);
+        min-width: 32px;
+        display: inline-block;
+        font-weight: bold;
+      }
+
+      #commentary .goal {
+        color: #fde68a;
+        font-weight: bold;
+      }
+
+      #commentary .shot {
+        color: #bfdbfe;
+      }
+
+      #commentary .tackle {
+        color: #ddd6fe;
+      }
+
+      /* ── Debug sidebar (slides in from left) ────────────── */
+      #debug-sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 260px;
+        height: 100%;
+        background: #0a0f1e;
+        border-right: 1px solid #334155;
+        overflow: hidden;
+        transform: translateX(-100%);
+        transition: transform 0.2s ease;
+        z-index: 100;
+      }
+
+      #debug-sidebar.open {
+        transform: translateX(0);
+      }
+
+      #debug-canvas {
+        display: block;
       }
 
       /* ── Tuning panel ─────────────────────────────────────── */
@@ -156,39 +333,70 @@
   </head>
   <body>
     <div id="app">
-      <canvas id="match-canvas"></canvas>
-      <div id="controls">
-        <button class="ctrl-btn" id="btn-pause" title="Pause / Resume (P)">Pause</button>
-        <button class="ctrl-btn" id="btn-reset" title="Reset match">Reset</button>
-        <div class="ctrl-sep"></div>
-        <button class="ctrl-btn active" id="btn-1x" title="Normal speed (1)">1x</button>
-        <button class="ctrl-btn" id="btn-2x" title="2x speed (2)">2x</button>
-        <button class="ctrl-btn" id="btn-4x" title="4x speed (3)">4x</button>
-        <div class="ctrl-sep"></div>
-        <button class="ctrl-btn" id="btn-stats" title="Toggle stats overlay (S)">Stats</button>
-        <button class="ctrl-btn" id="btn-debug" title="Toggle debug overlay (D)">Debug</button>
-        <button class="ctrl-btn" id="btn-heatmap" title="Toggle heatmap (H)">Heatmap</button>
-        <div class="ctrl-sep"></div>
-        <button class="ctrl-btn" id="btn-tuning" title="Toggle tuning panel (T)">Tuning</button>
+
+      <!-- ── Tactics screen (initial view) ──────────────────── -->
+      <div id="tactics-screen">
+        <canvas id="tactics-canvas"></canvas>
+        <div class="tactics-controls">
+          <button class="formation-btn active" data-formation="4-4-2">4-4-2</button>
+          <button class="formation-btn" data-formation="4-3-3">4-3-3</button>
+          <button class="formation-btn" data-formation="4-5-1">4-5-1</button>
+          <button class="formation-btn" data-formation="3-5-2">3-5-2</button>
+          <button class="formation-btn" data-formation="4-2-3-1">4-2-3-1</button>
+          <div class="tactics-sep"></div>
+          <button id="btn-tactics-kickoff" title="Start the match with this formation">Kick Off</button>
+        </div>
       </div>
+
+      <!-- ── Match view (hidden until Kick Off) ─────────────── -->
+      <div id="pitch-area" style="display:none;">
+        <canvas id="match-canvas"></canvas>
+        <div id="commentary"></div>
+      </div>
+
+      <!-- Match controls (hidden until Kick Off) — speed always visible -->
+      <div id="controls" style="display:none;">
+        <button class="ctrl-btn" id="btn-kickoff" title="Start the match (Space)">Kick Off</button>
+        <button class="ctrl-btn" id="btn-pause" title="Pause / Resume (P)">Pause</button>
+        <button class="ctrl-btn" id="btn-reset" title="Return to tactics board">Reset</button>
+        <div class="ctrl-sep"></div>
+        <div class="speed-group">
+          <span class="speed-label" id="speed-label">1.0x</span>
+          <input type="range" id="speed-slider" min="0.25" max="4" step="0.25" value="1" class="speed-slider" title="Simulation speed (0.25x - 4x)">
+        </div>
+      </div>
+
     </div>
 
-    <!-- Tuning panel (slides in from right) -->
+    <!-- Debug sidebar (slides in from left) — toggled by D key -->
+    <div id="debug-sidebar">
+      <canvas id="debug-canvas"></canvas>
+    </div>
+
+    <!-- Tuning panel (slides in from right) — toggled by D key -->
     <div id="tuning-panel">
       <h3>Decision Engine</h3>
       <div class="tuning-row">
-        <label title="Bonus added to previous action score to prevent flip-flopping between actions. Higher = more committed to current action.">Hysteresis <span id="v-hysteresisBonus">0.12</span></label>
-        <input type="range" id="t-hysteresis" min="0" max="1.0" step="0.01" value="0.12">
+        <label title="Bonus added to previous action score to prevent flip-flopping between actions. Higher = more committed to current action.">Hysteresis <span id="v-hysteresisBonus">0.36</span></label>
+        <input type="range" id="t-hysteresis" min="0" max="1.0" step="0.01" value="0.36">
       </div>
       <div class="tuning-row">
-        <label title="Gaussian noise multiplied by (1 - composure). Higher = more random/unpredictable decisions.">Noise scale <span id="v-noiseScale">0.12</span></label>
-        <input type="range" id="t-noiseScale" min="0" max="0.5" step="0.01" value="0.12">
+        <label title="Flat bonus added to pass action scores. Higher = players pass more instead of dribbling/shielding.">Pass bias <span id="v-passBias">0.15</span></label>
+        <input type="range" id="t-passBias" min="0" max="0.5" step="0.01" value="0.15">
+      </div>
+      <div class="tuning-row">
+        <label title="Proximity-scaled bonus for SHOOT and DRIBBLE near opponent goal. Higher = strikers drive at goal more instead of passing backwards.">Goal urgency <span id="v-goalUrgency">0.35</span></label>
+        <input type="range" id="t-goalUrgency" min="0" max="1.0" step="0.05" value="0.35">
+      </div>
+      <div class="tuning-row">
+        <label title="Gaussian noise multiplied by (1 - composure). Higher = more random/unpredictable decisions.">Noise scale <span id="v-noiseScale">0.06</span></label>
+        <input type="range" id="t-noiseScale" min="0" max="0.5" step="0.01" value="0.06">
       </div>
 
       <h3>Move to Position</h3>
       <div class="tuning-row">
-        <label title="Base score for holding formation position when at anchor. Higher = players stay in position more stubbornly.">Base score <span id="v-moveToPosIntercept">0.25</span></label>
-        <input type="range" id="t-moveToPosIntercept" min="0" max="1.0" step="0.01" value="0.25">
+        <label title="Base score for holding formation position when at anchor. Higher = players stay in position more stubbornly.">Base score <span id="v-moveToPosIntercept">0.04</span></label>
+        <input type="range" id="t-moveToPosIntercept" min="0" max="1.0" step="0.01" value="0.04">
       </div>
       <div class="tuning-row">
         <label title="How urgently players return to position as they drift away. Higher = faster return, less roaming.">Urgency slope <span id="v-moveToPosSlope">0.65</span></label>
@@ -197,8 +405,8 @@
 
       <h3>Press</h3>
       <div class="tuning-row">
-        <label title="Exponential decay rate for pressing. Higher = only very close players will press. Lower = players press from further away.">Decay rate <span id="v-pressDecayK">2.5</span></label>
-        <input type="range" id="t-pressDecayK" min="0.1" max="10.0" step="0.1" value="2.5">
+        <label title="Exponential decay rate for pressing. Higher = only very close players will press. Lower = players press from further away.">Decay rate <span id="v-pressDecayK">2.1</span></label>
+        <input type="range" id="t-pressDecayK" min="0.1" max="10.0" step="0.1" value="2.1">
       </div>
       <div class="tuning-row">
         <label title="Distance normalisation for press reach (metres). Higher = pressing triggers from further away.">Range (m) <span id="v-pressNorm">25</span></label>
@@ -209,6 +417,10 @@
         <label title="Press rank penalty per closer teammate. 0.3 = 2nd nearest gets 30% score, 3rd gets 9%. Lower = fewer players press. 1.0 = no penalty (everyone presses).">Rank decay <span id="v-pressRankDecay">0.30</span></label>
         <input type="range" id="t-pressRankDecay" min="0.01" max="1.0" step="0.01" value="0.30">
       </div>
+      <div class="tuning-row">
+        <label title="Multiplier for press range when ball is loose (no carrier). Higher = players chase loose balls from further away. 1.0 = no boost.">Loose ball boost <span id="v-looseBallPressBoost">2.6</span></label>
+        <input type="range" id="t-looseBallPressBoost" min="1.0" max="5.0" step="0.1" value="2.6">
+      </div>
 
       <h3>Ball</h3>
       <div class="tuning-row">
@@ -216,8 +428,12 @@
         <input type="range" id="t-controlRadius" min="0.5" max="10.0" step="0.1" value="2.5">
       </div>
       <div class="tuning-row">
-        <label title="Speed of pass kicks in metres/second. Higher = faster passes that reach further.">Pass speed (m/s) <span id="v-passSpeed">14</span></label>
-        <input type="range" id="t-passSpeed" min="2" max="50" step="1" value="14">
+        <label title="Ticks (at 30/sec) a player must hold the ball before they can pass or shoot. Prevents micro-pass spam. 15 = 0.5s hold time.">Kick lockout <span id="v-kickLockoutTicks">15</span></label>
+        <input type="range" id="t-kickLockoutTicks" min="0" max="45" step="1" value="15">
+      </div>
+      <div class="tuning-row">
+        <label title="Speed of pass kicks in metres/second. Higher = faster passes that reach further.">Pass speed (m/s) <span id="v-passSpeed">24</span></label>
+        <input type="range" id="t-passSpeed" min="2" max="50" step="1" value="24">
       </div>
       <div class="tuning-row">
         <label title="Speed of shot kicks in metres/second. Higher = harder shots.">Shot speed (m/s) <span id="v-shootSpeed">22</span></label>
@@ -234,16 +450,23 @@
         <input type="range" id="t-dribbleSpeedRatio" min="0.2" max="1.0" step="0.05" value="0.70">
       </div>
       <div class="tuning-row">
-        <label title="Minimum distance (metres) between players before separation force kicks in. Higher = more spread out.">Separation radius <span id="v-separationRadius">2.0</span></label>
-        <input type="range" id="t-separationRadius" min="0.5" max="10.0" step="0.1" value="2.0">
+        <label title="Minimum distance (metres) between players before separation force kicks in. Higher = more spread out.">Separation radius <span id="v-separationRadius">2.8</span></label>
+        <input type="range" id="t-separationRadius" min="0.5" max="10.0" step="0.1" value="2.8">
       </div>
       <div class="tuning-row">
-        <label title="Strength of the force pushing overlapping players apart. Higher = stronger repulsion.">Separation force <span id="v-separationScale">0.5</span></label>
-        <input type="range" id="t-separationScale" min="0" max="5.0" step="0.1" value="0.5">
+        <label title="Strength of the force pushing overlapping players apart. Higher = stronger repulsion.">Separation force <span id="v-separationScale">2.2</span></label>
+        <input type="range" id="t-separationScale" min="0" max="5.0" step="0.1" value="2.2">
+      </div>
+      <div class="tuning-row">
+        <label title="How strongly off-ball teammates pull toward the ball carrier to create passing options. 0 = stay at anchor, 1 = fully support.">Support pull <span id="v-supportPull">0.25</span></label>
+        <input type="range" id="t-supportPull" min="0" max="1.0" step="0.05" value="0.25">
       </div>
 
-      <div style="margin-top: 16px; padding-top: 8px; border-top: 1px solid #334155;">
+      <div style="margin-top: 16px; padding-top: 8px; border-top: 1px solid #334155; display: flex; flex-direction: column; gap: 6px;">
+        <button class="ctrl-btn" id="btn-save-log" style="width: 100%; text-align: center;" title="Download game event log as JSON">Save Log</button>
+        <button class="ctrl-btn" id="btn-save-settings" style="width: 100%; text-align: center;">Save Settings</button>
         <button class="ctrl-btn" id="btn-copy-settings" style="width: 100%; text-align: center;">Copy Settings</button>
+        <button class="ctrl-btn" id="btn-reset-settings" style="width: 100%; text-align: center;">Reset Defaults</button>
       </div>
     </div>
 
