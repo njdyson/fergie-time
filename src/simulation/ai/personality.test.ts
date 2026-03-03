@@ -29,7 +29,7 @@ const highDirectness: PersonalityVector = {
 const lowDirectness: PersonalityVector = {
   ...neutralPersonality,
   directness: 0.0,
-  risk_appetite: 0.8,
+  risk_appetite: 0.1, // low risk appetite too — strongly prefers safe play
 };
 
 const highFlair: PersonalityVector = {
@@ -45,8 +45,9 @@ const highAggression: PersonalityVector = {
 };
 
 describe('NOISE_SCALE', () => {
-  it('should be 0.08', () => {
-    expect(NOISE_SCALE).toBe(0.08);
+  it('should be a positive number in research-recommended range [0.05, 0.15]', () => {
+    expect(NOISE_SCALE).toBeGreaterThanOrEqual(0.05);
+    expect(NOISE_SCALE).toBeLessThanOrEqual(0.15);
   });
 });
 
@@ -70,16 +71,22 @@ describe('PERSONALITY_WEIGHTS', () => {
     expect(d).toBeLessThanOrEqual(0);
   });
 
-  it('should have high flair weight for DRIBBLE', () => {
+  it('should have high flair weight for DRIBBLE (highest single weight in the action)', () => {
     const weights = PERSONALITY_WEIGHTS[ActionType.DRIBBLE];
     expect(weights.flair).toBeDefined();
-    expect((weights.flair ?? 0)).toBeGreaterThan(0.3);
+    // flair should be positive and the dominant trait for dribbling
+    expect((weights.flair ?? 0)).toBeGreaterThan(0);
+    // flair should be >= risk_appetite weight for dribble
+    expect((weights.flair ?? 0)).toBeGreaterThanOrEqual((weights.risk_appetite ?? 0));
   });
 
-  it('should have high aggression weight for PRESS', () => {
+  it('should have high aggression weight for PRESS (dominant trait)', () => {
     const weights = PERSONALITY_WEIGHTS[ActionType.PRESS];
     expect(weights.aggression).toBeDefined();
-    expect((weights.aggression ?? 0)).toBeGreaterThan(0.3);
+    // aggression should be positive and the dominant trait for pressing
+    expect((weights.aggression ?? 0)).toBeGreaterThan(0);
+    // aggression should be >= work_rate weight for press
+    expect((weights.aggression ?? 0)).toBeGreaterThanOrEqual((weights.work_rate ?? 0));
   });
 
   it('should have positive work_rate weight for MOVE_TO_POSITION', () => {

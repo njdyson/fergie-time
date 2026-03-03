@@ -201,14 +201,50 @@ describe('selectAction', () => {
   });
 
   it('composure=0.2 player selects different actions with >30% variance', () => {
-    // Use a mid-field context where multiple actions are plausible (no single clear winner)
-    // Player has the ball at mid-pitch, teammates and defenders at moderate distances
-    const ctx = makeCtx({
-      distanceToOpponentGoal: 40,
-      distanceToFormationAnchor: 15,
-      nearestDefenderDistance: 8,
-      nearestTeammateDistance: 8,
-    });
+    // Use a context where DRIBBLE and PASS_FORWARD score nearly equally:
+    // - lower passing skill (0.5), far teammates (20m) => reduces PASS_FORWARD advantage
+    // - good dribbling (0.7), reasonable space => DRIBBLE becomes competitive
+    // This produces a genuinely ambiguous decision where noise can flip the outcome
+    const ctx: AgentContext = {
+      self: {
+        id: 'p1',
+        teamId: 'home',
+        position: new Vec2(50, 34),
+        velocity: Vec2.zero(),
+        attributes: {
+          pace: 0.7,
+          strength: 0.6,
+          stamina: 0.7,
+          dribbling: 0.7,  // good dribbler
+          passing: 0.5,    // average passer — reduces PASS_FORWARD advantage
+          shooting: 0.5,
+          tackling: 0.6,
+          aerial: 0.6,
+          positioning: 0.6,
+        },
+        personality: lowComposure,
+        fatigue: 0,
+        role: 'MID',
+        formationAnchor: new Vec2(50, 34),
+      },
+      teammates: [],
+      opponents: [],
+      ball: {
+        position: new Vec2(50, 34),
+        velocity: Vec2.zero(),
+        z: 0,
+        vz: 0,
+        carrierId: 'p1',
+      },
+      matchPhase: 'FIRST_HALF',
+      score: [0, 0],
+      distanceToOpponentGoal: 45,   // mid-pitch
+      distanceToBall: 0,
+      distanceToFormationAnchor: 20,
+      isInPossessionTeam: true,
+      nearestDefenderDistance: 12,  // decent space to dribble
+      nearestTeammateDistance: 20,  // far teammates — passing less reliable
+    };
     const N = 300;
     const results: string[] = [];
 
