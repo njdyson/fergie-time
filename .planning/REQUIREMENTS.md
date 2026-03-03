@@ -9,7 +9,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Match Engine
 
-- [ ] **ENG-01**: Ball moves in 2.5D (X/Y ground position + Z height via projectile motion)
+- [x] **ENG-01**: Ball moves in 2.5D (X/Y ground position + Z height via projectile motion)
 - [x] **ENG-02**: Players move using steering behaviors (seek, arrive, avoid, separation) with physical attribute caps
 - [x] **ENG-03**: Each player agent evaluates 7 actions per tick via utility AI and selects highest-scoring
 - [x] **ENG-04**: Personality vector (directness, risk_appetite, composure, creativity, work_rate, aggression, anticipation, flair) weights every action score
@@ -27,9 +27,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Tactical System
 
-- [ ] **TAC-01**: Formation defined by positional anchors that create pull targets for each player
+- [x] **TAC-01**: Formation defined by positional anchors that create pull targets for each player
 - [ ] **TAC-02**: Manager drags players into positions on a 2D pitch diagram to set formation
-- [ ] **TAC-03**: Role assignments (striker, CM, LB, etc.) modify agent utility weights
+- [x] **TAC-03**: Role assignments (striker, CM, LB, etc.) modify agent utility weights
 - [ ] **TAC-04**: Manager can change formation and instructions at halftime
 - [ ] **TAC-05**: Manager can substitute players during a match (up to 3 subs from bench)
 
@@ -96,7 +96,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ENG-01 | Phase 1 | Pending |
+| ENG-01 | Phase 1 | Complete |
 | ENG-02 | Phase 1 | Complete |
 | ENG-03 | Phase 1 | Complete |
 | ENG-04 | Phase 1 | Complete |
@@ -111,9 +111,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ENG-13 | Phase 1 | Complete (01-04) |
 | ENG-14 | Phase 1 | Complete |
 | ENG-15 | Phase 1 | Complete (01-01) |
-| TAC-01 | Phase 2 | Pending |
+| TAC-01 | Phase 2 | Complete |
 | TAC-02 | Phase 2 | Pending |
-| TAC-03 | Phase 2 | Pending |
+| TAC-03 | Phase 2 | Complete |
 | TAC-04 | Phase 2 | Pending |
 | TAC-05 | Phase 2 | Pending |
 | SQD-01 | Phase 3 | Pending |

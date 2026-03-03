@@ -2,13 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: phase-complete
-last_updated: "2026-03-03T08:10:00.000Z"
+status: in-progress
+last_updated: "2026-03-03T14:58:00.000Z"
 progress:
-  total_phases: 1
+  total_phases: 4
   completed_phases: 1
   total_plans: 10
-  completed_plans: 10
+  completed_plans: 1
+  current_phase: 02-tactical-layer
+  current_plan: 01
 ---
 
 # Project State
@@ -18,16 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-02)
 
 **Core value:** The match engine must produce emergent behavior that feels like real football — goals, mistakes, tactical dominance and individual brilliance all arising from physics, agent decisions and personality vectors, never from scripted events
-**Current focus:** Phase 1 — Engine Core
+**Current focus:** Phase 2 — Tactical Layer
 
 ## Current Position
 
-Phase: 1 of 4 (Engine Core) — COMPLETE
-Plan: 10 of 10 in current phase — COMPLETE
-Status: Phase 1 complete — approved with known calibration concerns
-Last activity: 2026-03-03 — Plan 01-10 complete: full engine integration, formation anchors, UI controls (372 tests, build succeeds). Human-verified: structural integration confirmed working; player oscillation identified as calibration concern for Phase 2.
+Phase: 2 of 4 (Tactical Layer) — IN PROGRESS
+Plan: 1 of 10 in current phase — COMPLETE (1/10)
+Status: Phase 2 plan 01 complete — formation templates, role/duty system, TacticalConfig engine wiring
+Last activity: 2026-03-03 — Plan 02-01 complete: 5 formation templates, autoAssignRole, duty weight modifiers wired into selectAction, TacticalConfig per team. 441 tests pass, build succeeds.
 
-Progress: [██████████] 100%
+Progress: [█░░░░░░░░░] 10%
 
 ## Performance Metrics
 
@@ -41,6 +43,7 @@ Progress: [██████████] 100%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1. Engine Core | 10 | ~64 min | ~6.4 min |
+| 2. Tactical Layer | 1 | ~15 min | ~15 min |
 
 **Recent Trend:**
 - Last 5 plans: 01-06 (7 min), 01-07 (3 min), 01-08 (8 min), 01-09 (7 min), 01-10 (20 min incl. checkpoint)
@@ -82,6 +85,10 @@ Recent decisions affecting current work:
 - [Phase 01-10]: Intent resolution synchronous — all agents select simultaneously from read-only context, then intents applied sequentially
 - [Phase 01-10]: createMatchRosters() uses 8 named archetypes (not random) — ensures observable behavioral differences from the start
 - [Phase 01-10]: Player oscillation/jitter is a known calibration concern (action scores flip each tick) — deferred to Phase 2 tuning pass
+- [Phase 02-01]: LM/RM role labels replaced by LW/RW — Role type has 10 values; wide midfielders map to LW/RW in the taxonomy
+- [Phase 02-01]: dutyModifier passed as optional closure to selectAction — backward compatible, zero callsite changes needed in existing code
+- [Phase 02-01]: TacticalConfig per-team stored in engine — setHomeTactics/setAwayTactics enable halftime changes; config applies from next tick
+- [Phase 02-01]: Phase-transition tests given 30s timeout — 5400-tick full-match tests flake at 5s default under parallel test load
 
 ### Pending Todos
 
@@ -96,5 +103,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Phase 2 context gathered
-Resume file: .planning/phases/02-tactical-layer/02-CONTEXT.md
+Stopped at: Completed 02-tactical-layer/02-01-PLAN.md
+Resume file: .planning/phases/02-tactical-layer/02-02-PLAN.md
