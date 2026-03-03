@@ -11,6 +11,7 @@ import { PERSONALITY_WEIGHTS } from './ai/personality.ts';
 import { accumulateFatigue, applyFatigueToAttributes, applyFatigueToPersonality } from './ai/fatigue.ts';
 import { SpatialGrid } from './physics/spatial.ts';
 import { seek, arrive, separation, clampVelocity } from './physics/steering.ts';
+import { resolveTackle, isShielded } from './physics/contact.ts';
 import { computeFormationAnchors } from './tactical/formation.ts';
 import { StatsAccumulator } from './match/stats.ts';
 import { DecisionLog } from './ai/decisionLog.ts';
@@ -235,6 +236,7 @@ export class SimulationEngine {
   readonly decisionLog: DecisionLog;
   private readonly grid: SpatialGrid;
   private readonly previousActions: Map<string, ActionType> = new Map();
+  private readonly tackleCooldowns: Map<string, number> = new Map(); // agentId → tick when cooldown expires
 
   constructor(config: MatchConfig) {
     let initialSnapshot = createInitialSnapshot(config.homeRoster, config.awayRoster);
@@ -646,6 +648,59 @@ export class SimulationEngine {
       } else {
         // Carrier not found — release ball
         ball = { ...ball, carrierId: null };
+      }
+    }
+
+    // ── 10d. Tackle resolution ──────────────────────────────────────────────
+    // Defenders pressing within range attempt to dispossess the ball carrier.
+    // Uses resolveTackle() from contact.ts with a per-player cooldown to prevent spam.
+    if (ball.carrierId !== null) {
+      const carrier = updatedPlayers.find(p => p.id === ball.carrierId);
+      if (carrier) {
+        for (let i = 0; i < updatedPlayers.length; i++) {
+          const p = updatedPlayers[i]!;
+          // Only opponents
+          if (p.teamId === carrier.teamId) continue;
+          // Only players who chose PRESS
+          if (intents[i]?.action !== 'PRESS') continue;
+
+          const dist = p.position.distanceTo(carrier.position);
+          if (dist > 4.0) continue; // MAX_TACKLE_REACH
+
+          // Cooldown: 15 ticks (~0.5s) between tackle attempts per player
+          const cooldownExpiry = this.tackleCooldowns.get(p.id) ?? 0;
+          if (nextTick < cooldownExpiry) continue;
+          this.tackleCooldowns.set(p.id, nextTick + 15);
+
+          // Record the tackle attempt in stats
+          this.statsAccumulator.recordTackle(p.teamId);
+
+          // Check shielding — carrier body blocks the challenge
+          if (isShielded(carrier, p, ball.position)) continue;
+
+          const result = resolveTackle(p, carrier, this.rng);
+
+          if (result.success) {
+            // Ball knocked loose in the tackle direction
+            const knockDir = p.position.subtract(carrier.position).normalize();
+            ball = {
+              ...ball,
+              carrierId: null,
+              velocity: knockDir.scale(3 + this.rng() * 4),
+            };
+            break; // One successful tackle per tick
+          }
+
+          if (result.foul) {
+            // Foul: ball released at carrier position (simplified free kick)
+            ball = {
+              ...ball,
+              carrierId: null,
+              velocity: Vec2.zero(),
+            };
+            break;
+          }
+        }
       }
     }
 

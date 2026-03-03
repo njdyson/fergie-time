@@ -51,11 +51,17 @@ export class StatsAccumulator {
     } else if (action === AT.PASS_FORWARD || action === AT.PASS_SAFE) {
       if (isHome) this.homePasses++;
       else this.awayPasses++;
-    } else if (action === AT.PRESS) {
-      if (isHome) this.homeTackles++;
-      else this.awayTackles++;
     }
+    // Note: tackles are recorded separately via recordTackle() — only on actual in-range attempts
     // DRIBBLE, HOLD_SHIELD, MOVE_TO_POSITION, MAKE_RUN are not tracked
+  }
+
+  /**
+   * Record an actual tackle attempt (defender within range of ball carrier).
+   */
+  recordTackle(teamId: TeamId): void {
+    if (teamId === 'home') this.homeTackles++;
+    else this.awayTackles++;
   }
 
   /**

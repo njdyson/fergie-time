@@ -109,19 +109,26 @@ describe('StatsAccumulator', () => {
     });
   });
 
-  describe('recordIntent - tackles', () => {
-    it('increments home tackles for PRESS', () => {
+  describe('recordTackle', () => {
+    it('increments home tackles', () => {
       const acc = new StatsAccumulator();
-      acc.recordIntent(makeIntent('home1', ActionType.PRESS), 'home');
+      acc.recordTackle('home');
       const s = acc.getSnapshot();
       expect(s.tackles).toEqual([1, 0]);
     });
 
-    it('increments away tackles for PRESS', () => {
+    it('increments away tackles', () => {
       const acc = new StatsAccumulator();
-      acc.recordIntent(makeIntent('away1', ActionType.PRESS), 'away');
+      acc.recordTackle('away');
       const s = acc.getSnapshot();
       expect(s.tackles).toEqual([0, 1]);
+    });
+
+    it('PRESS intent no longer counts as tackle', () => {
+      const acc = new StatsAccumulator();
+      acc.recordIntent(makeIntent('home1', ActionType.PRESS), 'home');
+      const s = acc.getSnapshot();
+      expect(s.tackles).toEqual([0, 0]);
     });
   });
 
