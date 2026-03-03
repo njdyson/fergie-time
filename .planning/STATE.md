@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-03-02)
 ## Current Position
 
 Phase: 2 of 4 (Tactical Layer) — IN PROGRESS
-Plan: 2 of 10 in current phase — COMPLETE (2/10)
-Status: Phase 2 plan 02 complete — tactics board UI with draggable player dots, formation presets, duty picker, view switching
-Last activity: 2026-03-03 — Plan 02-02 complete: TacticsBoard canvas class, 5 formation presets, drag-and-drop with autoAssignRole, duty popup, view flow Tactics->Match->Tactics. 457 tests pass, build succeeds.
+Plan: 3 of 10 in current phase — COMPLETE (3/10)
+Status: Phase 2 plan 03 complete — 16-man squad with 5-player bench, substitution engine (max 3/match), halftime auto-pause with formation/duty/sub changes
+Last activity: 2026-03-03 — Plan 02-03 complete: Halftime flow, substitutePlayer() method, bench panel UI, formation changes apply at second-half kickoff. Human-verified formation changes produce visible behavior differences. 457 tests pass, build succeeds.
 
-Progress: [██░░░░░░░░] 20%
+Progress: [███░░░░░░░] 30%
 
 ## Performance Metrics
 
@@ -92,6 +92,10 @@ Recent decisions affecting current work:
 - [Phase 02-02]: D key toggles ALL debug panels together (sidebar + stats + tuning) — per user notes, simpler mental model for developer mode
 - [Phase 02-02]: Formation returns Vec2[] when any player dragged >0.5m from template position — engine accepts both FormationId and Vec2[]
 - [Phase 02-02]: Duties preserved across formation changes — user intent should survive shape changes
+- [Phase 02-03]: 16-man squad pattern: 11 starters in active simulation, 5 bench stored separately in MatchConfig — keeps actor count at 22 max, simpler bench UI state
+- [Phase 02-03]: Halftime latch mechanism using isHalftimeLatched() guard — prevents repeated auto-pause during long halftime period, latch cleared on startSecondHalf()
+- [Phase 02-03]: Formation changes apply at second-half kickoff via _applyInitialFormation(), not immediately — maintains state consistency, allows review before commit
+- [Phase 02-03]: Substituted player inherits role/duty/anchor from outgoing player, but retains own attributes/personality — preserves tactical role while representing individual player strengths
 
 ### Pending Todos
 
@@ -106,5 +110,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Checkpoint 02-03 Task 2 — human-verify halftime flow, formations, and substitutions
-Resume file: .planning/phases/02-tactical-layer/02-03-PLAN.md
+Stopped at: Plan 02-03 complete — documentation phase
+Resume file: .planning/phases/02-tactical-layer/02-04-PLAN.md (next plan)
