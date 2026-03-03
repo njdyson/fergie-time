@@ -10,7 +10,7 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Match Engine
 
 - [ ] **ENG-01**: Ball moves in 2.5D (X/Y ground position + Z height via projectile motion)
-- [ ] **ENG-02**: Players move using steering behaviors (seek, arrive, avoid, separation) with physical attribute caps
+- [x] **ENG-02**: Players move using steering behaviors (seek, arrive, avoid, separation) with physical attribute caps
 - [ ] **ENG-03**: Each player agent evaluates 7 actions per tick via utility AI and selects highest-scoring
 - [ ] **ENG-04**: Personality vector (directness, risk_appetite, composure, creativity, work_rate, aggression, anticipation, flair) weights every action score
 - [ ] **ENG-05**: Gaussian noise added to utility scores, scaled by (1 - composure), producing realistic decision variance
@@ -97,7 +97,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | ENG-01 | Phase 1 | Pending |
-| ENG-02 | Phase 1 | Pending |
+| ENG-02 | Phase 1 | Complete |
 | ENG-03 | Phase 1 | Pending |
 | ENG-04 | Phase 1 | Pending |
 | ENG-05 | Phase 1 | Pending |

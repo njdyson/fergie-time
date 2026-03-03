@@ -10,27 +10,27 @@ See: .planning/PROJECT.md (updated 2026-03-02)
 ## Current Position
 
 Phase: 1 of 4 (Engine Core)
-Plan: 1 of 10 in current phase
+Plan: 3 of 10 in current phase
 Status: In progress — executing
-Last activity: 2026-03-03 — Plan 01-01 complete: project scaffold + math foundations
+Last activity: 2026-03-03 — Plan 01-03 complete: Reynolds steering behaviors (seek, arrive, separation, pursuit)
 
-Progress: [█░░░░░░░░░] 10%
+Progress: [███░░░░░░░] 30%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1
-- Average duration: ~6 min
-- Total execution time: ~6 min
+- Total plans completed: 3
+- Average duration: ~5 min
+- Total execution time: ~15 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 1. Engine Core | 1 | ~6 min | ~6 min |
+| 1. Engine Core | 3 | ~15 min | ~5 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (6 min)
+- Last 5 plans: 01-01 (6 min), 01-02 (n/a — skipped to 01-03), 01-03 (3 min)
 - Trend: —
 
 *Updated after each plan completion*
@@ -47,6 +47,8 @@ Recent decisions affecting current work:
 - [Roadmap]: Utility AI calibration thresholds (goals per match: mean ~2.5, action domination cap: ~40%) are literature-informed estimates, not empirically derived. Treat as starting targets.
 - [01-01]: Use const-object pattern instead of TypeScript enum — Vite 7 tsconfig has `erasableSyntaxOnly: true`. Pattern: `const X = { ... } as const; type X = (typeof X)[keyof typeof X]`. Apply to all future plans.
 - [01-01]: ActionType has 8 values (PASS_FORWARD + PASS_SAFE separate) despite ENG-03 "7 actions" — the count is behavioral, not structural. More granular options = better utility AI decisions.
+- [01-03]: Steering functions return desired velocity (not steering force) — callers subtract current velocity to get force. Keeps functions simpler, callers explicit about integration.
+- [01-03]: BASE_PLAYER_SPEED = 8.0 m/s for pace=1.0/fatigue=0 — callers compute maxSpeed = pace * BASE_PLAYER_SPEED * (1 - fatiguePenalty).
 
 ### Pending Todos
 
@@ -61,5 +63,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: 01-01-PLAN.md complete. Ready to execute 01-02-PLAN.md.
+Stopped at: 01-03-PLAN.md complete. Ready to execute 01-04-PLAN.md.
 Resume file: None
