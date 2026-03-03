@@ -17,14 +17,10 @@ interface GridEntry {
 }
 
 export class SpatialGrid {
-  private readonly width: number;
-  private readonly height: number;
   private readonly cellSize: number;
   private cells: Map<string, Set<GridEntry>>;
 
-  constructor(width: number, height: number, cellSize: number) {
-    this.width = width;
-    this.height = height;
+  constructor(_width: number, _height: number, cellSize: number) {
     this.cellSize = cellSize;
     this.cells = new Map();
   }

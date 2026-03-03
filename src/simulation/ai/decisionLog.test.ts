@@ -3,7 +3,7 @@ import {
   DecisionLog,
   auditScoreRanges,
 } from './decisionLog.ts';
-import type { AgentDecisionEntry, ScoreAuditReport } from './decisionLog.ts';
+import type { AgentDecisionEntry } from './decisionLog.ts';
 import { ActionType } from '../types.ts';
 
 // Helper to create an AgentDecisionEntry

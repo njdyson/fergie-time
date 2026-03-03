@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { resolveTackle, isShielded, resolveAerialContest } from './contact';
-import type { TackleResult, AerialResult } from './contact';
 import { createRng } from '../math/random';
 import { Vec2 } from '../math/vec2';
 import type { PlayerState, BallState } from '../types';
