@@ -111,6 +111,7 @@ export interface PlayerState {
   readonly role: Role | string;     // positional role (Role type or legacy string)
   readonly duty: Duty;              // tactical duty (default: SUPPORT)
   readonly formationAnchor: Vec2;   // tactical home position
+  readonly name?: string;           // display name (optional)
 }
 
 // Match events

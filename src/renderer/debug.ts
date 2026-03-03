@@ -5,26 +5,34 @@ import type { DecisionLog } from '../simulation/ai/decisionLog.ts';
 // Debug overlay constants
 // ============================================================
 
-const INSPECT_RADIUS_PX = 15; // click detection radius in canvas pixels
-const HIGHLIGHT_RADIUS = 10;  // yellow highlight ring radius in canvas pixels
-const HIGHLIGHT_COLOR = '#ffff00';
-const HIGHLIGHT_LINE_WIDTH = 2;
-
-const PANEL_WIDTH = 260;
-const PANEL_PADDING = 8;
-const PANEL_LINE_HEIGHT = 16;
-const PANEL_BG = 'rgba(0, 0, 0, 0.88)';
+const PANEL_CONTENT_WIDTH = 248;
+const PANEL_X = 4;
+const PANEL_PADDING = 5;
+const PANEL_LINE_HEIGHT = 13;
+const PANEL_GAP = 4;
+const PANEL_BG = 'rgba(0, 0, 0, 0.75)';
 const TEXT_COLOR = '#ffffff';
-const FONT = '12px monospace';
-const FONT_SMALL = '11px monospace';
+const FONT = '11px monospace';
+const FONT_SMALL = '10px monospace';
 
 // Action bar
+const BAR_HEIGHT = 8;
+const BAR_MAX_WIDTH = 52;
 const BAR_SELECTED_BORDER = '#ffffff';
-const BAR_HEIGHT = 10;
-const BAR_MAX_WIDTH = 70; // fixed bar width for consistency
 
-// Averaging window: 30 ticks = 1 second of sim time
-const AVG_WINDOW = 30;
+// Averaging window: 75 ticks = 2.5 seconds of sim time
+const AVG_WINDOW = 75;
+
+// Highlight on pitch
+const HIGHLIGHT_RADIUS = 14;
+const HIGHLIGHT_LINE_WIDTH = 2.5;
+
+// Badge colors for each panel slot (matched on pitch + sidebar)
+const BADGE_COLORS = ['#ffff00', '#00ffaa', '#ff8844', '#55bbff', '#ff66cc', '#88ff44'];
+
+// Home/away team strip colors
+const HOME_STRIP = '#3366cc';
+const AWAY_STRIP = '#cc3333';
 
 // Coordinate mapper type used by the renderer
 type PitchToCanvas = (v: { x: number; y: number }) => { x: number; y: number };
@@ -37,84 +45,114 @@ interface ActionAverage {
   isCurrent: boolean;
 }
 
+// Tracked player info (shared between drawPanels and drawHighlights)
+interface TrackedPlayer {
+  player: PlayerState;
+  dist: number;
+  index: number;
+}
+
 // ============================================================
 // DebugOverlay
 // ============================================================
 
 /**
- * Click-to-inspect debug overlay for the Canvas renderer.
+ * Debug overlay that renders cascading panels in a fixed-position
+ * sidebar (separate canvas) showing the nearest N players to the ball.
  *
- * Shows averaged scores over the last 30 ticks (1 second) so the panel
- * is stable and readable. Displays ALL 8 actions sorted by average score,
- * with selection frequency % and the current action highlighted.
+ * Highlight rings with numbered badges are drawn on the main pitch
+ * canvas to identify which players the panels correspond to.
+ *
+ * The sidebar slides in from the left, matching the tuning panel style.
  */
 export class DebugOverlay {
-  private readonly canvas: HTMLCanvasElement;
+  private readonly debugCanvas: HTMLCanvasElement;
   private readonly decisionLog: DecisionLog;
-  private inspectedAgentId: string | null = null;
 
-  // Cached from the last draw() call — needed for click hit testing
-  private cachedSnapshot: SimSnapshot | null = null;
-  private cachedPitchToCanvas: PitchToCanvas | null = null;
+  /** Players being tracked this frame — shared between drawPanels and drawHighlights */
+  private tracked: TrackedPlayer[] = [];
 
-  constructor(canvas: HTMLCanvasElement, decisionLog: DecisionLog) {
-    this.canvas = canvas;
+  constructor(debugCanvas: HTMLCanvasElement, decisionLog: DecisionLog) {
+    this.debugCanvas = debugCanvas;
     this.decisionLog = decisionLog;
 
-    // Register click handler
-    canvas.addEventListener('click', (e) => this.handleClick(e));
+    // Size the debug canvas to the sidebar
+    this.resizeDebugCanvas();
+    window.addEventListener('resize', () => this.resizeDebugCanvas());
+  }
 
-    // Register Escape key handler
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        this.inspectedAgentId = null;
-      }
-    });
+  private resizeDebugCanvas(): void {
+    this.debugCanvas.width = 256;
+    this.debugCanvas.height = window.innerHeight;
   }
 
   /**
-   * Returns true if an agent is currently being inspected.
+   * Draw the debug panels on the sidebar canvas.
+   * Call this every frame when debug mode is active.
    */
-  isActive(): boolean {
-    return this.inspectedAgentId !== null;
-  }
+  drawPanels(snapshot: SimSnapshot): void {
+    const ctx = this.debugCanvas.getContext('2d');
+    if (!ctx) return;
 
-  /**
-   * Draw the debug overlay onto the canvas context.
-   * Call this AFTER the main renderer draw() call.
-   */
-  draw(
-    ctx: CanvasRenderingContext2D,
-    snapshot: SimSnapshot,
-    pitchToCanvas: PitchToCanvas,
-    debugEnabled: boolean = true,
-  ): void {
-    // Cache snapshot for click hit testing
-    this.cachedSnapshot = snapshot;
-    this.cachedPitchToCanvas = pitchToCanvas;
+    // Clear the sidebar canvas
+    ctx.clearRect(0, 0, this.debugCanvas.width, this.debugCanvas.height);
 
-    if (!debugEnabled || !this.inspectedAgentId) return;
+    const ballPos = snapshot.ball.position;
 
-    // Find the inspected player in the snapshot
-    const player = snapshot.players.find(p => p.id === this.inspectedAgentId);
-    if (!player) {
-      this.inspectedAgentId = null;
-      return;
+    // Find nearest players to ball (both teams)
+    const withDist = snapshot.players.map(p => ({
+      player: p,
+      dist: Math.sqrt(
+        (p.position.x - ballPos.x) ** 2 +
+        (p.position.y - ballPos.y) ** 2,
+      ),
+    }));
+    withDist.sort((a, b) => a.dist - b.dist);
+
+    // How many panels fit vertically
+    const panelHeight = this.computePanelHeight();
+    const maxPanels = Math.max(1, Math.floor((this.debugCanvas.height - 8) / (panelHeight + PANEL_GAP)));
+    const count = Math.min(maxPanels, BADGE_COLORS.length, withDist.length);
+
+    // Store tracked players for drawHighlights
+    this.tracked = [];
+    for (let i = 0; i < count; i++) {
+      this.tracked.push({ ...withDist[i]!, index: i });
     }
 
-    const canvasPos = pitchToCanvas(player.position);
+    // Draw panels stacked vertically
+    let panelY = 4;
+    for (let i = 0; i < count; i++) {
+      const { player, dist } = withDist[i]!;
+      const averaged = this.computeAveraged(player.id);
+      const latest = this.decisionLog.getLatest(player.id);
+      this.drawPanel(ctx, panelY, i, player, dist, averaged, latest?.selected);
+      panelY += panelHeight + PANEL_GAP;
+    }
+  }
 
-    // 1. Draw highlight circle
-    this.drawHighlight(ctx, canvasPos);
+  /**
+   * Draw highlight rings and numbered badges on the main pitch canvas.
+   * Call this AFTER the main renderer draw() call.
+   */
+  drawHighlights(
+    ctx: CanvasRenderingContext2D,
+    pitchToCanvas: PitchToCanvas,
+  ): void {
+    for (const { player, index } of this.tracked) {
+      const canvasPos = pitchToCanvas(player.position);
+      this.drawHighlight(ctx, canvasPos, index);
+    }
+  }
 
-    // 2. Compute averaged decision data over last 30 ticks
-    const averaged = this.computeAveraged(this.inspectedAgentId);
+  // ============================================================
+  // Panel height computation
+  // ============================================================
 
-    // 3. Get current action from latest entry
-    const latest = this.decisionLog.getLatest(this.inspectedAgentId);
-
-    // 4. Draw info panel
-    this.drawPanel(ctx, player, averaged, latest?.selected, canvasPos);
+  private computePanelHeight(): number {
+    // Header line + 8 action rows
+    const lines = 1 + 8;
+    return PANEL_PADDING * 2 + lines * PANEL_LINE_HEIGHT + 2;
   }
 
   // ============================================================
@@ -125,7 +163,6 @@ export class DebugOverlay {
     const entries = this.decisionLog.getRecent(agentId, AVG_WINDOW);
     if (entries.length === 0) return [];
 
-    // Accumulate scores and selection counts per action
     const scoreAccum = new Map<string, { total: number; count: number; selections: number }>();
 
     for (const entry of entries) {
@@ -155,7 +192,6 @@ export class DebugOverlay {
       });
     }
 
-    // Sort by average score descending
     result.sort((a, b) => b.avgScore - a.avgScore);
     return result;
   }
@@ -167,124 +203,125 @@ export class DebugOverlay {
   private drawHighlight(
     ctx: CanvasRenderingContext2D,
     pos: { x: number; y: number },
+    index: number,
   ): void {
+    const color = BADGE_COLORS[index] ?? BADGE_COLORS[0]!;
+
     ctx.save();
+
+    // Highlight ring
     ctx.beginPath();
     ctx.arc(pos.x, pos.y, HIGHLIGHT_RADIUS, 0, Math.PI * 2);
-    ctx.strokeStyle = HIGHLIGHT_COLOR;
+    ctx.strokeStyle = color;
     ctx.lineWidth = HIGHLIGHT_LINE_WIDTH;
     ctx.stroke();
+
+    // Number badge (small circle with number, top-right of player)
+    const badgeX = pos.x + HIGHLIGHT_RADIUS - 2;
+    const badgeY = pos.y - HIGHLIGHT_RADIUS + 2;
+    ctx.beginPath();
+    ctx.arc(badgeX, badgeY, 7, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.fillStyle = '#000000';
+    ctx.font = 'bold 9px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(index + 1), badgeX, badgeY);
+
     ctx.restore();
   }
 
   private drawPanel(
     ctx: CanvasRenderingContext2D,
+    panelY: number,
+    index: number,
     player: PlayerState,
+    distToBall: number,
     averaged: ActionAverage[],
     currentAction: ActionType | undefined,
-    playerCanvasPos: { x: number; y: number },
   ): void {
-    // Lines: header + fatigue + divider + actions (or "no data")
-    const actionLines = averaged.length > 0 ? averaged.length : 1;
-    const lineCount = 2 + 1 + actionLines;
-    const panelHeight = PANEL_PADDING * 2 + lineCount * PANEL_LINE_HEIGHT + 6;
-
-    // Position panel to avoid going off-canvas
-    let panelX = playerCanvasPos.x + 16;
-    let panelY = playerCanvasPos.y - 10;
-
-    if (panelX + PANEL_WIDTH > this.canvas.width - 4) {
-      panelX = playerCanvasPos.x - PANEL_WIDTH - 16;
-    }
-    if (panelY + panelHeight > this.canvas.height - 4) {
-      panelY = this.canvas.height - panelHeight - 4;
-    }
-    if (panelY < 4) panelY = 4;
+    const panelHeight = this.computePanelHeight();
+    const badgeColor = BADGE_COLORS[index] ?? BADGE_COLORS[0]!;
+    const teamStrip = player.teamId === 'home' ? HOME_STRIP : AWAY_STRIP;
 
     ctx.save();
 
-    // Panel background — rounded rectangle
-    this.drawRoundedRect(ctx, panelX, panelY, PANEL_WIDTH, panelHeight, 6);
+    // Panel background
+    this.drawRoundedRect(ctx, PANEL_X, panelY, PANEL_CONTENT_WIDTH, panelHeight, 4);
     ctx.fillStyle = PANEL_BG;
     ctx.fill();
 
-    // Panel text
-    ctx.fillStyle = TEXT_COLOR;
-    ctx.font = FONT;
+    // Team color strip on left edge
+    ctx.fillStyle = teamStrip;
+    ctx.fillRect(PANEL_X, panelY + 4, 3, panelHeight - 8);
 
-    let lineY = panelY + PANEL_PADDING + PANEL_LINE_HEIGHT - 4;
+    let lineY = panelY + PANEL_PADDING + PANEL_LINE_HEIGHT - 3;
 
-    // Line 1: Player ID + role + team
+    // Header: badge dot + #shirt [role] teamLabel - currentAction dist
     const teamLabel = player.teamId === 'home' ? 'H' : 'A';
-    const idLabel = `${player.id.slice(0, 8)} [${player.role}] ${teamLabel}`;
-    ctx.fillText(idLabel, panelX + PANEL_PADDING, lineY);
-    lineY += PANEL_LINE_HEIGHT;
+    const shirtNum = parseInt(player.id.split('-').pop()!, 10) + 1;
+    const actionLabel = currentAction ? this.formatAction(currentAction) : '---';
+    const distLabel = `${distToBall.toFixed(0)}m`;
 
-    // Line 2: Fatigue bar
-    ctx.font = FONT_SMALL;
-    ctx.fillText('fatigue:', panelX + PANEL_PADDING, lineY);
-    const fatPct = `${(player.fatigue * 100).toFixed(0)}%`;
-    this.drawBar(
-      ctx,
-      panelX + PANEL_PADDING + 56,
-      lineY - BAR_HEIGHT + 2,
-      player.fatigue,
-      BAR_MAX_WIDTH,
-      false,
-      true,
-    );
-    ctx.fillStyle = TEXT_COLOR;
-    ctx.fillText(fatPct, panelX + PANEL_PADDING + 56 + BAR_MAX_WIDTH + 4, lineY);
-    lineY += PANEL_LINE_HEIGHT;
-
-    // Divider
-    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-    ctx.lineWidth = 1;
+    // Badge dot
     ctx.beginPath();
-    ctx.moveTo(panelX + PANEL_PADDING, lineY - 4);
-    ctx.lineTo(panelX + PANEL_WIDTH - PANEL_PADDING, lineY - 4);
-    ctx.stroke();
+    ctx.arc(PANEL_X + PANEL_PADDING + 6, lineY - 4, 5, 0, Math.PI * 2);
+    ctx.fillStyle = badgeColor;
+    ctx.fill();
+    ctx.fillStyle = '#000000';
+    ctx.font = 'bold 7px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(index + 1), PANEL_X + PANEL_PADDING + 6, lineY - 4);
 
-    // Column header
-    ctx.fillStyle = 'rgba(255,255,255,0.45)';
-    ctx.font = '10px monospace';
-    ctx.fillText('action', panelX + PANEL_PADDING, lineY + 2);
-    ctx.fillText('avg score', panelX + PANEL_PADDING + 96, lineY + 2);
-    ctx.fillText('sel%', panelX + PANEL_WIDTH - PANEL_PADDING - 30, lineY + 2);
-    lineY += PANEL_LINE_HEIGHT - 2;
+    // Player info text
+    ctx.font = FONT;
+    ctx.fillStyle = TEXT_COLOR;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    const headerText = `#${shirtNum} [${player.role}] ${teamLabel}`;
+    ctx.fillText(headerText, PANEL_X + PANEL_PADDING + 16, lineY);
 
-    // Action rows — all 8, averaged over last 30 ticks
+    // Current action + distance on the right
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#ffff44';
+    ctx.font = FONT_SMALL;
+    ctx.fillText(`${actionLabel} ${distLabel}`, PANEL_X + PANEL_CONTENT_WIDTH - PANEL_PADDING, lineY);
+
+    lineY += PANEL_LINE_HEIGHT;
+
+    // Action rows — all actions sorted by average score
+    ctx.textAlign = 'left';
     if (averaged.length === 0) {
       ctx.fillStyle = 'rgba(255,255,255,0.5)';
       ctx.font = FONT_SMALL;
-      ctx.fillText('no decisions yet', panelX + PANEL_PADDING, lineY);
+      ctx.fillText('no decisions yet', PANEL_X + PANEL_PADDING, lineY);
     } else {
       for (const row of averaged) {
         const isSelected = row.action === currentAction;
 
-        // Action label (show full name, formatted)
+        // Action label
         const label = this.formatAction(row.action);
         ctx.fillStyle = isSelected ? '#ffff44' : TEXT_COLOR;
         ctx.font = isSelected ? `bold ${FONT_SMALL}` : FONT_SMALL;
-        ctx.fillText(label, panelX + PANEL_PADDING, lineY);
+        ctx.fillText(label, PANEL_X + PANEL_PADDING + 4, lineY);
 
         // Score bar
+        const barX = PANEL_X + PANEL_PADDING + 82;
         const scoreClamped = Math.max(0, Math.min(1, row.avgScore));
-        this.drawBar(
-          ctx,
-          panelX + PANEL_PADDING + 96,
-          lineY - BAR_HEIGHT + 2,
-          scoreClamped,
-          BAR_MAX_WIDTH,
-          isSelected,
-          false,
-        );
+        this.drawBar(ctx, barX, lineY - BAR_HEIGHT + 2, scoreClamped, BAR_MAX_WIDTH, isSelected);
+
+        // Average score value
+        ctx.fillStyle = isSelected ? '#ffff44' : 'rgba(255,255,255,0.6)';
+        ctx.font = FONT_SMALL;
+        ctx.fillText(row.avgScore.toFixed(2), barX + BAR_MAX_WIDTH + 4, lineY);
 
         // Selection percentage
         const pctText = row.selectionPct > 0 ? `${row.selectionPct.toFixed(0)}%` : '-';
-        ctx.fillStyle = isSelected ? '#ffff44' : 'rgba(255,255,255,0.7)';
-        ctx.font = FONT_SMALL;
-        ctx.fillText(pctText, panelX + PANEL_WIDTH - PANEL_PADDING - 28, lineY);
+        ctx.textAlign = 'right';
+        ctx.fillText(pctText, PANEL_X + PANEL_CONTENT_WIDTH - PANEL_PADDING, lineY);
+        ctx.textAlign = 'left';
 
         lineY += PANEL_LINE_HEIGHT;
       }
@@ -294,7 +331,6 @@ export class DebugOverlay {
   }
 
   private formatAction(action: string): string {
-    // Convert SCREAMING_SNAKE to Title Case abbreviation
     switch (action) {
       case 'MOVE_TO_POSITION': return 'MoveToPos';
       case 'PASS_FORWARD':     return 'PassFwd';
@@ -305,9 +341,6 @@ export class DebugOverlay {
     }
   }
 
-  /**
-   * Draws a horizontal score bar.
-   */
   private drawBar(
     ctx: CanvasRenderingContext2D,
     x: number,
@@ -315,22 +348,17 @@ export class DebugOverlay {
     value: number,
     maxWidth: number,
     isSelected: boolean,
-    invertColor: boolean,
   ): void {
     const fillWidth = Math.floor(value * maxWidth);
 
-    const r = invertColor
-      ? Math.floor(value * 204) + 22
-      : Math.floor((1 - value) * 204) + 22;
-    const g = invertColor
-      ? Math.floor((1 - value) * 204) + 22
-      : Math.floor(value * 204) + 22;
+    const r = Math.floor((1 - value) * 204) + 22;
+    const g = Math.floor(value * 204) + 22;
     const fillColor = `rgb(${r}, ${g}, 34)`;
 
     ctx.save();
 
     // Background track
-    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
     ctx.fillRect(x, y, maxWidth, BAR_HEIGHT);
 
     // Fill
@@ -347,9 +375,6 @@ export class DebugOverlay {
     ctx.restore();
   }
 
-  /**
-   * Draws a rounded rectangle path (without filling or stroking).
-   */
   private drawRoundedRect(
     ctx: CanvasRenderingContext2D,
     x: number,
@@ -369,38 +394,5 @@ export class DebugOverlay {
     ctx.lineTo(x, y + r);
     ctx.quadraticCurveTo(x, y, x + r, y);
     ctx.closePath();
-  }
-
-  // ============================================================
-  // Event handlers
-  // ============================================================
-
-  private handleClick(e: MouseEvent): void {
-    if (!this.cachedSnapshot || !this.cachedPitchToCanvas) return;
-
-    const rect = this.canvas.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const clickY = e.clientY - rect.top;
-
-    let closestId: string | null = null;
-    let closestDist = INSPECT_RADIUS_PX;
-
-    for (const player of this.cachedSnapshot.players) {
-      const pos = this.cachedPitchToCanvas(player.position);
-      const dx = pos.x - clickX;
-      const dy = pos.y - clickY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < closestDist) {
-        closestDist = dist;
-        closestId = player.id;
-      }
-    }
-
-    if (closestId !== null) {
-      this.inspectedAgentId = closestId;
-    } else {
-      // Click on empty space — deselect
-      this.inspectedAgentId = null;
-    }
   }
 }

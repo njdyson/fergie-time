@@ -51,6 +51,10 @@ export interface MatchConfig {
   readonly seed: string;
   readonly homeRoster: PlayerState[];
   readonly awayRoster: PlayerState[];
+  /** Optional bench players for home team (up to 5, not on pitch initially) */
+  readonly homeBench?: PlayerState[];
+  /** Optional bench players for away team (up to 5, not on pitch initially) */
+  readonly awayBench?: PlayerState[];
   /** Optional initial ball velocity (m/s) for testing and visual initialization */
   readonly initialBallVelocity?: { x: number; y: number };
   /** Optional initial ball position override for testing */
@@ -131,11 +135,18 @@ export function createTestRosters(): { home: PlayerState[]; away: PlayerState[] 
 }
 
 /**
- * Creates 22 players with varied archetypes for an interesting match.
- * Home team: maverick striker, metronome midfielder, aggressive defender.
- * Away team: contrasting archetypes for visible behavioral differences.
+ * Creates 32 players (11 starters + 5 bench per team) with varied archetypes for an interesting match.
+ * Home team: maverick striker, metronome midfielder, aggressive defender + 5 bench players.
+ * Away team: contrasting archetypes for visible behavioral differences + 5 bench players.
+ *
+ * Returns: { home, away, homeBench, awayBench }
  */
-export function createMatchRosters(): { home: PlayerState[]; away: PlayerState[] } {
+export function createMatchRosters(): {
+  home: PlayerState[];
+  away: PlayerState[];
+  homeBench: PlayerState[];
+  awayBench: PlayerState[];
+} {
   const homePositions = getKickoffPositions('home');
   const awayPositions = getKickoffPositions('away');
 
@@ -173,19 +184,40 @@ export function createMatchRosters(): { home: PlayerState[]; away: PlayerState[]
       attributes: { pace: 0.72, strength: 0.55, stamina: 0.72, dribbling: 0.80, passing: 0.78, shooting: 0.62, tackling: 0.55, aerial: 0.52, positioning: 0.75 },
       personality: { directness: 0.58, risk_appetite: 0.65, composure: 0.72, creativity: 0.80, work_rate: 0.70, aggression: 0.42, anticipation: 0.72, flair: 0.72 },
     },
+    // Bench archetypes
+    utilityDefender: {
+      attributes: { pace: 0.62, strength: 0.70, stamina: 0.68, dribbling: 0.48, passing: 0.62, shooting: 0.42, tackling: 0.72, aerial: 0.70, positioning: 0.68 },
+      personality: { directness: 0.38, risk_appetite: 0.28, composure: 0.65, creativity: 0.32, work_rate: 0.72, aggression: 0.65, anticipation: 0.68, flair: 0.22 },
+    },
+    youngProspect: {
+      attributes: { pace: 0.85, strength: 0.50, stamina: 0.80, dribbling: 0.72, passing: 0.62, shooting: 0.65, tackling: 0.50, aerial: 0.52, positioning: 0.62 },
+      personality: { directness: 0.70, risk_appetite: 0.72, composure: 0.42, creativity: 0.68, work_rate: 0.85, aggression: 0.55, anticipation: 0.58, flair: 0.78 },
+    },
+    targetMan: {
+      attributes: { pace: 0.62, strength: 0.88, stamina: 0.70, dribbling: 0.52, passing: 0.58, shooting: 0.78, tackling: 0.42, aerial: 0.92, positioning: 0.78 },
+      personality: { directness: 0.78, risk_appetite: 0.62, composure: 0.68, creativity: 0.38, work_rate: 0.72, aggression: 0.78, anticipation: 0.72, flair: 0.42 },
+    },
+    playmaker: {
+      attributes: { pace: 0.68, strength: 0.55, stamina: 0.75, dribbling: 0.75, passing: 0.90, shooting: 0.58, tackling: 0.58, aerial: 0.50, positioning: 0.82 },
+      personality: { directness: 0.42, risk_appetite: 0.45, composure: 0.88, creativity: 0.88, work_rate: 0.75, aggression: 0.38, anticipation: 0.85, flair: 0.65 },
+    },
+    speedster: {
+      attributes: { pace: 0.95, strength: 0.50, stamina: 0.78, dribbling: 0.78, passing: 0.62, shooting: 0.72, tackling: 0.42, aerial: 0.48, positioning: 0.70 },
+      personality: { directness: 0.88, risk_appetite: 0.80, composure: 0.52, creativity: 0.58, work_rate: 0.72, aggression: 0.58, anticipation: 0.65, flair: 0.75 },
+    },
   };
 
-  // Home team: GK, LB, CB, CB, RB, LM, CM, CM, RM, ST, ST
+  // Home team: GK, LB, CB, CB, RB, LW, CM, CM, RW, ST, ST
   const homeArchetypes = [
     archetypes.goalKeeper,    // GK
     archetypes.aggressiveDefender, // LB
     archetypes.steadyDefender,    // CB
     archetypes.steadyDefender,    // CB
     archetypes.aggressiveDefender, // RB
-    archetypes.technician,        // LM
+    archetypes.technician,        // LW
     archetypes.metronome,         // CM
     archetypes.boxToBox,          // CM
-    archetypes.technician,        // RM
+    archetypes.technician,        // RW
     archetypes.maverick,          // ST
     archetypes.poacher,           // ST
   ];
@@ -196,17 +228,40 @@ export function createMatchRosters(): { home: PlayerState[]; away: PlayerState[]
     archetypes.aggressiveDefender, // CB
     archetypes.aggressiveDefender, // CB
     archetypes.steadyDefender,     // RB
-    archetypes.boxToBox,           // LM
+    archetypes.boxToBox,           // LW
     archetypes.metronome,          // CM
     archetypes.technician,         // CM
-    archetypes.boxToBox,           // RM
+    archetypes.boxToBox,           // RW
     archetypes.poacher,            // ST
     archetypes.maverick,           // ST
+  ];
+
+  // Bench archetypes (5 per team)
+  const homeBenchArchetypes = [
+    archetypes.utilityDefender, // utility CB/FB
+    archetypes.youngProspect,   // young winger/forward
+    archetypes.targetMan,       // target striker
+    archetypes.playmaker,       // creative mid
+    archetypes.speedster,       // pace winger
+  ];
+
+  const awayBenchArchetypes = [
+    archetypes.utilityDefender, // utility CB/FB
+    archetypes.speedster,       // pace winger
+    archetypes.targetMan,       // target striker
+    archetypes.youngProspect,   // young winger/forward
+    archetypes.playmaker,       // creative mid
   ];
 
   const roleLabels = ['GK', 'LB', 'CB', 'CB', 'RB', 'LW', 'CM', 'CM', 'RW', 'ST', 'ST'];
   const names = ['Home GK', 'Home LB', 'Home CB', 'Home CB', 'Home RB', 'Home LW', 'Home CM', 'Home CM', 'Home RW', 'Home ST', 'Home ST'];
   const awayNames = ['Away GK', 'Away LB', 'Away CB', 'Away CB', 'Away RB', 'Away LW', 'Away CM', 'Away CM', 'Away RW', 'Away ST', 'Away ST'];
+  const benchRoleLabels = ['CB', 'LW', 'ST', 'CM', 'RW'];
+  const homeBenchNames = ['H. Utility', 'H. Prospect', 'H. Target', 'H. Playmaker', 'H. Speedster'];
+  const awayBenchNames = ['A. Utility', 'A. Speedster', 'A. Target', 'A. Prospect', 'A. Playmaker'];
+
+  // Use a central midfield position as a generic "bench" position
+  const benchPosition = new Vec2(52.5, 34); // Centre circle
 
   const home: PlayerState[] = homePositions.map((pos, i) => ({
     id: `home-${i}`,
@@ -236,7 +291,36 @@ export function createMatchRosters(): { home: PlayerState[]; away: PlayerState[]
     name: awayNames[i],
   } as PlayerState));
 
-  return { home, away };
+  // Bench players (not on pitch, stored separately)
+  const homeBench: PlayerState[] = homeBenchArchetypes.map((arch, i) => ({
+    id: `home-bench-${i}`,
+    teamId: 'home' as TeamId,
+    position: benchPosition,
+    velocity: Vec2.zero(),
+    attributes: { ...arch.attributes },
+    personality: { ...arch.personality },
+    fatigue: 0,
+    role: benchRoleLabels[i] ?? 'CM',
+    duty: 'SUPPORT' as const,
+    formationAnchor: benchPosition,
+    name: homeBenchNames[i],
+  } as PlayerState));
+
+  const awayBench: PlayerState[] = awayBenchArchetypes.map((arch, i) => ({
+    id: `away-bench-${i}`,
+    teamId: 'away' as TeamId,
+    position: benchPosition,
+    velocity: Vec2.zero(),
+    attributes: { ...arch.attributes },
+    personality: { ...arch.personality },
+    fatigue: 0,
+    role: benchRoleLabels[i] ?? 'CM',
+    duty: 'SUPPORT' as const,
+    formationAnchor: benchPosition,
+    name: awayBenchNames[i],
+  } as PlayerState));
+
+  return { home, away, homeBench, awayBench };
 }
 
 // ============================================================
@@ -278,6 +362,10 @@ export class SimulationEngine {
   private carrierKickLockoutUntil: number = 0;    // carrier can't kick until this tick (prevents micro-pass spam)
   private homeTacticalConfig: TacticalConfig;
   private awayTacticalConfig: TacticalConfig;
+  private homeBench: PlayerState[];
+  private awayBench: PlayerState[];
+  private homeSubCount: number = 0;  // substitutions made for home team this match
+  private awaySubCount: number = 0;  // substitutions made for away team this match
 
   constructor(config: MatchConfig) {
     let initialSnapshot = createInitialSnapshot(config.homeRoster, config.awayRoster);
@@ -304,6 +392,8 @@ export class SimulationEngine {
     this.grid = new SpatialGrid(PITCH_WIDTH, PITCH_HEIGHT, 10);
     this.homeTacticalConfig = config.homeTacticalConfig ?? DEFAULT_TACTICAL_CONFIG;
     this.awayTacticalConfig = config.awayTacticalConfig ?? DEFAULT_TACTICAL_CONFIG;
+    this.homeBench = config.homeBench ? [...config.homeBench] : [];
+    this.awayBench = config.awayBench ? [...config.awayBench] : [];
   }
 
   /**
@@ -324,6 +414,71 @@ export class SimulationEngine {
     this.awayTacticalConfig = config;
     // Update player role and duty fields in current snapshot
     this.snapshot = this._applyTacticConfigToSnapshot(this.snapshot, config, 'away');
+  }
+
+  /**
+   * Substitute a player on the pitch with a bench player.
+   * The incoming player inherits the outgoing player's formationAnchor, role, and duty.
+   * Incoming player starts with fatigue: 0 (fresh sub) and retains their own attributes/personality.
+   * Maximum 3 substitutions per team per match (TAC-05).
+   *
+   * Returns true if the substitution was applied; false if rejected (max subs, invalid IDs, etc.).
+   */
+  substitutePlayer(teamId: TeamId, outPlayerId: string, inPlayer: PlayerState): boolean {
+    // Check substitution limit
+    const subCount = teamId === 'home' ? this.homeSubCount : this.awaySubCount;
+    if (subCount >= 3) return false;
+
+    const currentPlayers = this.snapshot.players;
+    const outIdx = currentPlayers.findIndex(p => p.id === outPlayerId && p.teamId === teamId);
+    if (outIdx < 0) return false;
+
+    const outPlayer = currentPlayers[outIdx]!;
+
+    // Remove the bench player from the bench list
+    const bench = teamId === 'home' ? this.homeBench : this.awayBench;
+    const benchIdx = bench.findIndex(p => p.id === inPlayer.id);
+    if (benchIdx < 0) return false; // inPlayer not on bench (guard against invalid state)
+    bench.splice(benchIdx, 1);
+
+    // Build substituted player: inPlayer's attributes/personality, outPlayer's position/anchor/role/duty
+    const substitutedPlayer: PlayerState = {
+      ...inPlayer,
+      position: outPlayer.formationAnchor,
+      velocity: Vec2.zero(),
+      fatigue: 0, // fresh sub
+      role: outPlayer.role,
+      duty: outPlayer.duty,
+      formationAnchor: outPlayer.formationAnchor,
+    };
+
+    // Update snapshot
+    const updatedPlayers = [...currentPlayers];
+    updatedPlayers[outIdx] = substitutedPlayer;
+    this.snapshot = { ...this.snapshot, players: updatedPlayers };
+
+    // Track substitution count
+    if (teamId === 'home') {
+      this.homeSubCount++;
+    } else {
+      this.awaySubCount++;
+    }
+
+    return true;
+  }
+
+  /**
+   * Returns the number of substitutions made for the given team this match.
+   */
+  getSubstitutionCount(teamId: TeamId): number {
+    return teamId === 'home' ? this.homeSubCount : this.awaySubCount;
+  }
+
+  /**
+   * Returns the current bench players for the given team (players not yet substituted in).
+   */
+  getBench(teamId: TeamId): PlayerState[] {
+    return teamId === 'home' ? [...this.homeBench] : [...this.awayBench];
   }
 
   /**

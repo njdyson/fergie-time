@@ -51,14 +51,14 @@ export function setSpeedMultiplier(value: number): void {
  * @param engine   - SimulationEngine to tick
  * @param renderer - CanvasRenderer to draw each frame
  */
-export function startGameLoop(engine: SimulationEngine, renderer: CanvasRenderer): void {
+export function startGameLoop(engine: SimulationEngine, renderer: CanvasRenderer, startPaused: boolean = false): void {
   if (animationFrameId !== null) {
     stopGameLoop();
   }
 
-  // Reset speed state
+  // Reset speed to 1x; pause state controlled by caller
   speedMultiplier = 1;
-  paused = false;
+  paused = startPaused;
 
   // Register speed control key bindings
   const keyHandler = (e: KeyboardEvent): void => {

@@ -33,7 +33,22 @@ const shootConsiderations: readonly ConsiderationFn[] = [
   (ctx) => agentHasBall(ctx) ? 1 : 0,
   (ctx) => 1 - sigmoid(ctx.distanceToOpponentGoal / 105, 20, 0.24),
   (ctx) => ctx.self.attributes.shooting,
-  (ctx) => 1 - exponentialDecay(ctx.nearestDefenderDistance / 30, 2),
+  // Defender proximity: penalise when defenders are close, BUT reduce the penalty
+  // when near goal — a striker through on goal should still shoot with a trailing defender
+  (ctx) => {
+    const defenderScore = 1 - exponentialDecay(ctx.nearestDefenderDistance / 30, 2);
+    const goalProximity = Math.max(0, 1 - ctx.distanceToOpponentGoal / 25);
+    return defenderScore + (1 - defenderScore) * goalProximity * 0.7;
+  },
+  // GK position: boost when keeper is off their line (easier to score / chip)
+  (ctx) => {
+    const gk = ctx.opponents.find(p => p.role === 'GK');
+    if (!gk) return 1; // no GK = open goal
+    const goalX = ctx.self.teamId === 'home' ? 105 : 0;
+    const gkDistFromGoal = Math.abs(gk.position.x - goalX);
+    // GK on line (~0m): 0.5 (neutral). GK 15m+ out: 1.0 (should shoot)
+    return Math.min(1, 0.5 + gkDistFromGoal / 30);
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -41,7 +56,7 @@ const shootConsiderations: readonly ConsiderationFn[] = [
 // ─────────────────────────────────────────────────────────────────────────────
 const passForwardConsiderations: readonly ConsiderationFn[] = [
   (ctx) => agentHasBall(ctx) ? 1 : 0,
-  (ctx) => linear(ctx.distanceToOpponentGoal / 105, -0.8, 0.9),
+  (ctx) => linear(ctx.distanceToOpponentGoal / 105, 0.6, 0.2),
   (ctx) => ctx.self.attributes.passing,
   (ctx) => exponentialDecay(ctx.nearestTeammateDistance / 50, 1.5),
 ];
@@ -74,6 +89,8 @@ const holdShieldConsiderations: readonly ConsiderationFn[] = [
   (ctx) => 1 - exponentialDecay(1 / Math.max(ctx.nearestDefenderDistance, 0.5), 3),
   (ctx) => ctx.self.attributes.strength,
   (ctx) => exponentialDecay(ctx.nearestTeammateDistance / 30, 1.2),
+  // Discourage shielding deep in own half — defenders should distribute, not hold indefinitely
+  (ctx) => linear(1 - ctx.distanceToOpponentGoal / 105, 0.5, 0.5),
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -92,7 +109,12 @@ const moveToPositionConsiderations: readonly ConsiderationFn[] = [
 // Reads TUNING.pressDecayK and TUNING.pressNorm live
 const pressConsiderations: readonly ConsiderationFn[] = [
   (ctx) => ctx.isInPossessionTeam ? 0 : 1,
-  (ctx) => exponentialDecay(ctx.distanceToBall / TUNING.pressNorm, TUNING.pressDecayK),
+  (ctx) => {
+    const norm = ctx.ball.carrierId === null
+      ? TUNING.pressNorm * TUNING.looseBallPressBoost
+      : TUNING.pressNorm;
+    return exponentialDecay(ctx.distanceToBall / norm, TUNING.pressDecayK);
+  },
   (ctx) => linear(ctx.distanceToOpponentGoal / 105, 0.6, 0.2),
   (ctx) => ctx.self.attributes.tackling,
   // Press rank: penalise if teammates are already closer to ball (prevents clumping)

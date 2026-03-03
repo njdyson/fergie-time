@@ -14,8 +14,11 @@ const PITCH_H = 68;
 const PITCH_PADDING = 20;
 
 // Player rendering
-const PLAYER_RADIUS = 6; // canvas pixels
-const DIRECTION_LINE_LENGTH = 10; // canvas pixels
+const PLAYER_RADIUS = 10; // canvas pixels
+const DIRECTION_LINE_LENGTH = 12; // canvas pixels
+const SHIRT_FONT = 'bold 9px sans-serif';
+const ROLE_FONT = '8px monospace';
+const ROLE_LABEL_OFFSET_Y = -14; // pixels above player center
 
 // Ball rendering
 const BALL_BASE_RADIUS = 5; // canvas pixels at ground level
@@ -27,6 +30,8 @@ const SHADOW_RY_BASE = 3; // shadow ellipse y-radius at ground
 // Team colors
 const HOME_COLOR = '#3366cc';
 const AWAY_COLOR = '#cc3333';
+const HOME_GK_COLOR = '#66cc99';
+const AWAY_GK_COLOR = '#ffcc33';
 const BALL_FILL = '#ffffff';
 const BALL_STROKE = '#222222';
 
@@ -87,19 +92,6 @@ export class CanvasRenderer {
 
     // Re-layout on window resize
     window.addEventListener('resize', () => this.resize());
-
-    // Key bindings for overlay toggles
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 's' || e.key === 'S') {
-        this.showStats = !this.showStats;
-      }
-      if (e.key === 'd' || e.key === 'D') {
-        this.showDebug = !this.showDebug;
-      }
-      if (e.key === 'h' || e.key === 'H') {
-        this.showHeatmap = !this.showHeatmap;
-      }
-    });
   }
 
   /**
@@ -107,11 +99,11 @@ export class CanvasRenderer {
    * Canvas fills available width with the correct 105:68 aspect ratio.
    */
   private resize(): void {
-    const availableWidth = this.canvas.parentElement?.clientWidth ?? window.innerWidth;
-    // Reserve space for controls bar + gap below canvas
+    const availableWidth = window.innerWidth;
+    // Reserve space for controls bar + commentary strip (fixed 58px) + gaps
     const controlsEl = document.getElementById('controls');
     const controlsHeight = controlsEl ? controlsEl.offsetHeight + 16 : 50;
-    const availableHeight = window.innerHeight - controlsHeight;
+    const availableHeight = window.innerHeight - controlsHeight - 58;
 
     // Compute canvas size preserving aspect ratio within available space
     const aspectRatio = PITCH_W / PITCH_H;
@@ -173,6 +165,9 @@ export class CanvasRenderer {
       this.drawHeatmap(ctx, curr);
     }
 
+    // 3b. Team direction indicators
+    this.drawDirectionIndicators(ctx);
+
     // 4. Players
     for (let i = 0; i < curr.players.length; i++) {
       const currPlayer = curr.players[i];
@@ -209,14 +204,42 @@ export class CanvasRenderer {
     const y = lerp(prev.position.y, curr.position.y, alpha);
     const c = this.pitchToCanvas(new Vec2(x, y));
 
+    // Pick fill colour: GK gets a different colour
+    let fillColor: string;
+    if (curr.role === 'GK') {
+      fillColor = curr.teamId === 'home' ? HOME_GK_COLOR : AWAY_GK_COLOR;
+    } else {
+      fillColor = curr.teamId === 'home' ? HOME_COLOR : AWAY_COLOR;
+    }
+
     // Player circle
     ctx.beginPath();
     ctx.arc(c.x, c.y, PLAYER_RADIUS, 0, Math.PI * 2);
-    ctx.fillStyle = curr.teamId === 'home' ? HOME_COLOR : AWAY_COLOR;
+    ctx.fillStyle = fillColor;
     ctx.fill();
     ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 1.5;
     ctx.stroke();
+
+    // Shirt number (extract from ID: "home-0" → 1, "away-10" → 11)
+    const idParts = curr.id.split('-');
+    const shirtNum = String(parseInt(idParts[idParts.length - 1]!, 10) + 1);
+    ctx.save();
+    ctx.font = SHIRT_FONT;
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(shirtNum, c.x, c.y + 1);
+    ctx.restore();
+
+    // Role label above player
+    ctx.save();
+    ctx.font = ROLE_FONT;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(curr.role, c.x, c.y + ROLE_LABEL_OFFSET_Y);
+    ctx.restore();
 
     // Direction indicator line (from velocity)
     const vx = lerp(prev.velocity.x, curr.velocity.x, alpha);
@@ -234,6 +257,31 @@ export class CanvasRenderer {
       ctx.lineWidth = 1.5;
       ctx.stroke();
     }
+  }
+
+  // ============================================================
+  // Team direction indicators
+  // ============================================================
+
+  private drawDirectionIndicators(ctx: CanvasRenderingContext2D): void {
+    const y = this.offsetY - 6;
+
+    ctx.save();
+    ctx.font = 'bold 11px sans-serif';
+    ctx.textBaseline = 'bottom';
+
+    // Home shoots right → (left side of pitch)
+    ctx.fillStyle = HOME_COLOR;
+    ctx.textAlign = 'left';
+    ctx.fillText('HOME \u2192', this.offsetX + 4, y);
+
+    // Away shoots left ← (right side of pitch)
+    ctx.fillStyle = AWAY_COLOR;
+    ctx.textAlign = 'right';
+    const pitchRight = this.offsetX + PITCH_W * this.scaleX;
+    ctx.fillText('\u2190 AWAY', pitchRight - 4, y);
+
+    ctx.restore();
   }
 
   // ============================================================

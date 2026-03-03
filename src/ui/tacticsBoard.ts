@@ -1,5 +1,5 @@
 import { Vec2 } from '../simulation/math/vec2.ts';
-import type { FormationId, Role, Duty } from '../simulation/types.ts';
+import type { FormationId, Role, Duty, PlayerState } from '../simulation/types.ts';
 import { FORMATION_TEMPLATES, autoAssignRole } from '../simulation/tactical/formation.ts';
 import type { TacticalConfig } from '../simulation/engine.ts';
 
@@ -83,6 +83,17 @@ export class TacticsBoard {
   private selectedIndex: number = -1;
   private dutyPopup: DutyPopup | null = null;
 
+  // Bench / substitution state
+  private subsRemaining: number = 3;
+  // Maps pitch player index -> incoming bench player (pending substitution)
+  private pendingSubsByPitchIndex: Map<number, PlayerState> = new Map();
+  // Whether a pitch player is selected for substitution (awaiting bench pick)
+  private subSelectIndex: number = -1;
+  // A bench player selected to come on (awaiting pitch player pick) — set by main.ts
+  private pendingBenchPlayer: PlayerState | null = null;
+  // Optional callback invoked after a substitution is queued (pitch player index)
+  _onSubstitutionQueued: ((pitchIndex: number) => void) | undefined = undefined;
+
   // ──────────────────────────────────────────────────────────
   // Construction
   // ──────────────────────────────────────────────────────────
@@ -146,6 +157,81 @@ export class TacticsBoard {
       roles: [...this.roles],
       duties: [...this.duties],
     };
+  }
+
+  /**
+   * Set how many substitutions are still available.
+   * Called by main.ts when the halftime tactics board is shown.
+   */
+  setSubsRemaining(count: number): void {
+    this.subsRemaining = count;
+    this.render();
+  }
+
+  /**
+   * Set a bench player as "pending to come on" — the next pitch player click will queue them.
+   * Pass null to cancel the pending bench selection.
+   * Called by main.ts when a bench player button is clicked.
+   */
+  setPendingBenchPlayer(player: PlayerState | null): void {
+    this.pendingBenchPlayer = player;
+    this.subSelectIndex = -1;
+    this.dutyPopup = null;
+    this.render();
+  }
+
+  /**
+   * Get the currently pending bench player (null = none selected).
+   */
+  getPendingBenchPlayer(): PlayerState | null {
+    return this.pendingBenchPlayer;
+  }
+
+  /**
+   * Cancel a pending substitution (undo) — removes the queued sub for a pitch index.
+   */
+  cancelSubstitution(pitchIndex: number): void {
+    this.pendingSubsByPitchIndex.delete(pitchIndex);
+    this.render();
+  }
+
+  /**
+   * Returns the pending substitutions as { outId, inPlayer } pairs.
+   * Called by main.ts at "Start 2nd Half" to apply subs to the engine.
+   * outId uses the current player's id at that pitch index position.
+   */
+  getSubstitutions(): Array<{ outId: string; inPlayer: PlayerState }> {
+    const result: Array<{ outId: string; inPlayer: PlayerState }> = [];
+    for (const [pitchIndex, inPlayer] of this.pendingSubsByPitchIndex) {
+      // outId: home team players are indexed 0..10 as home-0..home-10
+      result.push({ outId: `home-${pitchIndex}`, inPlayer });
+    }
+    return result;
+  }
+
+  /**
+   * Returns the set of pitch player indices that have pending subs.
+   * Used by main.ts to know which bench players are "used".
+   */
+  getSubbedOutIndices(): Set<number> {
+    return new Set(this.pendingSubsByPitchIndex.keys());
+  }
+
+  /**
+   * Returns which pitch player index is currently selected for substitution, or -1.
+   */
+  getSubSelectIndex(): number {
+    return this.subSelectIndex;
+  }
+
+  /**
+   * Reset substitution state (called when a new match starts or returning to tactics from match).
+   */
+  resetSubstitutions(): void {
+    this.pendingSubsByPitchIndex = new Map();
+    this.subSelectIndex = -1;
+    this.subsRemaining = 3;
+    this.pendingBenchPlayer = null;
   }
 
   /** Show the tactics board canvas */
@@ -259,7 +345,22 @@ export class TacticsBoard {
       this._drawPlayer(i);
     }
 
-    // 9. Duty popup (on top)
+    // 9. Pending bench pick overlay — prompt user to click a player
+    if (this.pendingBenchPlayer !== null) {
+      const ctx2 = this.ctx;
+      ctx2.save();
+      ctx2.fillStyle = 'rgba(251, 146, 60, 0.12)';
+      ctx2.fillRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+      ctx2.font = 'bold 12px monospace';
+      ctx2.fillStyle = 'rgba(251, 146, 60, 0.9)';
+      ctx2.textAlign = 'center';
+      ctx2.textBaseline = 'top';
+      const inName = this.pendingBenchPlayer.name ?? this.pendingBenchPlayer.id;
+      ctx2.fillText(`Click player to sub off for ${inName}`, w / 2, tl.y + 4);
+      ctx2.restore();
+    }
+
+    // 10. Duty popup (on top)
     if (this.dutyPopup !== null) {
       this._drawDutyPopup(this.dutyPopup);
     }
@@ -313,9 +414,17 @@ export class TacticsBoard {
     const duty = this.duties[i] ?? 'SUPPORT';
     const isGK = role === 'GK';
     const isSelected = this.selectedIndex === i;
+    const isSubbedOut = this.pendingSubsByPitchIndex.has(i);
+    const isSubSelectTarget = this.subSelectIndex === i;
+    const inPlayer = this.pendingSubsByPitchIndex.get(i);
 
-    // Highlight ring for selected player
-    if (isSelected) {
+    ctx.save();
+    if (isSubbedOut) {
+      ctx.globalAlpha = 0.38;
+    }
+
+    // Highlight ring for selected player (duty selection)
+    if (isSelected && !isSubbedOut) {
       ctx.beginPath();
       ctx.arc(c.x, c.y, PLAYER_RADIUS + 5, 0, Math.PI * 2);
       ctx.strokeStyle = PLAYER_SELECTED_COLOR;
@@ -323,35 +432,48 @@ export class TacticsBoard {
       ctx.stroke();
     }
 
+    // Orange ring for player selected for substitution
+    if (isSubSelectTarget) {
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, PLAYER_RADIUS + 5, 0, Math.PI * 2);
+      ctx.strokeStyle = '#fb923c';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+    }
+
     // Player dot
     ctx.beginPath();
     ctx.arc(c.x, c.y, PLAYER_RADIUS, 0, Math.PI * 2);
-    ctx.fillStyle = isGK ? PLAYER_GK_COLOR : PLAYER_COLOR;
+    ctx.fillStyle = isGK ? PLAYER_GK_COLOR : (isSubbedOut ? '#475569' : PLAYER_COLOR);
     ctx.fill();
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
     // Shirt number
-    ctx.save();
     ctx.font = SHIRT_FONT;
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(String(i + 1), c.x, c.y + 1);
-    ctx.restore();
 
-    // Role label below dot
-    ctx.save();
+    // Role label below dot (show incoming player name if subbed)
     ctx.font = ROLE_FONT;
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    ctx.fillStyle = isSubbedOut ? 'rgba(251, 146, 60, 0.9)' : 'rgba(255, 255, 255, 0.8)';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    ctx.fillText(role, c.x, c.y + PLAYER_RADIUS + 3);
+    if (isSubbedOut && inPlayer) {
+      ctx.fillText((inPlayer.name ?? inPlayer.id).split(' ').pop() ?? role, c.x, c.y + PLAYER_RADIUS + 3);
+    } else {
+      ctx.fillText(role, c.x, c.y + PLAYER_RADIUS + 3);
+    }
+
     ctx.restore();
 
-    // Duty indicator
-    this._drawDutyIndicator(c.x, c.y, duty);
+    // Duty indicator (only for non-subbed-out players)
+    if (!isSubbedOut) {
+      this._drawDutyIndicator(c.x, c.y, duty);
+    }
   }
 
   private _drawDutyIndicator(cx: number, cy: number, duty: Duty): void {
@@ -578,6 +700,24 @@ export class TacticsBoard {
   }
 
   private _onPointerDown(canvasX: number, canvasY: number): void {
+    // If a bench player is pending, clicking a pitch player queues the substitution
+    if (this.pendingBenchPlayer !== null) {
+      const idx = this._hitTestPlayer(canvasX, canvasY);
+      if (idx >= 0 && !this.pendingSubsByPitchIndex.has(idx) && this.subsRemaining > 0) {
+        this.pendingSubsByPitchIndex.set(idx, this.pendingBenchPlayer);
+        this.subSelectIndex = -1;
+        this.pendingBenchPlayer = null;
+        this.render();
+        // Notify main.ts that a substitution was queued (via callback if registered)
+        this._onSubstitutionQueued?.(idx);
+        return;
+      }
+      // Clicked on empty or already-subbed player — cancel bench selection
+      this.pendingBenchPlayer = null;
+      this.render();
+      return;
+    }
+
     // If duty popup is open, check for button clicks
     if (this.dutyPopup !== null) {
       const duty = this._hitTestDutyPopup(canvasX, canvasY);

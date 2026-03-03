@@ -119,11 +119,15 @@ formationBtns.forEach(btn => {
 // ============================================================
 
 const btnTacticsKickoff = document.getElementById('btn-tactics-kickoff') as HTMLButtonElement | null;
+const btnTacticsSecondHalf = document.getElementById('btn-tactics-second-half') as HTMLButtonElement | null;
 const btnKickoff = document.getElementById('btn-kickoff') as HTMLButtonElement | null;
 const btnPause   = document.getElementById('btn-pause')   as HTMLButtonElement | null;
 const btnReset   = document.getElementById('btn-reset')   as HTMLButtonElement | null;
 const speedSlider = document.getElementById('speed-slider') as HTMLInputElement | null;
 const speedLabel  = document.getElementById('speed-label')  as HTMLElement | null;
+const benchPanel = document.getElementById('bench-panel') as HTMLElement | null;
+const benchPlayersEl = document.getElementById('bench-players') as HTMLElement | null;
+const benchSubCounter = document.getElementById('bench-sub-counter') as HTMLElement | null;
 
 // ============================================================
 // Renderer (created once, reused across resets)
@@ -142,35 +146,41 @@ renderer.showHeatmap = false;
 let engine: SimulationEngine;
 let debugOverlay: DebugOverlay;
 let fullTimePoll: ReturnType<typeof setInterval> | null = null;
+let halfTimePoll: ReturnType<typeof setInterval> | null = null;
 let commentaryPoll: ReturnType<typeof setInterval> | null = null;
 let fullTimeLogged = false;
+let halftimeHandled = false;
 let lastCommentaryIdx = 0;
 const commentaryEl = document.getElementById('commentary');
 
+
 function startMatch(): void {
-  // Stop any existing loop
+  // Stop any existing loop and polls
   stopGameLoop();
-  if (fullTimePoll !== null) {
-    clearInterval(fullTimePoll);
-    fullTimePoll = null;
-  }
-  if (commentaryPoll !== null) {
-    clearInterval(commentaryPoll);
-    commentaryPoll = null;
-  }
+  if (fullTimePoll !== null) { clearInterval(fullTimePoll); fullTimePoll = null; }
+  if (halfTimePoll !== null) { clearInterval(halfTimePoll); halfTimePoll = null; }
+  if (commentaryPoll !== null) { clearInterval(commentaryPoll); commentaryPoll = null; }
   fullTimeLogged = false;
+  halftimeHandled = false;
   lastCommentaryIdx = 0;
   if (commentaryEl) commentaryEl.innerHTML = '';
+
+  // Reset substitution state for new match
+  tacticsBoard.resetSubstitutions();
+  hideBenchPanel();
 
   // Get tactical config from tactics board
   const tacticalConfig = tacticsBoard.getTacticalConfig();
 
-  // Build engine and debug overlay
-  const { home, away } = createMatchRosters();
+  // Build engine and debug overlay (now with bench players)
+  const { home, away, homeBench, awayBench } = createMatchRosters();
+
   engine = new SimulationEngine({
     seed: 'fergie-time-match-' + Date.now(),
     homeRoster: home,
     awayRoster: away,
+    homeBench,
+    awayBench,
     homeTacticalConfig: tacticalConfig,
   });
   debugOverlay = new DebugOverlay(debugCanvasEl, engine.decisionLog);
@@ -190,8 +200,19 @@ function startMatch(): void {
     }
   };
 
+  // Poll for halftime
+  halfTimePoll = setInterval(() => {
+    if (!engine) return;
+    const snap = engine.getCurrentSnapshot();
+    if (snap.matchPhase === MatchPhase.HALFTIME && !halftimeHandled) {
+      halftimeHandled = true;
+      handleHalftime();
+    }
+  }, 250);
+
   // Poll for full-time to log final stats
   fullTimePoll = setInterval(() => {
+    if (!engine) return;
     const snap = engine.getCurrentSnapshot();
     if (snap.matchPhase === MatchPhase.FULL_TIME && !fullTimeLogged) {
       fullTimeLogged = true;
@@ -206,6 +227,130 @@ function startMatch(): void {
   startGameLoop(engine, renderer, true);
   updatePauseButton();
   if (btnKickoff) btnKickoff.style.display = '';
+}
+
+// ============================================================
+// Halftime flow
+// ============================================================
+
+function handleHalftime(): void {
+  // Pause the match
+  setPaused(true);
+  updatePauseButton();
+
+  // Switch to tactics view (tactics board for halftime changes)
+  showTacticsView();
+
+  // Show "Start 2nd Half" button instead of "Kick Off"
+  if (btnTacticsKickoff) btnTacticsKickoff.style.display = 'none';
+  if (btnTacticsSecondHalf) btnTacticsSecondHalf.style.display = '';
+
+  // Show bench panel with current bench (from engine, in case subs were made — but at halftime, none yet)
+  const benchFromEngine = engine.getBench('home');
+  showBenchPanel(benchFromEngine, engine.getSubstitutionCount('home'));
+
+  // Wire sub queued callback so bench buttons update
+  tacticsBoard._onSubstitutionQueued = (_pitchIndex) => {
+    updateBenchPanel();
+    tacticsBoard.render();
+  };
+
+  console.log('[Fergie Time] Halftime — tactics board shown. Make changes and click "Start 2nd Half".');
+}
+
+function showBenchPanel(bench: import('./simulation/types.ts').PlayerState[], subsUsed: number): void {
+  if (!benchPanel || !benchPlayersEl || !benchSubCounter) return;
+
+  // Update remaining subs
+  const subsRemaining = 3 - subsUsed;
+  tacticsBoard.setSubsRemaining(subsRemaining);
+
+  // Build bench player buttons
+  benchPlayersEl.innerHTML = '';
+
+  for (const player of bench) {
+    const btn = document.createElement('button');
+    btn.className = 'bench-player-btn';
+    btn.dataset.playerId = player.id;
+    btn.disabled = subsRemaining <= 0;
+
+    const roleEl = document.createElement('span');
+    roleEl.className = 'bench-player-role';
+    roleEl.textContent = String(player.role);
+
+    const nameEl = document.createElement('span');
+    nameEl.className = 'bench-player-name';
+    nameEl.textContent = player.name ?? player.id;
+
+    const paceEl = document.createElement('span');
+    paceEl.className = 'bench-player-pace';
+    paceEl.textContent = `${Math.round(player.attributes.pace * 99)}`;
+    paceEl.title = 'Pace';
+
+    btn.appendChild(roleEl);
+    btn.appendChild(nameEl);
+    btn.appendChild(paceEl);
+
+    btn.addEventListener('click', () => {
+      if (tacticsBoard.getPendingBenchPlayer()?.id === player.id) {
+        // Deselect if clicking same bench player
+        tacticsBoard.setPendingBenchPlayer(null);
+        btn.classList.remove('selected');
+      } else {
+        // Deselect all, select this one
+        benchPlayersEl.querySelectorAll('.bench-player-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        tacticsBoard.setPendingBenchPlayer(player);
+      }
+    });
+
+    benchPlayersEl.appendChild(btn);
+  }
+
+  updateBenchSubCounter(subsUsed);
+  benchPanel.style.display = '';
+}
+
+function updateBenchPanel(): void {
+  if (!benchPlayersEl || !benchSubCounter) return;
+
+  // Count pending subs made via the tactics board
+  const subbedOutIndices = tacticsBoard.getSubbedOutIndices();
+  const subsUsed = subbedOutIndices.size;
+  const subsRemaining = 3 - engine.getSubstitutionCount('home') - subsUsed;
+
+  updateBenchSubCounter(engine.getSubstitutionCount('home') + subsUsed);
+
+  // Mark bench players that have been used (their pending sub is queued)
+  const pendingSubs = tacticsBoard.getSubstitutions();
+  const usedBenchIds = new Set(pendingSubs.map(s => s.inPlayer.id));
+
+  const btns = benchPlayersEl.querySelectorAll<HTMLButtonElement>('.bench-player-btn');
+  btns.forEach(btn => {
+    const pid = btn.dataset.playerId ?? '';
+    if (usedBenchIds.has(pid)) {
+      btn.classList.add('used');
+      btn.classList.remove('selected');
+      btn.disabled = true;
+    } else {
+      btn.disabled = subsRemaining <= 0;
+    }
+  });
+
+  tacticsBoard.setSubsRemaining(subsRemaining);
+}
+
+function updateBenchSubCounter(subsUsed: number): void {
+  if (!benchSubCounter) return;
+  benchSubCounter.textContent = `Subs: ${subsUsed}/3`;
+}
+
+function hideBenchPanel(): void {
+  if (benchPanel) benchPanel.style.display = 'none';
+  if (btnTacticsKickoff) btnTacticsKickoff.style.display = '';
+  if (btnTacticsSecondHalf) btnTacticsSecondHalf.style.display = 'none';
+  // Clear sub callback using void 0 (satisfies exactOptionalPropertyTypes)
+  tacticsBoard._onSubstitutionQueued = void 0;
 }
 
 function logFullTime(snap: SimSnapshot): void {
@@ -257,7 +402,7 @@ const COMMENTARY_BG_AWAY = 'rgba(100, 20, 30, 0.92)';
 const COMMENTARY_BG_NEUTRAL = 'rgba(26, 26, 46, 0.93)';
 
 function updateCommentary(): void {
-  if (!commentaryEl) return;
+  if (!commentaryEl || !engine) return;
 
   // Tint background based on possession team
   const snap = engine.getCurrentSnapshot();
@@ -343,6 +488,34 @@ btnTacticsKickoff?.addEventListener('click', () => {
   console.log('[Fergie Time] Kick off — formation:', tacticsBoard.getFormation());
 });
 
+// "Start 2nd Half" button — apply halftime changes and resume
+btnTacticsSecondHalf?.addEventListener('click', () => {
+  // Apply tactical config changes
+  const newConfig = tacticsBoard.getTacticalConfig();
+  engine.setHomeTactics(newConfig);
+
+  // Apply pending substitutions
+  const pendingSubs = tacticsBoard.getSubstitutions();
+  for (const sub of pendingSubs) {
+    const applied = engine.substitutePlayer('home', sub.outId, sub.inPlayer);
+    if (applied) {
+      console.log(`[Fergie Time] Sub: ${sub.outId} -> ${sub.inPlayer.name ?? sub.inPlayer.id}`);
+    }
+  }
+
+  // Hide bench panel, restore UI
+  hideBenchPanel();
+  tacticsBoard.resetSubstitutions();
+
+  // Switch to match view and unpause
+  showMatchView();
+  setPaused(false);
+  updatePauseButton();
+  halftimeHandled = true; // ensure we don't retrigger
+
+  console.log('[Fergie Time] 2nd half started — formation:', tacticsBoard.getFormation(), `(${pendingSubs.length} sub(s) applied)`);
+});
+
 // Match controls kick off button (for Space bar / direct click after match has started paused)
 btnKickoff?.addEventListener('click', () => kickoff());
 
@@ -354,7 +527,10 @@ btnPause?.addEventListener('click', () => {
 // Reset returns to tactics board
 btnReset?.addEventListener('click', () => {
   stopGameLoop();
+  if (halfTimePoll !== null) { clearInterval(halfTimePoll); halfTimePoll = null; }
   setSpeed(1);
+  hideBenchPanel();
+  tacticsBoard.resetSubstitutions();
   showTacticsView();
   console.log('[Fergie Time] Reset — returning to tactics board.');
 });
@@ -509,9 +685,14 @@ btnResetSettings?.addEventListener('click', () => {
 document.addEventListener('keydown', (e) => {
   if (e.key === ' ') {
     if (currentView === 'tactics') {
-      // Space on tactics board = kick off
-      showMatchView();
-      startMatch();
+      // Space on tactics board = kick off (only if not at halftime)
+      if (btnTacticsSecondHalf?.style.display !== 'none') {
+        // At halftime — Space triggers "Start 2nd Half"
+        btnTacticsSecondHalf?.click();
+      } else {
+        showMatchView();
+        startMatch();
+      }
     } else if (getIsPaused() && btnKickoff?.style.display !== 'none') {
       kickoff();
     } else {

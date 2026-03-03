@@ -95,6 +95,109 @@
         background: #334155;
       }
 
+      #btn-tactics-second-half {
+        padding: 6px 22px;
+        background: #7c3aed;
+        color: #ede9fe;
+        border: 1px solid #a78bfa;
+        border-radius: 4px;
+        font: bold 13px/1 monospace;
+        cursor: pointer;
+        user-select: none;
+        transition: background 0.1s;
+      }
+
+      #btn-tactics-second-half:hover {
+        background: #6d28d9;
+      }
+
+      /* ── Bench panel ───────────────────────────────────────── */
+      #bench-panel {
+        width: 100%;
+        max-width: 600px;
+        background: #0f172a;
+        border: 1px solid #334155;
+        border-radius: 6px;
+        padding: 8px 10px;
+        margin-top: 2px;
+      }
+
+      .bench-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 6px;
+      }
+
+      .bench-title {
+        font: bold 11px/1 monospace;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      .bench-sub-counter {
+        font: bold 12px/1 monospace;
+        color: #fb923c;
+      }
+
+      .bench-players {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+      }
+
+      .bench-player-btn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        background: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background 0.1s, border-color 0.1s;
+        min-width: 120px;
+      }
+
+      .bench-player-btn:hover:not(:disabled) {
+        background: #334155;
+        border-color: #fb923c;
+      }
+
+      .bench-player-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+
+      .bench-player-btn.selected {
+        background: #451a03;
+        border-color: #fb923c;
+      }
+
+      .bench-player-btn.used {
+        opacity: 0.38;
+        cursor: not-allowed;
+        text-decoration: line-through;
+      }
+
+      .bench-player-role {
+        font: bold 10px/1 monospace;
+        color: #94a3b8;
+        min-width: 24px;
+      }
+
+      .bench-player-name {
+        font: 11px/1 monospace;
+        color: #e2e8f0;
+        flex: 1;
+      }
+
+      .bench-player-pace {
+        font: 10px/1 monospace;
+        color: #60a5fa;
+      }
+
       /* ── Match view ────────────────────────────────────────── */
       #match-canvas {
         display: block;
@@ -345,6 +448,15 @@
           <button class="formation-btn" data-formation="4-2-3-1">4-2-3-1</button>
           <div class="tactics-sep"></div>
           <button id="btn-tactics-kickoff" title="Start the match with this formation">Kick Off</button>
+          <button id="btn-tactics-second-half" style="display:none" title="Apply changes and start the second half">Start 2nd Half</button>
+        </div>
+        <!-- Bench panel — shown at halftime -->
+        <div id="bench-panel" style="display:none">
+          <div class="bench-header">
+            <span class="bench-title">Bench</span>
+            <span id="bench-sub-counter" class="bench-sub-counter">Subs: 0/3</span>
+          </div>
+          <div id="bench-players" class="bench-players"></div>
         </div>
       </div>
 
