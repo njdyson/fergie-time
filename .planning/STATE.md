@@ -106,5 +106,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Completed 02-tactical-layer/02-02-PLAN.md
+Stopped at: Checkpoint 02-03 Task 2 — human-verify halftime flow, formations, and substitutions
 Resume file: .planning/phases/02-tactical-layer/02-03-PLAN.md
