@@ -16,9 +16,9 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **ENG-05**: Gaussian noise added to utility scores, scaled by (1 - composure), producing realistic decision variance
 - [x] **ENG-06**: Fatigue attenuates physical attributes on a glycogen-depletion curve (gradual through 60min, steep final quarter)
 - [x] **ENG-07**: Fatigue interpolates personality values toward conservative defaults (personality erosion)
-- [ ] **ENG-08**: Tackle success resolved by comparing physical/technical attributes with positional geometry modifiers
-- [ ] **ENG-09**: Shielding modeled as spatial exclusion zone scaled by strength
-- [ ] **ENG-10**: Aerial contests resolved by Z-intercept timing with contest window
+- [x] **ENG-08**: Tackle success resolved by comparing physical/technical attributes with positional geometry modifiers
+- [x] **ENG-09**: Shielding modeled as spatial exclusion zone scaled by strength
+- [x] **ENG-10**: Aerial contests resolved by Z-intercept timing with contest window
 - [x] **ENG-11**: Goals detected when ball crosses goal line below crossbar height
 - [ ] **ENG-12**: Match statistics accumulated from agent decisions (shots, possession, passes, tackles)
 - [x] **ENG-13**: Match progresses through kickoff, first half, halftime, second half, full-time states
@@ -103,9 +103,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ENG-05 | Phase 1 | Complete |
 | ENG-06 | Phase 1 | Complete |
 | ENG-07 | Phase 1 | Complete |
-| ENG-08 | Phase 1 | Pending |
-| ENG-09 | Phase 1 | Pending |
-| ENG-10 | Phase 1 | Pending |
+| ENG-08 | Phase 1 | Complete |
+| ENG-09 | Phase 1 | Complete |
+| ENG-10 | Phase 1 | Complete |
 | ENG-11 | Phase 1 | Complete (01-04) |
 | ENG-12 | Phase 1 | Pending |
 | ENG-13 | Phase 1 | Complete (01-04) |

@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-03T07:27:08Z"
+last_updated: "2026-03-03T07:34:34.643Z"
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 10
-  completed_plans: 7
+  completed_plans: 8
 ---
 
 # Project State
@@ -23,28 +23,28 @@ See: .planning/PROJECT.md (updated 2026-03-02)
 ## Current Position
 
 Phase: 1 of 4 (Engine Core)
-Plan: 7 of 10 in current phase
+Plan: 8 of 10 in current phase
 Status: In progress — executing
-Last activity: 2026-03-03 — Plan 01-07 complete: fatigue system — glycogen-depletion curve, attribute attenuation, personality erosion (38 tests)
+Last activity: 2026-03-03 — Plan 01-08 complete: contact resolution (tackle/shielding/aerial) and SpatialGrid (36 tests, 306 total)
 
-Progress: [███████░░░] 70%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
-- Average duration: ~4.4 min
-- Total execution time: ~31 min
+- Total plans completed: 8
+- Average duration: ~4.6 min
+- Total execution time: ~37 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 1. Engine Core | 7 | ~31 min | ~4.4 min |
+| 1. Engine Core | 8 | ~37 min | ~4.6 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-03 (3 min), 01-04 (3 min), 01-05 (5 min), 01-06 (7 min), 01-07 (3 min)
-- Trend: consistent ~3-7 min per plan
+- Last 5 plans: 01-04 (3 min), 01-05 (5 min), 01-06 (7 min), 01-07 (3 min), 01-08 (8 min)
+- Trend: consistent ~3-8 min per plan
 
 *Updated after each plan completion*
 
@@ -72,6 +72,9 @@ Recent decisions affecting current work:
 - [Phase 01-06]: NOISE_SCALE = 0.12 — gives composure=0.2 stdDev=0.096, sufficient for >30% action variance in ambiguous contexts (research recommendation was 0.08 but proved insufficient for the variance spec)
 - [Phase 01-07]: Physical vs technical attenuation split (0.5 vs 0.2 factor) — fatigue makes you slow, not unskilled; skill attributes degrade only mildly
 - [Phase 01-07]: Personality erosion from base values (not cumulative) — applyFatigueToPersonality takes canonical base, ensuring stateless per-tick calculation
+- [Phase 01-08]: Linear difference formula (tackling-dribbling+1)/2 for tackle base probability — ratio formula cannot reach >70% spec threshold after distance penalty
+- [Phase 01-08]: Threshold distance penalty: no penalty within 1m contact range, inverse-quadratic beyond — preserves close-range spec examples and far-range degradation
+- [Phase 01-08]: Hard MAX_TACKLE_REACH=4m with rng consumption on early return — deterministic rng stream preserved for match replay reproducibility
 
 ### Pending Todos
 
@@ -86,5 +89,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: 01-07-PLAN.md complete. Ready to execute 01-08-PLAN.md.
+Stopped at: 01-08-PLAN.md complete. Ready to execute 01-09-PLAN.md.
 Resume file: None
