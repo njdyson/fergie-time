@@ -1,4 +1,4 @@
-import type { AgentContext, ActionIntent, PersonalityVector, PersonalityWeightMatrix } from '../types.ts';
+import type { AgentContext, ActionIntent, PersonalityVector, PersonalityWeightMatrix, ActionType } from '../types.ts';
 import { gaussianNoise } from '../math/random.ts';
 import { dotProduct, NOISE_SCALE } from './personality.ts';
 import type { Action } from './actions.ts';
@@ -59,6 +59,14 @@ export function evaluateAction(
 }
 
 /**
+ * Hysteresis bonus added to the score of the agent's previous action.
+ * Prevents oscillation by requiring a new action to beat the current one by this margin.
+ * Value of 0.12 means ~12% advantage to current action — enough to prevent jitter
+ * from noise and minor context changes, but not enough to lock into bad decisions.
+ */
+export const HYSTERESIS_BONUS = 0.12;
+
+/**
  * Selects the best action for an agent given its current context.
  * Evaluates all actions and returns an ActionIntent for the highest-scoring one.
  *
@@ -69,6 +77,7 @@ export function evaluateAction(
  * @param personality - The agent's personality vector
  * @param weights - Personality weight matrix for all actions
  * @param rng - Seeded random number generator
+ * @param previousAction - The action this agent selected last tick (for hysteresis)
  * @returns ActionIntent identifying the selected action and the acting agent
  */
 export function selectAction(
@@ -76,13 +85,18 @@ export function selectAction(
   ctx: AgentContext,
   personality: PersonalityVector,
   weights: PersonalityWeightMatrix,
-  rng: () => number
+  rng: () => number,
+  previousAction?: ActionType,
 ): ActionIntent {
   let bestAction = actions[0]!;
   let bestScore = -Infinity;
 
   for (const action of actions) {
-    const score = evaluateAction(action, ctx, personality, weights, rng);
+    let score = evaluateAction(action, ctx, personality, weights, rng);
+    // Hysteresis: bonus for continuing the current action
+    if (previousAction !== undefined && action.id === previousAction) {
+      score += HYSTERESIS_BONUS;
+    }
     if (score > bestScore) {
       bestScore = score;
       bestAction = action;

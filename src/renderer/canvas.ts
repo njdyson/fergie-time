@@ -108,7 +108,10 @@ export class CanvasRenderer {
    */
   private resize(): void {
     const availableWidth = this.canvas.parentElement?.clientWidth ?? window.innerWidth;
-    const availableHeight = window.innerHeight;
+    // Reserve space for controls bar + gap below canvas
+    const controlsEl = document.getElementById('controls');
+    const controlsHeight = controlsEl ? controlsEl.offsetHeight + 16 : 50;
+    const availableHeight = window.innerHeight - controlsHeight;
 
     // Compute canvas size preserving aspect ratio within available space
     const aspectRatio = PITCH_W / PITCH_H;

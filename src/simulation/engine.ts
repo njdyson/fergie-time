@@ -4,7 +4,7 @@ import { createRng } from './math/random.ts';
 import { integrateBall } from './physics/ball.ts';
 import { advancePhase } from './match/phases.ts';
 import { checkGoal, createInitialSnapshot, applyGoal, getKickoffPositions, PITCH_WIDTH, PITCH_HEIGHT } from './match/state.ts';
-import { MatchPhase } from './types.ts';
+import { MatchPhase, ActionType } from './types.ts';
 import { ACTIONS } from './ai/actions.ts';
 import { selectAction, evaluateAction } from './ai/agent.ts';
 import { PERSONALITY_WEIGHTS } from './ai/personality.ts';
@@ -251,6 +251,7 @@ export class SimulationEngine {
   private readonly statsAccumulator: StatsAccumulator;
   readonly decisionLog: DecisionLog;
   private readonly grid: SpatialGrid;
+  private readonly previousActions: Map<string, ActionType> = new Map();
 
   constructor(config: MatchConfig) {
     let initialSnapshot = createInitialSnapshot(config.homeRoster, config.awayRoster);
@@ -432,9 +433,16 @@ export class SimulationEngine {
     });
 
     // ── 8. Select action for each player ─────────────────────────────────────
-    const intents: ActionIntent[] = contexts.map((ctx, i) =>
-      selectAction(ACTIONS, ctx, effectivePersonality[i]!, PERSONALITY_WEIGHTS, this.rng)
-    );
+    const intents: ActionIntent[] = contexts.map((ctx, i) => {
+      const playerId = playersWithAnchors[i]!.id;
+      const prevAction = this.previousActions.get(playerId);
+      return selectAction(ACTIONS, ctx, effectivePersonality[i]!, PERSONALITY_WEIGHTS, this.rng, prevAction);
+    });
+
+    // Store selected actions for next tick's hysteresis
+    for (let i = 0; i < intents.length; i++) {
+      this.previousActions.set(intents[i]!.agentId, intents[i]!.action);
+    }
 
     // ── 9. Log agent decisions ────────────────────────────────────────────────
     for (let i = 0; i < playersWithAnchors.length; i++) {
