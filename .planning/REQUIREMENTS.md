@@ -14,8 +14,8 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **ENG-03**: Each player agent evaluates 7 actions per tick via utility AI and selects highest-scoring
 - [x] **ENG-04**: Personality vector (directness, risk_appetite, composure, creativity, work_rate, aggression, anticipation, flair) weights every action score
 - [x] **ENG-05**: Gaussian noise added to utility scores, scaled by (1 - composure), producing realistic decision variance
-- [ ] **ENG-06**: Fatigue attenuates physical attributes on a glycogen-depletion curve (gradual through 60min, steep final quarter)
-- [ ] **ENG-07**: Fatigue interpolates personality values toward conservative defaults (personality erosion)
+- [x] **ENG-06**: Fatigue attenuates physical attributes on a glycogen-depletion curve (gradual through 60min, steep final quarter)
+- [x] **ENG-07**: Fatigue interpolates personality values toward conservative defaults (personality erosion)
 - [ ] **ENG-08**: Tackle success resolved by comparing physical/technical attributes with positional geometry modifiers
 - [ ] **ENG-09**: Shielding modeled as spatial exclusion zone scaled by strength
 - [ ] **ENG-10**: Aerial contests resolved by Z-intercept timing with contest window
@@ -101,8 +101,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ENG-03 | Phase 1 | Complete |
 | ENG-04 | Phase 1 | Complete |
 | ENG-05 | Phase 1 | Complete |
-| ENG-06 | Phase 1 | Pending |
-| ENG-07 | Phase 1 | Pending |
+| ENG-06 | Phase 1 | Complete |
+| ENG-07 | Phase 1 | Complete |
 | ENG-08 | Phase 1 | Pending |
 | ENG-09 | Phase 1 | Pending |
 | ENG-10 | Phase 1 | Pending |
