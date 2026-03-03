@@ -19,9 +19,9 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **ENG-08**: Tackle success resolved by comparing physical/technical attributes with positional geometry modifiers
 - [ ] **ENG-09**: Shielding modeled as spatial exclusion zone scaled by strength
 - [ ] **ENG-10**: Aerial contests resolved by Z-intercept timing with contest window
-- [ ] **ENG-11**: Goals detected when ball crosses goal line below crossbar height
+- [x] **ENG-11**: Goals detected when ball crosses goal line below crossbar height
 - [ ] **ENG-12**: Match statistics accumulated from agent decisions (shots, possession, passes, tackles)
-- [ ] **ENG-13**: Match progresses through kickoff, first half, halftime, second half, full-time states
+- [x] **ENG-13**: Match progresses through kickoff, first half, halftime, second half, full-time states
 - [ ] **ENG-14**: 2D top-down Canvas rendering with ball Z conveyed via sprite scaling and shadow offset
 - [x] **ENG-15**: Simulation runs at 30+ ticks/sec, separated from 60fps rendering
 
@@ -106,9 +106,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ENG-08 | Phase 1 | Pending |
 | ENG-09 | Phase 1 | Pending |
 | ENG-10 | Phase 1 | Pending |
-| ENG-11 | Phase 1 | Pending |
+| ENG-11 | Phase 1 | Complete (01-04) |
 | ENG-12 | Phase 1 | Pending |
-| ENG-13 | Phase 1 | Pending |
+| ENG-13 | Phase 1 | Complete (01-04) |
 | ENG-14 | Phase 1 | Pending |
 | ENG-15 | Phase 1 | Complete (01-01) |
 | TAC-01 | Phase 2 | Pending |

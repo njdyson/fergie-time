@@ -33,7 +33,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   - [x] 01-01-PLAN.md — Project scaffolding, core types, Vec2, math utilities
   - [ ] 01-02-PLAN.md — 2.5D ball physics (TDD)
   - [x] 01-03-PLAN.md — Steering behaviors (TDD)
-  - [ ] 01-04-PLAN.md — Match state machine and goal detection (TDD)
+  - [x] 01-04-PLAN.md — Match state machine and goal detection (TDD)
   - [ ] 01-05-PLAN.md — Simulation engine, game loop, and Canvas renderer
   - [ ] 01-06-PLAN.md — Utility AI agent system with personality weights (TDD)
   - [ ] 01-07-PLAN.md — Fatigue system with personality erosion (TDD)
@@ -82,7 +82,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Engine Core | 2/10 | In progress | - |
+| 1. Engine Core | 3/10 | In progress | - |
 | 2. Tactical Layer | 0/TBD | Not started | - |
 | 3. Management Shell | 0/TBD | Not started | - |
 | 4. Development Systems | 0/TBD | Not started | - |
