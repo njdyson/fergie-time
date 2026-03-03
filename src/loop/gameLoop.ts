@@ -16,6 +16,21 @@ let animationFrameId: number | null = null;
 let speedMultiplier: number = 1;
 let paused: boolean = false;
 
+/** Returns whether the game loop is currently paused. */
+export function getIsPaused(): boolean {
+  return paused;
+}
+
+/** Sets the pause state directly (used by UI controls). */
+export function setPaused(value: boolean): void {
+  paused = value;
+}
+
+/** Sets the speed multiplier directly (used by UI controls). */
+export function setSpeedMultiplier(value: number): void {
+  speedMultiplier = value;
+}
+
 /**
  * Starts the fixed-timestep game loop.
  *
