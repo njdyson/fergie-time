@@ -148,9 +148,9 @@ const holdShieldConsiderations: readonly ConsiderationFn[] = [
 // 2. Not in possession (no ball to hold up movement)
 // 3. Work rate — high work rate players prioritize positioning
 const moveToPositionConsiderations: readonly ConsiderationFn[] = [
-  // 1. Distance from anchor — linear: further = higher score
-  //    Normalised: max expected drift ~40m
-  (ctx) => linear(ctx.distanceToFormationAnchor / 40, 0.9, 0.1),
+  // 1. Distance from anchor — baseline 0.45 at position (="hold position" is valid),
+  //    rising to ~0.95 at 40m drift (="urgent return needed")
+  (ctx) => linear(ctx.distanceToFormationAnchor / 40, 0.5, 0.45),
 
   // 2. Not carrying the ball — if you have the ball, move-to-pos is low priority
   (ctx) => agentHasBall(ctx) ? 0.1 : 1.0,
@@ -171,8 +171,9 @@ const pressConsiderations: readonly ConsiderationFn[] = [
   // 1. Hard disqualifier — don't press when own team has ball
   (ctx) => ctx.isInPossessionTeam ? 0 : 1,
 
-  // 2. Proximity — exponential: very close to ball = high press score
-  (ctx) => exponentialDecay(ctx.distanceToBall / 40, 2.0),
+  // 2. Proximity — steep decay so only players within ~15m press effectively
+  //    At 5m: 0.47, at 10m: 0.22, at 15m: 0.11, at 20m+: ~0.05 (negligible)
+  (ctx) => exponentialDecay(ctx.distanceToBall / 20, 3.0),
 
   // 3. Defensive zone factor — pressing is more sensible when not in final third
   //    Use distanceToOpponentGoal: far from opponent goal (>50m) = defensive territory = good to press

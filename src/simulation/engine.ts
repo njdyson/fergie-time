@@ -35,7 +35,7 @@ export interface MatchConfig {
 // ============================================================
 
 /** Control radius: how close a player must be to pick up a loose ball */
-const CONTROL_RADIUS = 1.5; // metres
+const CONTROL_RADIUS = 2.5; // metres
 
 /** Separation force radius: minimum distance between players */
 const SEPARATION_RADIUS = 2.0; // metres
