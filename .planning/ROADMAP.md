@@ -66,7 +66,14 @@ Plans:
   3. A full 20-team round-robin fixture list generates at season start; the manager can see upcoming fixtures and results
   4. The league table updates after every result and correctly reflects points, goal difference, and position for all 20 teams
   5. At season end, a champion is declared and the squad carries forward into a new season with reset fixtures
-**Plans**: TBD
+**Plans**: 6 plans
+Plans:
+- [ ] 03-01-PLAN.md -- Season data module: nameGen, teamGen, fixtures, leagueTable (TDD) + PlayerState age/height
+- [ ] 03-02-PLAN.md -- Season state machine: validateSquadSelection, advanceMatchday, champion, new season (TDD)
+- [ ] 03-03-PLAN.md -- AI quick-sim runner + Hub, Squad, Fixtures, Table screen classes
+- [ ] 03-04-PLAN.md -- Screen routing: index.html containers, nav tabs, main.ts state machine, fullTimeOverlay Continue
+- [ ] 03-05-PLAN.md -- Season loop wiring: squad selection into MatchConfig, fatigue capture, AI batch sim, lifecycle
+- [ ] 03-06-PLAN.md -- Human verification: all 6 success criteria confirmed end-to-end
 
 ### Phase 4: Development Systems
 **Goal**: Training drills, youth graduates, retirements, and procedural portraits make each squad distinct — after multiple seasons, the team reflects the manager's choices
@@ -88,5 +95,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 |-------|----------------|--------|-----------|
 | 1. Engine Core | 10/10 | Complete (approved with known issues) | 2026-03-03 |
 | 2. Tactical Layer | 2/3 | In Progress|  |
-| 3. Management Shell | 0/TBD | Not started | - |
+| 3. Management Shell | 0/6 | Not started | - |
 | 4. Development Systems | 0/TBD | Not started | - |
