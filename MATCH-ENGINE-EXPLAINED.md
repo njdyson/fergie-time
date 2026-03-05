@@ -14,31 +14,33 @@ A plain-English guide to every moving part in the simulation, written for anyone
 6. [The Tick — One Step of the Simulation](#6-the-tick)
 7. [Formations and Tactical Shape](#7-formations-and-tactical-shape)
 8. [How a Player Decides What to Do (The AI Brain)](#8-how-a-player-decides-what-to-do)
-9. [The Eight Actions](#9-the-eight-actions)
+9. [The Nine Actions](#9-the-nine-actions)
 10. [How Actions Get Executed](#10-how-actions-get-executed)
 11. [Ball Physics](#11-ball-physics)
 12. [Tackling and Physical Contests](#12-tackling-and-physical-contests)
 13. [Goals and Scoring](#13-goals-and-scoring)
-14. [Dead Balls (Throw-ins, Corners, Goal Kicks)](#14-dead-balls)
-15. [Fatigue](#15-fatigue)
-16. [Personality — Why Two Strikers Play Differently](#16-personality)
-17. [Tactical Instructions — Per-Player Sliders](#17-tactical-instructions)
-18. [Role and Duty — Positional Identity](#18-role-and-duty)
-19. [Match Flow (Kickoff → Halftime → Full Time)](#19-match-flow)
-20. [Statistics, Commentary, and Game Log](#20-statistics-and-commentary)
-21. [Tuning Knobs — The Master Control Panel](#21-tuning-knobs)
-22. [Rendering — How It All Gets Drawn](#22-rendering)
+14. [The Offside Rule](#14-the-offside-rule)
+15. [Dead Balls (Throw-ins, Corners, Goal Kicks, Offside Free Kicks)](#15-dead-balls)
+16. [Fatigue](#16-fatigue)
+17. [Personality — Why Two Strikers Play Differently](#17-personality)
+18. [Tactical Instructions — Per-Player Sliders](#18-tactical-instructions)
+19. [Role and Duty — Positional Identity](#19-role-and-duty)
+20. [Emergency Shape Recovery](#20-emergency-shape-recovery)
+21. [Match Flow (Kickoff → Halftime → Full Time)](#21-match-flow)
+22. [Statistics, Commentary, and Game Log](#22-statistics-and-commentary)
+23. [Tuning Knobs — The Master Control Panel](#23-tuning-knobs)
+24. [Rendering — How It All Gets Drawn](#24-rendering)
 
 ---
 
 ## 1. The Big Picture
 
-The match engine is a real-time football simulation. It places 22 AI-controlled players on a pitch, gives each of them a brain that can evaluate eight possible actions, and lets them play a full 90-minute match (compressed into about 3 minutes of real time at 1x speed).
+The match engine is a real-time football simulation. It places 22 AI-controlled players on a pitch, gives each of them a brain that can evaluate nine possible actions, and lets them play a full 90-minute match (compressed into about 3 minutes of real time at 1x speed).
 
 Every 33 milliseconds (30 times per second), the engine runs one **tick**. A tick is a single step of the simulation. During that tick:
 
 1. Every player looks at the world around them.
-2. Every player scores each of their eight possible actions.
+2. Every player scores each of their nine possible actions.
 3. Every player picks the highest-scoring action.
 4. The engine moves players, moves the ball, resolves tackles, and checks for goals.
 5. A new snapshot of the world is produced.
@@ -129,7 +131,7 @@ When a player has the ball (`carrierId` is not null), the ball moves with them. 
 
 ## 6. The Tick — One Step of the Simulation
 
-Every tick runs this 15-step pipeline, in order:
+Every tick runs this 18-step pipeline, in order:
 
 | Step | What Happens |
 |------|-------------|
@@ -138,16 +140,20 @@ Every tick runs this 15-step pipeline, in order:
 | 3 | **Accumulate fatigue** — every player gets slightly more tired. |
 | 4 | **Apply fatigue effects** — reduce attributes and shift personality toward conservative play. |
 | 5 | **Rebuild the spatial grid** — divide the pitch into 10m×10m cells and place each player in a cell. This lets us quickly find "who is near whom" without checking all 22 players against each other every tick. |
-| 6 | **Compute formation anchors** — calculate where each player's "home position" should be right now, given the current formation, team shape settings, ball position, and who has possession. |
-| 7 | **Build each player's world view** — create an "agent context" for each of the 22 players: who their teammates are, who the opponents are, where the ball is, how far they are from goal, how close the nearest defender is, etc. |
-| 8 | **Every player picks an action** — the AI brain evaluates all 8 actions and selects the best one. |
+| 6a | **Compute formation anchors** — calculate where each player's "home position" should be right now, given the current formation, team shape settings, ball position, and who has possession. |
+| 6b | **Compute offside lines** — for each team, find the 2nd-deepest outfield defender to establish the offside line (see [Section 14](#14-the-offside-rule)). |
+| 6c | **Defensive line blending** — when out of possession, CB/LB/RB anchors are clamped within 3m of the offside line to create a coordinated flat back line. |
+| 6d | **Emergency shape recovery** — if the team just lost possession, blend defender anchors toward a compact block between the ball and own goal (see [Section 20](#20-emergency-shape-recovery)). |
+| 7 | **Build each player's world view** — create an "agent context" for each of the 22 players: who their teammates are, who the opponents are, where the ball is, how far they are from goal, how close the nearest defender is, the opposing team's offside line, etc. |
+| 8 | **Every player picks an action** — the AI brain evaluates all 9 actions and selects the best one. |
 | 9 | **Log decisions** — record what every player chose (used for the debug overlay and post-match audit). |
 | 10 | **Execute actions** — move players, kick the ball, attempt tackles. This is the big step (see [Section 10](#10-how-actions-get-executed)). |
-| 11 | **Separation forces** — push apart any players who are overlapping. |
-| 12 | **Integrate ball physics** — if the ball is loose, apply gravity, friction, and bouncing. |
-| 13 | **Check for goals** — did the ball cross the goal line between the posts and under the crossbar? Also check for out-of-play (throw-ins, corners, goal kicks). |
-| 14 | **Record possession stats** — credit the team that currently has the ball. |
-| 15 | **Build and return the new snapshot** — package up all the new positions, scores, and events into an immutable snapshot. |
+| 11 | **Check offside** — when a pass is received, check if the receiver was beyond the offside line at the moment of the pass. If offside, award a free kick. |
+| 12 | **Separation forces** — push apart any players who are overlapping. |
+| 13 | **Integrate ball physics** — if the ball is loose, apply gravity, friction, and bouncing. |
+| 14 | **Check for goals** — did the ball cross the goal line between the posts and under the crossbar? Also check for out-of-play (throw-ins, corners, goal kicks). |
+| 15 | **Record possession stats** — credit the team that currently has the ball. |
+| 16 | **Build and return the new snapshot** — package up all the new positions, scores, and events into an immutable snapshot. |
 
 ---
 
@@ -181,6 +187,8 @@ Every tick, the base positions are adjusted by several factors:
 
 6. **Rest Defence** — a configurable number of defenders (2, 3, or 4) are pinned behind the ball line even when attacking, to prevent leaving the back door open.
 
+7. **Defensive Line Coordination** — when a team is out of possession, all CB, LB, and RB anchors are clamped within 3m of the computed offside line (the x-position of the 2nd-deepest outfield defender). This creates a coordinated flat back line, making the offside trap viable and preventing defenders from drifting out of alignment.
+
 ### Smooth Transitions
 
 When the team switches between in-possession and out-of-possession shapes, the anchors don't jump instantly. They smoothly blend from old to new positions over about 4 seconds (120 ticks). This prevents players from teleporting when possession changes.
@@ -189,7 +197,7 @@ When the team switches between in-possession and out-of-possession shapes, the a
 
 ## 8. How a Player Decides What to Do
 
-The AI uses a system called **Utility AI**. It's not a scripted state machine ("if X then do Y"). Instead, every tick, every player scores all eight possible actions on a 0-to-1 scale and picks the highest.
+The AI uses a system called **Utility AI**. It's not a scripted state machine ("if X then do Y"). Instead, every tick, every player scores all nine possible actions on a 0-to-1 scale and picks the highest.
 
 ### The Scoring Process
 
@@ -232,7 +240,7 @@ The action with the highest total score wins.
 
 ---
 
-## 9. The Eight Actions
+## 9. The Nine Actions
 
 ### On-the-Ball Actions (only available when you have the ball)
 
@@ -257,6 +265,16 @@ The action with the highest total score wins.
 - Higher score when a defender is very close (pressure = play it safe).
 - Player's passing attribute.
 - Nearest teammate distance.
+
+#### PASS_THROUGH — Through-Ball Into Space
+**Considerations:**
+- Must have the ball.
+- Player's vision attribute (need to spot the run).
+- Player's passing attribute (weighted 80% with a 20% floor).
+- Requires a teammate running toward goal at speed (forward velocity > 3 m/s) who is more advanced than the passer.
+- Space ahead of the runner — checks the distance to the nearest opponent in the runner's path. Needs at least 5m of clear space; more space = higher score (peaks at ~20m of space).
+
+This action is heavily influenced by **directness** and **risk_appetite** personality traits, and by the **Risk** and **Directness** tactical sliders. CAM on ATTACK duty gets the biggest role bonus (+0.08).
 
 #### DRIBBLE — Carry the Ball Forward
 **Considerations:**
@@ -328,6 +346,13 @@ The player sprints forward and diagonally (toward the centre of the goal) to fin
 ### PASS_SAFE
 Same mechanics as PASS_FORWARD, but the target selection favours the nearest teammate weighted by lane clarity rather than forward progress.
 
+### PASS_THROUGH
+1. **Find a runner** — scan all teammates for one running toward the opponent's goal (forward velocity ≥ 2 m/s) who is more advanced than the passer. Score each candidate by: forward velocity, space ahead of them (distance to nearest opponent in their path), and proximity to goal.
+2. **Compute lead point** — project where the runner will be in 1–1.5 seconds based on their current velocity vector. The lead time scales with the runner's speed (longer lead for faster runners, capped at 1.5s and 6m ahead). The target is clamped to stay on the pitch.
+3. **Kick the ball** — the pass is hit at 105% of normal pass speed (slightly harder than a regular pass, to reach the space before a defender). Through-balls stay low (ground passes) for distances under 25m; longer through-balls get a slight loft to carry over midfield.
+4. **Offside snapshot** — at the moment of the kick, the defending team's offside line is recorded. If the receiver is beyond the offside line when they collect the ball, offside is called (see [Section 14](#14-the-offside-rule)).
+5. **Fallback** — if no suitable runner is found, the carrier holds the ball and re-evaluates next tick.
+
 ### SHOOT
 1. **Aim at goal** — target the centre of the opponent's goal with ±2m random scatter on the y-axis.
 2. **Kick the ball** at 22 m/s with some vertical loft (vz = 2 + random × 3).
@@ -342,6 +367,7 @@ Same mechanics as PASS_FORWARD, but the target selection favours the nearest tea
 The player simply stops moving (velocity set to zero). They keep the ball. The engine's shielding system protects them from tackles as long as they're facing the right way (see [Tackling](#12-tackling-and-physical-contests)).
 
 ### After All Actions
+- **Offside check** — when a loose ball is collected by a teammate of the passer, the engine checks if the receiver was beyond the offside line at the moment the pass was kicked. If offside, the ball is dead and a free kick is awarded to the defending team (see [Section 14](#14-the-offside-rule)).
 - **Ball-carrier sync** — if a player has the ball and isn't dribbling, the ball position snaps to the player's position.
 - **Tackle resolution** — any player doing PRESS within 4m of the ball carrier gets a tackle attempt (see next section).
 - **Separation** — all 22 players are pushed apart if they overlap (within 2.8m), so they don't pile up on the same spot.
@@ -439,7 +465,49 @@ If the ball crosses the sideline (y < 0 or y > 68): it's a **throw-in** for the 
 
 ---
 
-## 14. Dead Balls
+## 14. The Offside Rule
+
+The engine enforces the offside law to prevent attackers from cherry-picking behind the defence.
+
+### How the Offside Line Is Computed
+
+Each tick, the engine computes a **defensive line** for each team using `computeDefensiveLine()`:
+
+1. Collect all outfield players (excluding the GK) on the defending team.
+2. Sort them by depth (distance toward own goal):
+   - **Home** (defends left, goal at x = 0): sort by ascending x — the 2nd smallest x is the offside line.
+   - **Away** (defends right, goal at x = 105): sort by descending x — the 2nd largest x is the offside line.
+3. The offside line cannot be behind the ball — `min(lineX, ballX)` for home, `max(lineX, ballX)` for away.
+
+This mirrors the real-world rule: the offside line is the second-to-last defender (the goalkeeper is usually the last).
+
+### When Is Offside Checked?
+
+Offside is **only checked at the moment of a pass** (PASS_FORWARD, PASS_SAFE, or PASS_THROUGH), not continuously:
+
+1. **Snapshot** — when a player kicks a pass, the defending team's offside line x-coordinate is recorded, along with which team kicked.
+2. **Receipt** — when a teammate of the passer collects the ball, the engine checks if the receiver's x-position was beyond the offside line at the time of the kick.
+   - Home attackers: offside if `receiver.x > offsideLine + 0.5m` (0.5m tolerance for tight calls).
+   - Away attackers: offside if `receiver.x < offsideLine - 0.5m`.
+3. **Own-half exception** — a player cannot be offside in their own half (x ≤ 52.5m for home, x ≥ 52.5m for away).
+
+### What Happens on Offside
+
+- The ball is immediately dead (carrierId = null, velocity = zero).
+- An **offside** event is recorded in the match log.
+- A dead ball is entered: an indirect free kick for the defending team at the receiver's position (uses a quick restart, similar timing to a throw-in).
+- The tracking state is cleared — no lingering offside from previous passes.
+
+### Defensive Line Coordination
+
+To make the offside trap work, defender anchors are actively coordinated:
+
+- When out of possession, all **CB, LB, and RB** formation anchors are clamped within **3m** of the computed offside line. This flattens the back line so defenders hold a consistent line rather than drifting into staggered depths.
+- The CSP (candidate support position) scoring system also penalises off-ball attackers who are in offside positions, discouraging AI runners from lingering behind the defence.
+
+---
+
+## 15. Dead Balls
 
 When the ball goes out of play (or a goal is scored), the engine enters a **dead ball state**. During this pause:
 
@@ -454,6 +522,7 @@ When the ball goes out of play (or a goal is scored), the engine enters a **dead
 | Throw-in | ~0.8 seconds |
 | Corner kick | ~1.2 seconds |
 | Goal kick | ~0.8 seconds |
+| Offside free kick | ~0.8 seconds |
 
 The taker is automatically chosen:
 - **Goal kicks** — always the goalkeeper.
@@ -461,7 +530,7 @@ The taker is automatically chosen:
 
 ---
 
-## 15. Fatigue
+## 16. Fatigue
 
 Every player gets tired over the course of the match.
 
@@ -488,7 +557,7 @@ Substitutions are the remedy. A fresh substitute enters with fatigue = 0, full a
 
 ---
 
-## 16. Personality — Why Two Strikers Play Differently
+## 17. Personality — Why Two Strikers Play Differently
 
 Even with identical attributes, two players can behave very differently because of personality.
 
@@ -497,6 +566,7 @@ Each action type has **personality weights** — a mapping from personality trai
 - **SHOOT** is weighted toward: risk_appetite, composure, directness.
 - **DRIBBLE** is weighted toward: flair, creativity, risk_appetite.
 - **PASS_SAFE** is weighted toward: composure (positive) and risk_appetite (negative).
+- **PASS_THROUGH** is weighted toward: directness, risk_appetite, creativity, composure.
 - **PRESS** is weighted toward: aggression, work_rate, anticipation.
 
 So a player with high `flair` and high `risk_appetite` will dribble more often. A player with high `composure` and low `risk_appetite` will pass safely. A player with high `aggression` and high `work_rate` will press relentlessly.
@@ -505,7 +575,7 @@ The personality bonus is additive — it's added on top of the base consideratio
 
 ---
 
-## 17. Tactical Instructions — Per-Player Sliders
+## 18. Tactical Instructions — Per-Player Sliders
 
 Each player has 7 tactical slider values (all 0 to 1, where 0.5 is neutral):
 
@@ -523,7 +593,7 @@ Each slider generates a bonus of up to ±0.2 per action type. These stack with r
 
 ---
 
-## 18. Role and Duty — Positional Identity
+## 19. Role and Duty — Positional Identity
 
 ### 10 Roles
 
@@ -545,12 +615,42 @@ The combination of role + duty creates specific behaviour profiles. For example:
 
 - **ST on ATTACK**: gets bonuses to SHOOT (+0.12), DRIBBLE (+0.08), MAKE_RUN (+0.10). Plays like a poacher.
 - **CB on DEFEND**: gets bonuses to PRESS (+0.10), MOVE_TO_POSITION (+0.08), minus on MAKE_RUN (-0.08). Stays put and tackles.
-- **CAM on ATTACK**: gets bonuses to PASS_FORWARD (+0.10), DRIBBLE (+0.08). Creative playmaker.
+- **CAM on ATTACK**: gets bonuses to PASS_FORWARD (+0.10), PASS_THROUGH (+0.08), DRIBBLE (+0.08). Creative playmaker who looks for through-balls.
+- **CAM on SUPPORT**: gets bonuses to PASS_FORWARD (+0.03), PASS_THROUGH (+0.04). Probes for openings.
+- **CM on ATTACK**: gets bonuses to PASS_FORWARD (+0.06), PASS_THROUGH (+0.06), MAKE_RUN (+0.05). Box-to-box runner.
 - **LW on ATTACK**: gets bonuses to DRIBBLE (+0.10), MAKE_RUN (+0.08). Runs at defenders and makes overlapping runs.
 
 ---
 
-## 19. Match Flow
+## 20. Emergency Shape Recovery
+
+When a team loses possession, real football teams don't just amble back — they sprint into a compact defensive block. The engine simulates this with an **emergency shape recovery** system.
+
+### When It Activates
+
+The system activates during a **defensive transition** — the window immediately after a team loses possession. The duration is controlled by the `counterPressDuration` setting (default ~3 seconds / ~90 ticks).
+
+### What It Does
+
+1. **Anchor compression** — all outfield defenders' formation anchors are blended toward an **emergency block position**: a compact shape between the ball and the team's own goal.
+   - The emergency x-position is calculated as: `ownGoalX + (ballX - ownGoalX) × (1 - collapseDepth)`, where `collapseDepth` (0–1, default 0.5) controls how far back toward the goal the block forms.
+   - Width is compressed to **60%** — each player's y-anchor is pulled toward the ball's y-position.
+
+2. **Fade-out** — the blend strength starts at 60% at the moment of possession loss and fades linearly to 0% over the transition window. This means the emergency shape is strongest right when possession changes and gradually relaxes back to normal formation anchors.
+
+3. **Sprint boost** — during recovery, defenders and CDMs receive a **10% speed boost** (maxSpeed × 1.10). This simulates the urgency of tracking back and makes the defensive transition visibly snappier.
+
+### The collapseDepth Setting
+
+This was previously a dead-code setting in the tactical configuration. It's now wired up:
+
+- **collapseDepth = 0** — the block forms right at the ball's position (aggressive, counter-pressing shape).
+- **collapseDepth = 0.5** — the block forms halfway between the ball and the goal (balanced).
+- **collapseDepth = 1.0** — the block forms deep near the goal (park-the-bus recovery).
+
+---
+
+## 21. Match Flow
 
 ### Pre-Match
 The engine creates two squads of 16 players (11 starters + 5 bench). The game loop starts paused. The user sees the pitch with players in their starting positions.
@@ -576,7 +676,7 @@ At tick 5,400, the match ends. Final stats are displayed. A post-match audit che
 
 ---
 
-## 20. Statistics and Commentary
+## 22. Statistics and Commentary
 
 ### Match Statistics
 The engine tracks, per team:
@@ -595,7 +695,8 @@ Every notable event is recorded with its tick number, match minute, the player i
 - Goals (with score at time of goal)
 - Tackles (success/fail)
 - Possession changes
-- Set pieces (corners, throw-ins, goal kicks)
+- Offside decisions
+- Set pieces (corners, throw-ins, goal kicks, offside free kicks)
 - Phase transitions (kickoff, halftime, full time)
 
 ### Commentary
@@ -613,7 +714,7 @@ The game log can export a full JSON report including: all events, pass/shot tota
 
 ---
 
-## 21. Tuning Knobs — The Master Control Panel
+## 23. Tuning Knobs — The Master Control Panel
 
 All of the key numbers that control the simulation can be adjusted in real time via sliders. They're grouped into categories:
 
@@ -666,7 +767,7 @@ All of the key numbers that control the simulation can be adjusted in real time 
 
 ---
 
-## 22. Rendering — How It All Gets Drawn
+## 24. Rendering — How It All Gets Drawn
 
 The simulation produces data (positions, velocities, states). The renderer turns that data into pixels.
 
@@ -691,4 +792,4 @@ The simulation ticks at 30fps but the screen draws at 60fps. To keep movement sm
 
 ## Summary
 
-The match engine is a continuous loop of **perceive → decide → act → physics → repeat**. Each player is an independent agent scoring 8 actions through multiple considerations, modified by their attributes, personality, role, duty, tactical instructions, and fatigue. The ball follows 2.5D physics with friction, gravity, and bouncing. Tackles are probabilistic contests between tackling skill and dribbling skill, modified by angle and distance. Goals are checked geometrically. Dead balls pause play and let players reset. Commentary narrates the key events. Everything runs at 30 ticks per second with smooth 60fps rendering.
+The match engine is a continuous loop of **perceive → decide → act → physics → repeat**. Each player is an independent agent scoring 9 actions through multiple considerations, modified by their attributes, personality, role, duty, tactical instructions, and fatigue. The ball follows 2.5D physics with friction, gravity, and bouncing. Tackles are probabilistic contests between tackling skill and dribbling skill, modified by angle and distance. Goals are checked geometrically. The offside rule is enforced by snapshotting the defensive line at the moment of each pass and checking the receiver's position on receipt. Dead balls pause play and let players reset — including offside free kicks. Defensive transitions trigger emergency shape recovery with compressed anchors and a sprint boost. Commentary narrates the key events. Everything runs at 30 ticks per second with smooth 60fps rendering.
