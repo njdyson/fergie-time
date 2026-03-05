@@ -1,6 +1,6 @@
 # Fergie Time — How the Match Engine Works
 
-A plain-English guide to every moving part in the simulation, written for anyone who wants to understand what's happening under the hood without reading the source code.
+A plain-English guide to every moving part in the simulation, written for anyone who wants to understand what's happening under the hood without reading the source code. x
 
 ---
 
