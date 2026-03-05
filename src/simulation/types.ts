@@ -3,6 +3,15 @@ import type { Vec2 } from './math/vec2.ts';
 // Team identification
 export type TeamId = 'home' | 'away';
 
+// Dead ball restart types
+export const RestartType = {
+  KICKOFF: 'KICKOFF',
+  THROW_IN: 'THROW_IN',
+  CORNER: 'CORNER',
+  GOAL_KICK: 'GOAL_KICK',
+} as const;
+export type RestartType = (typeof RestartType)[keyof typeof RestartType];
+
 // Match phases (ENG-13)
 // Using const object pattern instead of enum for erasableSyntaxOnly compatibility
 export const MatchPhase = {
@@ -52,10 +61,79 @@ export interface PlayerAttributes {
   readonly tackling: number;        // 0..1
   readonly aerial: number;          // 0..1
   readonly positioning: number;     // 0..1
+  readonly vision: number;          // 0..1 — spatial awareness radius and scanning frequency
 }
 
 // Personality weight matrix (ENG-04) — maps action type to trait weights
 export type PersonalityWeightMatrix = Record<ActionType, Partial<Record<keyof PersonalityVector, number>>>;
+
+// ============================================================
+// Tactical instruction types (V1 Tactics Overhaul)
+// ============================================================
+
+/** Per-player tactical instruction multipliers (0..1 each, 0.5 = neutral) */
+export interface PlayerTacticalMultipliers {
+  readonly risk: number;            // safe (0) ↔ ambitious (1) — pass/shoot risk
+  readonly directness: number;      // recycle (0) ↔ progress (1) — forward weight
+  readonly press: number;           // reluctant (0) ↔ eager (1) — press baseline
+  readonly holdUp: number;          // release (0) ↔ shield (1) — hold/shield bias
+  readonly dribble: number;         // pass (0) ↔ carry (1) — dribble preference
+  readonly freedom: number;         // hold (0) ↔ roam (1) — positional discipline
+  readonly decisionWindow: number;  // patient (0) ↔ quick (1) — action resolution speed
+}
+
+/** Team-level structure controls */
+export interface TeamControls {
+  readonly lineHeight: number;      // 0..1 → low block (0) to high line (1)
+  readonly compactness: number;     // 0..1 → stretched (0) to compact (1)
+  readonly width: number;           // 0..1 → narrow (0) to wide (1)
+  readonly tempo: number;           // 0..1 → patient (0) to frantic (1)
+  readonly restDefence: number;     // 2, 3, or 4 — players kept behind ball line when attacking
+}
+
+/** Pressing configuration */
+export type PressHeight = 'low' | 'mid' | 'high';
+
+export interface PressConfig {
+  readonly height: PressHeight;     // press activation line
+  readonly counterPressSecs: number; // 0-5 seconds after possession loss
+  readonly intensity: number;        // 0..1 global press eagerness multiplier
+}
+
+/** Transition behaviour config */
+export interface TransitionConfig {
+  readonly counterPressDuration: number; // 0-5 seconds (defensive transition)
+  readonly collapseDepth: number;        // 0..1 hold line (0) ↔ deep drop (1)
+  readonly forwardBias: number;          // 0..1 settle (0) ↔ counter-attack (1)
+  readonly runnerCount: number;          // 0-3 players who immediately break forward
+}
+
+/** Expanded tactical phase — 4 phases instead of 2 */
+export type TacticsPhase = 'inPossession' | 'outOfPossession' | 'defensiveTransition' | 'attackingTransition';
+
+// ============================================================
+// Defaults factories
+// ============================================================
+
+export function defaultMultipliers(): PlayerTacticalMultipliers {
+  return { risk: 0.5, directness: 0.5, press: 0.5, holdUp: 0.5, dribble: 0.5, freedom: 0.5, decisionWindow: 0.5 };
+}
+
+export function defaultTeamControls(): TeamControls {
+  return { lineHeight: 0.5, compactness: 0.5, width: 0.5, tempo: 0.5, restDefence: 3 };
+}
+
+export function defaultPressConfig(): PressConfig {
+  return { height: 'mid', counterPressSecs: 2, intensity: 0.5 };
+}
+
+export function defaultTransitionConfig(): TransitionConfig {
+  return { counterPressDuration: 3, collapseDepth: 0.5, forwardBias: 0.5, runnerCount: 1 };
+}
+
+export function defaultPlayerMultipliers(count: number = 11): PlayerTacticalMultipliers[] {
+  return Array.from({ length: count }, () => defaultMultipliers());
+}
 
 // Ball state (ENG-01)
 export interface BallState {
@@ -117,7 +195,7 @@ export interface PlayerState {
 // Match events
 export interface MatchEvent {
   readonly tick: number;
-  readonly type: 'goal' | 'shot' | 'pass' | 'tackle' | 'foul' | 'save' | 'kickoff' | 'halftime' | 'fulltime';
+  readonly type: 'goal' | 'shot' | 'pass' | 'tackle' | 'foul' | 'save' | 'kickoff' | 'halftime' | 'fulltime' | 'throw_in' | 'corner' | 'goal_kick';
   readonly playerId?: string;
   readonly teamId?: TeamId;
   readonly position?: Vec2;
@@ -128,8 +206,13 @@ export interface MatchEvent {
 export interface MatchStats {
   readonly possession: readonly [number, number]; // [home %, away %]
   readonly shots: readonly [number, number];
+  readonly shotsOnTarget: readonly [number, number];
   readonly passes: readonly [number, number];
+  readonly passesCompleted: readonly [number, number];
   readonly tackles: readonly [number, number];
+  readonly corners: readonly [number, number];
+  readonly throwIns: readonly [number, number];
+  readonly goalKicks: readonly [number, number];
 }
 
 // Agent context — the world state visible to one agent (ENG-03)
@@ -156,6 +239,13 @@ export interface ActionIntent {
   readonly targetPlayerId?: string; // who to pass to
 }
 
+// Dead ball info — exposed in snapshot so renderer can display it
+export interface DeadBallInfo {
+  readonly type: RestartType;
+  readonly teamId: TeamId;
+  readonly position: Vec2;
+}
+
 // The immutable simulation snapshot (Pattern 2 from research)
 export interface SimSnapshot {
   readonly tick: number;
@@ -166,4 +256,5 @@ export interface SimSnapshot {
   readonly score: readonly [number, number];
   readonly events: readonly MatchEvent[];
   readonly stats: MatchStats;
+  readonly deadBallInfo?: DeadBallInfo;
 }

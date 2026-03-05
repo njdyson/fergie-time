@@ -108,6 +108,12 @@ export function startGameLoop(engine: SimulationEngine, renderer: CanvasRenderer
         currSnapshot = engine.tick(FIXED_DT_MS);
         accumulator -= FIXED_DT_MS;
       }
+    } else {
+      // While paused, re-read the engine snapshot so external changes
+      // (formation/control edits via the overlay) are visible immediately
+      const fresh = engine.getCurrentSnapshot();
+      prevSnapshot = fresh;
+      currSnapshot = fresh;
     }
 
     // Alpha is fraction of a tick not yet consumed — used for interpolation

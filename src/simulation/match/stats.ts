@@ -7,8 +7,13 @@ export function createEmptyStats(): MatchStats {
   return {
     possession: [0, 0],
     shots: [0, 0],
+    shotsOnTarget: [0, 0],
     passes: [0, 0],
+    passesCompleted: [0, 0],
     tackles: [0, 0],
+    corners: [0, 0],
+    throwIns: [0, 0],
+    goalKicks: [0, 0],
   };
 }
 
@@ -33,6 +38,16 @@ export class StatsAccumulator {
   private awayPasses = 0;
   private homeTackles = 0;
   private awayTackles = 0;
+  private homeCorners = 0;
+  private awayCorners = 0;
+  private homeThrowIns = 0;
+  private awayThrowIns = 0;
+  private homeGoalKicks = 0;
+  private awayGoalKicks = 0;
+  private homeShotsOnTarget = 0;
+  private awayShotsOnTarget = 0;
+  private homePassesCompleted = 0;
+  private awayPassesCompleted = 0;
   private homePossessionTicks = 0;
   private awayPossessionTicks = 0;
 
@@ -58,12 +73,42 @@ export class StatsAccumulator {
     else this.awayPasses++;
   }
 
+  /** Record a completed pass (teammate received the ball). */
+  recordPassCompletion(teamId: TeamId): void {
+    if (teamId === 'home') this.homePassesCompleted++;
+    else this.awayPassesCompleted++;
+  }
+
+  /** Record a shot on target (would have entered the goal if unblocked). */
+  recordShotOnTarget(teamId: TeamId): void {
+    if (teamId === 'home') this.homeShotsOnTarget++;
+    else this.awayShotsOnTarget++;
+  }
+
   /**
    * Record an actual tackle attempt (defender within range of ball carrier).
    */
   recordTackle(teamId: TeamId): void {
     if (teamId === 'home') this.homeTackles++;
     else this.awayTackles++;
+  }
+
+  /** Record a corner kick awarded to a team. */
+  recordCorner(teamId: TeamId): void {
+    if (teamId === 'home') this.homeCorners++;
+    else this.awayCorners++;
+  }
+
+  /** Record a throw-in awarded to a team. */
+  recordThrowIn(teamId: TeamId): void {
+    if (teamId === 'home') this.homeThrowIns++;
+    else this.awayThrowIns++;
+  }
+
+  /** Record a goal kick awarded to a team. */
+  recordGoalKick(teamId: TeamId): void {
+    if (teamId === 'home') this.homeGoalKicks++;
+    else this.awayGoalKicks++;
   }
 
   /**
@@ -98,8 +143,13 @@ export class StatsAccumulator {
     return {
       possession: [homePct, awayPct],
       shots: [this.homeShots, this.awayShots],
+      shotsOnTarget: [this.homeShotsOnTarget, this.awayShotsOnTarget],
       passes: [this.homePasses, this.awayPasses],
+      passesCompleted: [this.homePassesCompleted, this.awayPassesCompleted],
       tackles: [this.homeTackles, this.awayTackles],
+      corners: [this.homeCorners, this.awayCorners],
+      throwIns: [this.homeThrowIns, this.awayThrowIns],
+      goalKicks: [this.homeGoalKicks, this.awayGoalKicks],
     };
   }
 }
@@ -143,7 +193,12 @@ export function accumulateStats(
   return {
     possession: [homePct, awayPct],
     shots: current.shots,
+    shotsOnTarget: current.shotsOnTarget,
     passes: current.passes,
+    passesCompleted: current.passesCompleted,
     tackles: current.tackles,
+    corners: current.corners,
+    throwIns: current.throwIns,
+    goalKicks: current.goalKicks,
   };
 }

@@ -70,6 +70,7 @@ function makeCtx(overrides: Partial<AgentContext> = {}): AgentContext {
         tackling: 0.6,
         aerial: 0.6,
         positioning: 0.6,
+        vision: 0.7,
       },
       personality: {
         directness: 0.5,
@@ -223,6 +224,7 @@ describe('selectAction', () => {
           tackling: 0.6,
           aerial: 0.6,
           positioning: 0.6,
+          vision: 0.7,
         },
         personality: lowComposure,
         fatigue: 0,

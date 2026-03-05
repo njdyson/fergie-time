@@ -29,6 +29,7 @@ function makePlayer(
       tackling,
       aerial,
       positioning: 0.7,
+      vision: 0.7,
     },
     personality: {
       directness: 0.5,

@@ -118,14 +118,14 @@ describe('computeFormationAnchors', () => {
       expect(avgFwdX).toBeGreaterThan(avgMidX);
     });
 
-    it('defenders are spaced 8-12m apart on y-axis', () => {
+    it('defenders are reasonably spaced on y-axis', () => {
       const anchors = computeFormationAnchors('4-4-2', 'home', centerBall, false);
-      // Defenders sorted by y
+      // Defenders sorted by y (LB, CB, CB, RB — fullbacks push wide)
       const defY = [anchors[1]!.y, anchors[2]!.y, anchors[3]!.y, anchors[4]!.y].sort((a, b) => a - b);
       for (let i = 0; i < defY.length - 1; i++) {
         const gap = defY[i + 1]! - defY[i]!;
-        expect(gap).toBeGreaterThan(6); // at least 6m apart
-        expect(gap).toBeLessThan(18); // no more than 18m apart
+        expect(gap).toBeGreaterThan(6);  // at least 6m apart
+        expect(gap).toBeLessThan(25);    // fullbacks push wide (~21m from nearest CB)
       }
     });
   });

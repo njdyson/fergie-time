@@ -21,148 +21,84 @@
       #app {
         display: flex;
         flex-direction: column;
-        align-items: center;
-        justify-content: center;
         width: 100%;
         height: 100%;
-        gap: 8px;
       }
 
-      /* ── Tactics screen ────────────────────────────────────── */
-      #tactics-screen {
+      .quick-shape-row {
         display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 8px;
-        width: 100%;
+        gap: 3px;
+        margin-bottom: 8px;
       }
-
-      #tactics-canvas {
-        display: block;
-        max-width: 100%;
-      }
-
-      .tactics-controls {
-        display: flex;
-        gap: 8px;
-        align-items: center;
-        flex-wrap: wrap;
-        justify-content: center;
-      }
-
-      .formation-btn {
-        padding: 5px 14px;
+      .quick-shape-btn {
+        flex: 1;
+        padding: 5px 2px;
         background: #1e293b;
-        color: #cbd5e1;
+        color: #94a3b8;
         border: 1px solid #334155;
-        border-radius: 4px;
-        font: 13px/1 monospace;
+        border-radius: 3px;
+        font: bold 9px/1 monospace;
         cursor: pointer;
+        text-align: center;
         user-select: none;
-        transition: background 0.1s, color 0.1s;
       }
-
-      .formation-btn:hover {
+      .quick-shape-btn:hover {
         background: #334155;
         color: #f1f5f9;
-      }
-
-      .formation-btn.active {
-        background: #1e40af;
-        color: #bfdbfe;
-        border-color: #3b82f6;
-      }
-
-      #btn-tactics-kickoff {
-        padding: 6px 22px;
-        background: #166534;
-        color: #bbf7d0;
-        border: 1px solid #22c55e;
-        border-radius: 4px;
-        font: bold 13px/1 monospace;
-        cursor: pointer;
-        user-select: none;
-        transition: background 0.1s;
-      }
-
-      #btn-tactics-kickoff:hover {
-        background: #15803d;
-      }
-
-      .tactics-sep {
-        width: 1px;
-        height: 22px;
-        background: #334155;
-      }
-
-      #btn-tactics-second-half {
-        padding: 6px 22px;
-        background: #7c3aed;
-        color: #ede9fe;
-        border: 1px solid #a78bfa;
-        border-radius: 4px;
-        font: bold 13px/1 monospace;
-        cursor: pointer;
-        user-select: none;
-        transition: background 0.1s;
-      }
-
-      #btn-tactics-second-half:hover {
-        background: #6d28d9;
+        border-color: #60a5fa;
       }
 
       /* ── Bench panel ───────────────────────────────────────── */
       #bench-panel {
         width: 100%;
-        max-width: 600px;
-        background: #0f172a;
-        border: 1px solid #334155;
-        border-radius: 6px;
-        padding: 8px 10px;
-        margin-top: 2px;
+        padding: 6px 0 0;
+        margin-top: 4px;
       }
 
       .bench-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 6px;
+        margin-bottom: 4px;
+        padding-bottom: 3px;
+        border-bottom: 1px solid #1e293b;
       }
 
       .bench-title {
-        font: bold 11px/1 monospace;
+        font: bold 10px/1 monospace;
         color: #94a3b8;
         text-transform: uppercase;
         letter-spacing: 0.05em;
       }
 
       .bench-sub-counter {
-        font: bold 12px/1 monospace;
+        font: bold 10px/1 monospace;
         color: #fb923c;
       }
 
       .bench-players {
         display: flex;
-        flex-wrap: wrap;
-        gap: 4px;
+        flex-direction: column;
       }
 
+      /* Bench rows reuse squad-row styling */
       .bench-player-btn {
         display: flex;
         align-items: center;
         gap: 6px;
-        padding: 4px 10px;
-        background: #1e293b;
-        border: 1px solid #334155;
-        border-radius: 4px;
+        padding: 4px 6px;
+        background: none;
+        border: none;
+        border-radius: 3px;
         cursor: pointer;
-        transition: background 0.1s, border-color 0.1s;
-        min-width: 120px;
+        transition: background 0.1s;
+        width: 100%;
+        font-size: 11px;
+        text-align: left;
       }
 
       .bench-player-btn:hover:not(:disabled) {
-        background: #334155;
-        border-color: #fb923c;
+        background: #1e293b;
       }
 
       .bench-player-btn:disabled {
@@ -172,7 +108,6 @@
 
       .bench-player-btn.selected {
         background: #451a03;
-        border-color: #fb923c;
       }
 
       .bench-player-btn.used {
@@ -181,35 +116,387 @@
         text-decoration: line-through;
       }
 
+      .bench-player-number {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: #334155;
+        color: #e2e8f0;
+        font: bold 10px/20px monospace;
+        text-align: center;
+        flex-shrink: 0;
+      }
+
       .bench-player-role {
-        font: bold 10px/1 monospace;
-        color: #94a3b8;
+        color: #64748b;
+        font: 10px/1 monospace;
         min-width: 24px;
+        text-align: right;
       }
 
       .bench-player-name {
         font: 11px/1 monospace;
         color: #e2e8f0;
         flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
-      .bench-player-pace {
+      /* ── Squad list ─────────────────────────────────────────── */
+      .squad-list h4 {
+        color: #94a3b8;
+        font: bold 10px/1 monospace;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin: 0 0 6px;
+        padding-bottom: 3px;
+        border-bottom: 1px solid #1e293b;
+      }
+
+      .squad-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 6px;
+        border-radius: 3px;
+        cursor: pointer;
+        transition: background 0.1s;
+      }
+
+      .squad-row:hover {
+        background: #1e293b;
+      }
+
+      .squad-row.selected {
+        background: #1e3a5f;
+      }
+
+      .squad-row.has-ball {
+        background: #1a3320;
+      }
+
+      .squad-row.has-ball .squad-row-name {
+        color: #4ade80;
+        font-weight: bold;
+      }
+
+      .squad-row.has-ball .squad-row-number {
+        background: #166534;
+      }
+
+      .squad-row-number {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: #334155;
+        color: #e2e8f0;
+        font: bold 10px/20px monospace;
+        text-align: center;
+        flex-shrink: 0;
+      }
+
+      .squad-row.selected .squad-row-number {
+        background: #3366cc;
+      }
+
+      .squad-row-name {
+        flex: 1;
+        color: #e2e8f0;
+        font: 11px/1 monospace;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .squad-row-role {
+        color: #64748b;
         font: 10px/1 monospace;
-        color: #60a5fa;
+        min-width: 24px;
+        text-align: right;
+      }
+
+      .squad-row-duty {
+        width: 16px;
+        height: 16px;
+        border-radius: 2px;
+        color: #fff;
+        font: bold 9px/16px monospace;
+        text-align: center;
+        flex-shrink: 0;
+      }
+
+      /* ── Squad tooltip ── */
+      .squad-tooltip {
+        display: none;
+        position: fixed;
+        z-index: 9999;
+        width: 180px;
+        background: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 6px;
+        padding: 8px 10px;
+        font: 11px/1.4 monospace;
+        color: #e2e8f0;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+      }
+      .squad-tooltip-name {
+        font-weight: bold;
+        margin-bottom: 6px;
+        font-size: 12px;
+        color: #fff;
+        border-bottom: 1px solid #334155;
+        padding-bottom: 4px;
+      }
+      .squad-tooltip-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        height: 16px;
+      }
+      .squad-tooltip-label {
+        width: 28px;
+        color: #94a3b8;
+        font-size: 10px;
+      }
+      .squad-tooltip-bar {
+        flex: 1;
+        height: 6px;
+        background: #0f172a;
+        border-radius: 3px;
+        overflow: hidden;
+      }
+      .squad-tooltip-bar > span {
+        display: block;
+        height: 100%;
+        border-radius: 3px;
+      }
+      .squad-tooltip-val {
+        width: 22px;
+        text-align: right;
+        font-size: 10px;
+      }
+      .squad-tooltip-section {
+        font: bold 9px/1 monospace;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin: 5px 0 2px;
+        padding-top: 4px;
+        border-top: 1px solid rgba(30,41,59,0.5);
+      }
+      .squad-tooltip-section:first-of-type {
+        margin-top: 0;
+        padding-top: 0;
+        border-top: none;
+      }
+
+      .squad-back-btn {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 8px;
+        margin-bottom: 8px;
+        background: none;
+        border: 1px solid #334155;
+        border-radius: 3px;
+        color: #94a3b8;
+        font: 11px/1 monospace;
+        cursor: pointer;
+        transition: background 0.1s, color 0.1s;
+      }
+
+      .squad-back-btn:hover {
+        background: #1e293b;
+        color: #f1f5f9;
       }
 
       /* ── Match view ────────────────────────────────────────── */
       #match-canvas {
         display: block;
         max-width: 100%;
+        max-height: 100%;
       }
 
-      #controls {
-        display: flex;
-        gap: 8px;
-        align-items: center;
-        flex-wrap: wrap;
+      #tactics-canvas {
+        display: none;
+        position: absolute;
+        top: 0;
+        left: 0;
+        z-index: 5;
+        max-width: 100%;
+        max-height: 100%;
+        cursor: grab;
+      }
+
+      #tactics-canvas.active-drag {
+        cursor: grabbing;
+      }
+
+      #canvas-wrapper {
+        position: relative;
+        flex: 1000 1 0px;
+        min-height: 0;
+        width: 100%;
+        overflow: hidden;
+      }
+
+      /* ── Full-time player stats overlay ──────────────────── */
+      #fulltime-overlay {
+        display: none;
+        position: absolute;
+        inset: 0;
+        z-index: 20;
+        background: rgba(0, 0, 10, 0.88);
         justify-content: center;
+        align-items: center;
+        cursor: pointer;
+      }
+      .ft-content {
+        cursor: default;
+        max-width: 720px;
+        width: 95%;
+        max-height: 90%;
+        overflow-y: auto;
+      }
+      .ft-header {
+        text-align: center;
+        margin-bottom: 12px;
+      }
+      .ft-title {
+        font: bold 18px/1 monospace;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.15em;
+        margin-bottom: 4px;
+      }
+      .ft-score {
+        font: bold 32px/1 monospace;
+        color: #f1f5f9;
+      }
+      .ft-tables {
+        display: flex;
+        gap: 12px;
+      }
+      .ft-team-block {
+        flex: 1;
+        min-width: 0;
+      }
+      .ft-team-header {
+        font: bold 11px/1 monospace;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        padding: 6px 8px;
+        border-radius: 4px 4px 0 0;
+        text-align: center;
+      }
+      .ft-team-home .ft-team-header {
+        background: #1e3a5f;
+        color: #93c5fd;
+      }
+      .ft-team-away .ft-team-header {
+        background: #5f1e1e;
+        color: #fca5a5;
+      }
+      .ft-table {
+        width: 100%;
+        border-collapse: collapse;
+        font: 11px/1.4 monospace;
+        color: #e2e8f0;
+      }
+      .ft-table thead th {
+        background: #1e293b;
+        color: #64748b;
+        font-weight: bold;
+        padding: 4px 5px;
+        text-align: center;
+        font-size: 9px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        border-bottom: 1px solid #334155;
+      }
+      .ft-table tbody td {
+        padding: 3px 5px;
+        text-align: center;
+        border-bottom: 1px solid #1e293b;
+      }
+      .ft-table tbody tr:hover {
+        background: rgba(255, 255, 255, 0.04);
+      }
+      .ft-num {
+        color: #64748b;
+        width: 20px;
+      }
+      .ft-name {
+        text-align: left !important;
+        color: #f1f5f9;
+        font-weight: bold;
+        max-width: 80px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .ft-role {
+        color: #64748b;
+        font-size: 9px;
+      }
+      .ft-highlight-goal {
+        color: #4ade80 !important;
+        font-weight: bold;
+      }
+      .ft-highlight-assist {
+        color: #60a5fa !important;
+        font-weight: bold;
+      }
+      .ft-dismiss {
+        text-align: center;
+        margin-top: 10px;
+        font: 10px/1 monospace;
+        color: #475569;
+      }
+
+      /* match-hud removed — controls moved to #match-controls */
+
+      #btn-kickoff {
+        position: absolute;
+        bottom: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 10;
+        padding: 10px 28px;
+        background: #166534;
+        color: #bbf7d0;
+        border: 2px solid #22c55e;
+        border-radius: 6px;
+        font: bold 16px/1 monospace;
+        cursor: pointer;
+        user-select: none;
+        transition: background 0.1s;
+      }
+
+      #btn-kickoff:hover {
+        background: #15803d;
+      }
+
+      #btn-second-half {
+        position: absolute;
+        bottom: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 10;
+        padding: 10px 28px;
+        background: #7c3aed;
+        color: #ede9fe;
+        border: 2px solid #a78bfa;
+        border-radius: 6px;
+        font: bold 16px/1 monospace;
+        cursor: pointer;
+        user-select: none;
+        transition: background 0.1s;
+      }
+
+      #btn-second-half:hover {
+        background: #6d28d9;
       }
 
       .ctrl-btn {
@@ -239,28 +526,108 @@
         border-color: #3b82f6;
       }
 
-      .ctrl-sep {
-        width: 1px;
-        height: 22px;
-        background: #334155;
+      /* ── Left panel (always visible) ─────────────────────── */
+      #left-panel {
+        width: 300px;
+        max-width: 25vw;
+        flex-shrink: 0;
+        background: #0f172a;
+        border-right: 1px solid #334155;
+        display: flex;
+        flex-direction: column;
+        overflow-y: auto;
       }
 
-      /* ── Speed slider ──────────────────────────────────────── */
-      .speed-group {
+      /* ── Scoreboard ─────────────────────────────────────── */
+      #scoreboard {
+        padding: 8px 10px 6px;
+        border-bottom: 1px solid #334155;
+        font-family: monospace;
+      }
+
+      .sb-main {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        justify-content: center;
+      }
+
+      .sb-team {
+        font: bold 12px/1 monospace;
+        color: #e2e8f0;
+      }
+
+      .sb-score {
+        font: bold 16px/1 monospace;
+        color: #ffffff;
+        letter-spacing: 2px;
+      }
+
+      .sb-time {
+        font: 11px/1 monospace;
+        color: #7dd3fc;
+        text-align: center;
+        margin-top: 2px;
+      }
+
+      .sb-scorers {
+        font: 10px/1.4 monospace;
+        color: #94a3b8;
+        margin-top: 4px;
+        border-top: 1px solid #334155;
+        padding-top: 4px;
+      }
+
+      .sb-scorers:empty {
+        display: none;
+      }
+
+      .sb-scorer-row {
+        display: flex;
+        gap: 4px;
+      }
+
+      .sb-scorer-row .scorer-min {
+        color: #7dd3fc;
+      }
+
+      /* ── Match controls (pinned to bottom of left panel) ── */
+      #match-controls {
+        margin-top: auto;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        padding: 8px 10px;
+        border-top: 1px solid #334155;
+      }
+
+      #match-controls .ctrl-btn {
+        flex: 1;
+      }
+
+      /* ── Speed slider ────────────────────────────────────── */
+      .speed-control {
         display: flex;
         align-items: center;
         gap: 6px;
+        flex-basis: 100%;
       }
 
-      .speed-label {
+      .speed-control label {
+        font: 10px/1 monospace;
+        color: #94a3b8;
+        white-space: nowrap;
+      }
+
+      .speed-control .speed-value {
+        font: bold 11px/1 monospace;
         color: #60a5fa;
-        font: bold 12px monospace;
-        min-width: 36px;
-        text-align: center;
+        min-width: 28px;
+        text-align: right;
       }
 
-      .speed-slider {
-        width: 100px;
+      #speed-slider {
+        flex: 1;
         height: 16px;
         -webkit-appearance: none;
         appearance: none;
@@ -268,13 +635,13 @@
         cursor: pointer;
       }
 
-      .speed-slider::-webkit-slider-track {
+      #speed-slider::-webkit-slider-track {
         height: 4px;
         background: #334155;
         border-radius: 2px;
       }
 
-      .speed-slider::-webkit-slider-thumb {
+      #speed-slider::-webkit-slider-thumb {
         -webkit-appearance: none;
         appearance: none;
         width: 14px;
@@ -284,16 +651,480 @@
         margin-top: -5px;
       }
 
+      /* ── Live stats (shown during play) ─────────────────── */
+      #live-stats {
+        padding: 8px 10px;
+        font: 12px/1.6 monospace;
+        color: #cbd5e1;
+        flex: 1;
+      }
+
+      #live-stats:empty {
+        display: none;
+      }
+
+      .stat-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 3px 0;
+      }
+
+      .stat-label {
+        color: #94a3b8;
+        font-size: 11px;
+        min-width: 70px;
+        text-align: center;
+      }
+
+      .stat-bar {
+        flex: 1;
+        height: 4px;
+        background: #1e293b;
+        border-radius: 2px;
+        margin: 0 6px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .stat-bar-fill {
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 100%;
+        background: #3b82f6;
+        border-radius: 2px;
+        transition: width 0.3s ease;
+      }
+
+      .stat-val {
+        font: bold 12px/1 monospace;
+        min-width: 28px;
+        text-align: right;
+      }
+
+      .stat-val:last-child {
+        text-align: left;
+      }
+
+      .stat-heading {
+        color: #94a3b8;
+        font: bold 10px/1 monospace;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin: 10px 0 4px;
+        padding-bottom: 3px;
+        border-bottom: 1px solid #1e293b;
+      }
+
+      .stat-heading:first-child {
+        margin-top: 0;
+      }
+
+      /* Possession block — label above the bar */
+      .poss-block {
+        margin: 6px 0 8px;
+      }
+
+      .poss-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        margin-bottom: 4px;
+      }
+
+      .poss-header .stat-val {
+        font: bold 14px/1 monospace;
+        color: #e2e8f0;
+      }
+
+      .poss-header .poss-label {
+        font: bold 10px/1 monospace;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      .poss-bar {
+        height: 6px;
+        background: #1e293b;
+        border-radius: 3px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .poss-bar-fill {
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 100%;
+        background: #3b82f6;
+        border-radius: 3px;
+        transition: width 0.3s ease;
+      }
+
+      /* ── Tactics section (inside left panel, shown when paused) */
+      .tactics-section {
+        display: none;
+        padding: 8px 10px;
+        flex: 1;
+        overflow-y: auto;
+      }
+
+      .tactics-section.open {
+        display: block;
+      }
+
       /* ── Pitch area wrapper ────────────────────────────────── */
       #pitch-area {
-        display: inline-flex;
-        flex-direction: column;
+        display: flex;
+        flex-direction: row;
         align-items: stretch;
+        width: 100%;
+        height: 100%;
+      }
+
+      #pitch-center {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        min-width: 0;
+      }
+
+      /* ── Right panel (always visible) ─────────────────────── */
+      #right-panel {
+        width: 300px;
+        max-width: 25vw;
+        flex-shrink: 0;
+        background: #0f172a;
+        border-left: 1px solid #334155;
+        padding: 10px;
+        overflow-y: auto;
+      }
+
+      #right-panel h4, .tactics-section h4 {
+        color: #94a3b8;
+        font: bold 10px/1 monospace;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin: 10px 0 6px;
+        padding-bottom: 3px;
+        border-bottom: 1px solid #1e293b;
+      }
+
+      #right-panel h4:first-child, .tactics-section h4:first-child {
+        margin-top: 0;
+      }
+
+      /* ── Notch selector (5-step chip) ──────────────────────── */
+      .notch-selector {
+        display: flex;
+        flex-direction: column;
+        margin-bottom: 8px;
+      }
+
+      .notch-label {
+        display: flex;
+        justify-content: space-between;
+        color: #cbd5e1;
+        font: 11px monospace;
+        margin-bottom: 3px;
+      }
+
+      .notch-label .notch-value {
+        color: #60a5fa;
+        font-weight: bold;
+      }
+
+      .notch-track {
+        display: flex;
+        gap: 2px;
+      }
+
+      .notch-track .notch {
+        flex: 1;
+        height: 18px;
+        background: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 2px;
+        cursor: pointer;
+        transition: background 0.1s, border-color 0.1s;
+      }
+
+      .notch-track .notch:hover {
+        background: #334155;
+        border-color: #60a5fa;
+      }
+
+      .notch-track .notch.active {
+        background: #1e40af;
+        border-color: #3b82f6;
+      }
+
+      /* ── Segment selector (2-4 options) ────────────────────── */
+      .segment-selector {
+        display: flex;
+        margin-bottom: 8px;
+      }
+
+      .segment-selector .seg-btn {
+        flex: 1;
+        padding: 4px 6px;
+        background: #1e293b;
+        color: #94a3b8;
+        border: 1px solid #334155;
+        font: 11px/1 monospace;
+        cursor: pointer;
+        text-align: center;
+        transition: background 0.1s, color 0.1s;
+      }
+
+      .segment-selector .seg-btn:first-child {
+        border-radius: 3px 0 0 3px;
+      }
+
+      .segment-selector .seg-btn:last-child {
+        border-radius: 0 3px 3px 0;
+      }
+
+      .segment-selector .seg-btn:not(:last-child) {
+        border-right: none;
+      }
+
+      .segment-selector .seg-btn:hover {
+        background: #334155;
+        color: #f1f5f9;
+      }
+
+      .segment-selector .seg-btn.active {
+        background: #1e40af;
+        color: #bfdbfe;
+        border-color: #3b82f6;
+      }
+
+      /* ── Tactic selector (above phase bar) ─────────────────── */
+      #tactic-selector {
+        display: none;
+        flex-direction: column;
+        gap: 4px;
+        margin-bottom: 12px;
+      }
+
+      #tactic-selector.open {
+        display: flex;
+      }
+
+      #tactic-selector .tactic-label {
+        font: bold 10px/1 monospace;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      #tactic-selector .tactic-controls {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      #tactic-selector .tactic-select {
+        flex: 1;
+        min-width: 0;
+        padding: 3px 4px;
+        background: #1e293b;
+        color: #e2e8f0;
+        border: 1px solid #334155;
+        border-radius: 3px;
+        font: 11px/1 monospace;
+        cursor: pointer;
+      }
+
+      #tactic-selector .tactic-select:hover {
+        border-color: #475569;
+      }
+
+      #tactic-selector .tactic-btn {
+        padding: 3px 8px;
+        background: #1e293b;
+        color: #94a3b8;
+        border: 1px solid #334155;
+        border-radius: 3px;
+        font: 11px/1 monospace;
+        cursor: pointer;
+        transition: background 0.1s, color 0.1s;
+      }
+
+      #tactic-selector .tactic-btn:hover {
+        background: #334155;
+        color: #f1f5f9;
+      }
+
+      #tactic-selector .tactic-btn-del {
+        color: #f87171;
+      }
+
+      #tactic-selector .tactic-btn-del:hover {
+        background: #7f1d1d;
+        color: #fca5a5;
+      }
+
+      #tactic-selector .tactic-btn:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+
+      /* ── Phase bar ──────────────────────────────────────────── */
+      #phase-bar {
+        display: none;
+        gap: 0;
+        justify-content: center;
+        flex-wrap: wrap;
+        margin-bottom: 8px;
+      }
+
+      #phase-bar.open {
+        display: flex;
+      }
+
+      #phase-bar .phase-tab {
+        flex: 1;
+        padding: 4px 14px;
+        background: #1e293b;
+        color: #94a3b8;
+        border: 1px solid #334155;
+        font: 11px/1 monospace;
+        cursor: pointer;
+        transition: background 0.1s, color 0.1s;
+        text-align: center;
+      }
+
+      #phase-bar .phase-tab:first-of-type {
+        border-radius: 4px 0 0 4px;
+      }
+
+      #phase-bar .phase-tab:last-of-type {
+        border-radius: 0 4px 4px 0;
+      }
+
+      #phase-bar .phase-tab:first-of-type {
+        border-right: none;
+      }
+
+      #phase-bar .phase-tab:hover {
+        background: #334155;
+        color: #f1f5f9;
+      }
+
+      #phase-bar .phase-tab.active {
+        background: #1e40af;
+        color: #bfdbfe;
+        border-color: #3b82f6;
+      }
+
+      .phase-status {
+        display: none;
+        flex-basis: 100%;
+        text-align: center;
+        font: bold 11px monospace;
+        color: #fbbf24;
+        padding: 2px 0;
+      }
+
+      .phase-status.visible {
+        display: block;
+      }
+
+      /* ── Role preset buttons ────────────────────────────────── */
+      .preset-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 4px;
+        margin-bottom: 8px;
+      }
+
+      .preset-btn {
+        padding: 4px 6px;
+        background: #1e293b;
+        color: #94a3b8;
+        border: 1px solid #334155;
+        border-radius: 3px;
+        font: 10px/1 monospace;
+        cursor: pointer;
+        text-align: center;
+        transition: background 0.1s;
+      }
+
+      .preset-btn:hover {
+        background: #334155;
+        color: #f1f5f9;
+        border-color: #60a5fa;
+      }
+
+      /* ── Player info header ─────────────────────────────────── */
+      .player-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid #334155;
+      }
+
+      .player-header .player-number {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: #3366cc;
+        color: white;
+        font: bold 11px/24px monospace;
+        text-align: center;
+      }
+
+      .player-header .player-name {
+        color: #e2e8f0;
+        font: bold 12px monospace;
+        flex: 1;
+      }
+
+      .player-header .player-role {
+        color: #94a3b8;
+        font: 10px monospace;
+      }
+
+      /* ── Phase sub-tabs (in player panel) ────────────────────── */
+      .phase-subtabs {
+        display: flex;
+        gap: 2px;
+        margin-bottom: 8px;
+      }
+
+      .phase-subtab {
+        flex: 1;
+        padding: 3px 2px;
+        background: #1e293b;
+        color: #64748b;
+        border: 1px solid #334155;
+        border-radius: 3px;
+        font: bold 9px/1 monospace;
+        cursor: pointer;
+        text-align: center;
+      }
+
+      .phase-subtab.active {
+        background: #1e3a5f;
+        color: #93c5fd;
+        border-color: #3b82f6;
+      }
+
+      .phase-subtab:hover:not(.active) {
+        background: #334155;
+        color: #94a3b8;
       }
 
       /* ── Commentary strip (CM2-style) ──────────────────────── */
       #commentary {
-        height: 56px;
+        min-height: 56px;
+        flex: 1 0 56px;
         overflow-y: hidden;
         background: #1a1a2eee;
         border-top: 2px solid #334155;
@@ -302,6 +1133,8 @@
         color: #e2e8f0;
         scroll-behavior: smooth;
         transition: background-color 0.6s ease;
+        width: 100%;
+        text-align: center;
       }
 
       #commentary .line {
@@ -336,7 +1169,8 @@
         position: fixed;
         top: 0;
         left: 0;
-        width: 260px;
+        width: 300px;
+        max-width: 25vw;
         height: 100%;
         background: #0a0f1e;
         border-right: 1px solid #334155;
@@ -359,7 +1193,8 @@
         position: fixed;
         top: 0;
         right: 0;
-        width: 280px;
+        width: 300px;
+        max-width: 25vw;
         height: 100%;
         background: #0f172a;
         border-left: 1px solid #334155;
@@ -437,44 +1272,63 @@
   <body>
     <div id="app">
 
-      <!-- ── Tactics screen (initial view) ──────────────────── -->
-      <div id="tactics-screen">
-        <canvas id="tactics-canvas"></canvas>
-        <div class="tactics-controls">
-          <button class="formation-btn active" data-formation="4-4-2">4-4-2</button>
-          <button class="formation-btn" data-formation="4-3-3">4-3-3</button>
-          <button class="formation-btn" data-formation="4-5-1">4-5-1</button>
-          <button class="formation-btn" data-formation="3-5-2">3-5-2</button>
-          <button class="formation-btn" data-formation="4-2-3-1">4-2-3-1</button>
-          <div class="tactics-sep"></div>
-          <button id="btn-tactics-kickoff" title="Start the match with this formation">Kick Off</button>
-          <button id="btn-tactics-second-half" style="display:none" title="Apply changes and start the second half">Start 2nd Half</button>
-        </div>
-        <!-- Bench panel — shown at halftime -->
-        <div id="bench-panel" style="display:none">
-          <div class="bench-header">
-            <span class="bench-title">Bench</span>
-            <span id="bench-sub-counter" class="bench-sub-counter">Subs: 0/3</span>
+      <!-- ── Match view ──────────────────────────────────────── -->
+      <div id="pitch-area">
+        <div id="left-panel">
+          <!-- Scoreboard — always visible at top -->
+          <div id="scoreboard">
+            <div class="sb-main">
+              <span class="sb-team" id="sb-home">HOME</span>
+              <span class="sb-score" id="sb-score">0 - 0</span>
+              <span class="sb-team" id="sb-away">AWAY</span>
+            </div>
+            <div class="sb-time" id="sb-time">0'</div>
+            <div class="sb-scorers" id="sb-scorers"></div>
           </div>
-          <div id="bench-players" class="bench-players"></div>
+
+          <!-- Live stats — visible during play, hidden when paused -->
+          <div id="live-stats"></div>
+
+          <!-- Tactics controls — hidden during play, visible when paused -->
+          <div id="tactics-overlay-left" class="tactics-section">
+            <div id="tactic-selector"></div>
+            <div id="phase-bar"></div>
+            <!-- TeamPanel creates its content div here dynamically -->
+          </div>
+
+          <!-- Match controls — pinned to bottom -->
+          <div id="match-controls">
+            <div class="speed-control">
+              <label>Speed</label>
+              <input type="range" id="speed-slider" min="0" max="4" step="1" value="2">
+              <span class="speed-value" id="speed-value">1x</span>
+            </div>
+            <button class="ctrl-btn" id="btn-pause" title="Pause / Resume (P)">Pause</button>
+            <button class="ctrl-btn" id="btn-reset" title="Restart match">Reset</button>
+          </div>
         </div>
-      </div>
-
-      <!-- ── Match view (hidden until Kick Off) ─────────────── -->
-      <div id="pitch-area" style="display:none;">
-        <canvas id="match-canvas"></canvas>
-        <div id="commentary"></div>
-      </div>
-
-      <!-- Match controls (hidden until Kick Off) — speed always visible -->
-      <div id="controls" style="display:none;">
-        <button class="ctrl-btn" id="btn-kickoff" title="Start the match (Space)">Kick Off</button>
-        <button class="ctrl-btn" id="btn-pause" title="Pause / Resume (P)">Pause</button>
-        <button class="ctrl-btn" id="btn-reset" title="Return to tactics board">Reset</button>
-        <div class="ctrl-sep"></div>
-        <div class="speed-group">
-          <span class="speed-label" id="speed-label">1.0x</span>
-          <input type="range" id="speed-slider" min="0.25" max="4" step="0.25" value="1" class="speed-slider" title="Simulation speed (0.25x - 4x)">
+        <div id="pitch-center">
+          <div id="canvas-wrapper">
+            <canvas id="match-canvas"></canvas>
+            <canvas id="tactics-canvas"></canvas>
+            <button id="btn-kickoff" title="Start the match (Space)">Kick Off</button>
+            <button id="btn-second-half" style="display:none" title="Apply changes and start 2nd half">Start 2nd Half</button>
+          </div>
+          <div id="commentary"></div>
+        </div>
+        <div id="right-panel">
+          <div id="squad-view">
+            <!-- SquadPanel builds its list here dynamically -->
+            <!-- Bench panel sits below squad list -->
+            <div id="bench-panel" style="display:none">
+              <div class="bench-header">
+                <span class="bench-title">Bench</span>
+                <span id="bench-sub-counter" class="bench-sub-counter">Subs: 0/3</span>
+              </div>
+              <div id="bench-players" class="bench-players"></div>
+            </div>
+          </div>
+          <div id="player-view" style="display:none"></div>
         </div>
       </div>
 

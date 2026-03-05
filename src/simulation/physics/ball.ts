@@ -13,7 +13,15 @@ export const GRAVITY = 9.8;
  * Approximates rolling friction (~1-2 m/s^2 deceleration).
  * Ball moving at 10 m/s slows significantly over hundreds of ticks.
  */
-export const GROUND_FRICTION = 0.985;
+export const GROUND_FRICTION = 0.975;
+
+/**
+ * Per-tick XY velocity multiplier when ball is airborne.
+ * Approximates aerodynamic drag on a football in flight.
+ * At 30 Hz: ~16% speed loss per second, ~30% over 2 seconds.
+ * Makes long balls arc and decelerate realistically.
+ */
+export const AIR_DRAG = 0.994;
 
 /**
  * Energy retained after ground bounce.
@@ -43,11 +51,18 @@ export const SETTLE_THRESHOLD = 0.1;
  *
  * Pure function — input BallState is never mutated.
  *
- * @param ball - Current ball state
- * @param dt   - Time step in milliseconds
- * @returns    - New BallState after dt has elapsed
+ * @param ball         - Current ball state
+ * @param dt           - Time step in milliseconds
+ * @param groundFriction - Per-tick XY multiplier when on ground (default: GROUND_FRICTION)
+ * @param airDragOverride - Per-tick XY multiplier when airborne (default: AIR_DRAG)
+ * @returns              - New BallState after dt has elapsed
  */
-export function integrateBall(ball: BallState, dt: number): BallState {
+export function integrateBall(
+  ball: BallState,
+  dt: number,
+  groundFriction: number = GROUND_FRICTION,
+  airDragOverride: number = AIR_DRAG,
+): BallState {
   const dtSec = dt / 1000;
 
   // --- Z-axis integration (height) ---
@@ -81,8 +96,8 @@ export function integrateBall(ball: BallState, dt: number): BallState {
   }
 
   // --- XY integration (ground plane) ---
-  // Apply ground friction only when ball is on the ground
-  const friction = z === 0 ? GROUND_FRICTION : 1.0;
+  // Apply ground friction on the ground, air drag when airborne
+  const friction = z === 0 ? groundFriction : airDragOverride;
   const vx = ball.velocity.x * friction;
   const vy = ball.velocity.y * friction;
 

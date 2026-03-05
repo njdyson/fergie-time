@@ -36,7 +36,6 @@ const BALL_FILL = '#ffffff';
 const BALL_STROKE = '#222222';
 
 // HUD colors
-const HUD_BG = 'rgba(0, 0, 0, 0.70)';
 const HUD_TEXT = '#ffffff';
 const HUD_FONT = 'bold 14px monospace';
 const HUD_FONT_SMALL = '12px monospace';
@@ -80,6 +79,18 @@ export class CanvasRenderer {
   showStats: boolean = false;
   showDebug: boolean = false;
   showHeatmap: boolean = false;
+  showAnchors: boolean = false; // V1 overhaul: show anchor ghosts + structure lines when paused
+  showGhosts: boolean = false; // Show faint anchor ghosts during live play (toggled by G key)
+  selectedHomePlayerIndex: number = -1; // V1 overhaul: highlight selected player on pitch
+  freedomValues: number[] = []; // Per-player freedom multiplier values (0..1) for radius overlay
+
+  // Transition phase visualization: show both in-poss and OOP anchors for selected player
+  editingTransitionPhase: 'defensiveTransition' | 'attackingTransition' | null = null;
+  inPossAnchors: { x: number; y: number }[] = [];
+  oopAnchors: { x: number; y: number }[] = [];
+
+  /** Horizontal pixels reserved for side panels (subtracted from available width) */
+  panelOffset: number = 0;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -98,12 +109,13 @@ export class CanvasRenderer {
    * Recalculate canvas size and coordinate mapping.
    * Canvas fills available width with the correct 105:68 aspect ratio.
    */
-  private resize(): void {
-    const availableWidth = window.innerWidth;
-    // Reserve space for controls bar + commentary strip (fixed 58px) + gaps
-    const controlsEl = document.getElementById('controls');
-    const controlsHeight = controlsEl ? controlsEl.offsetHeight + 16 : 50;
-    const availableHeight = window.innerHeight - controlsHeight - 58;
+  resize(): void {
+    // Use the actual container width (flex layout handles panel offsets)
+    const wrapper = this.canvas.parentElement;
+    // Clear any previous maxHeight constraint before measuring so we get the full available space
+    if (wrapper) wrapper.style.maxHeight = '';
+    const availableWidth = wrapper ? wrapper.clientWidth : (window.innerWidth - this.panelOffset);
+    const availableHeight = wrapper ? wrapper.clientHeight : (window.innerHeight - 56);
 
     // Compute canvas size preserving aspect ratio within available space
     const aspectRatio = PITCH_W / PITCH_H;
@@ -117,6 +129,13 @@ export class CanvasRenderer {
 
     this.canvas.width = canvasWidth;
     this.canvas.height = canvasHeight;
+
+    // Shrink wrapper to match canvas so there's no gap below the pitch
+    if (wrapper && canvasHeight < availableHeight) {
+      wrapper.style.maxHeight = canvasHeight + 'px';
+    } else if (wrapper) {
+      wrapper.style.maxHeight = '';
+    }
 
     // Pitch area: canvas minus padding on all sides
     const pitchPixelW = canvasWidth - PITCH_PADDING * 2;
@@ -173,19 +192,40 @@ export class CanvasRenderer {
       const currPlayer = curr.players[i];
       const prevPlayer = prev.players[i] ?? currPlayer;
       if (currPlayer) {
+        // When anchors are shown (tactics overlay open), hide home players
+        // and fade away players for context (hide away entirely pre-kickoff)
+        if (this.showAnchors && currPlayer.teamId === 'home') continue;
+        if (this.showAnchors && currPlayer.teamId === 'away') {
+          if (curr.matchPhase === 'KICKOFF') continue; // hide away pre-kickoff
+          ctx.save();
+          ctx.globalAlpha = 0.2;
+          this.drawPlayer(ctx, prevPlayer ?? currPlayer, currPlayer, alpha);
+          ctx.restore();
+          continue;
+        }
         this.drawPlayer(ctx, prevPlayer ?? currPlayer, currPlayer, alpha);
       }
+    }
+
+    // 4b. Ghost anchors during live play (G toggle)
+    if (this.showGhosts && !this.showAnchors) {
+      this.drawGhostAnchors(ctx, curr);
     }
 
     // 5 & 6. Ball shadow and ball
     this.drawBall(ctx, prev, curr, alpha);
 
-    // 7. Match info HUD
-    this.drawMatchInfo(ctx, curr);
+    // 7. Key hints (bottom of canvas)
+    this.drawKeyHints(ctx);
 
     // 8. Stats overlay
     if (this.showStats) {
       this.drawStatsOverlay(ctx, curr);
+    }
+
+    // 9. Anchor ghost overlay (V1 overhaul — when paused with tactics overlay)
+    if (this.showAnchors) {
+      this.drawAnchorOverlay(ctx, curr);
     }
   }
 
@@ -333,58 +373,6 @@ export class CanvasRenderer {
     ctx.stroke();
   }
 
-  // ============================================================
-  // Match info HUD
-  // ============================================================
-
-  private drawMatchInfo(ctx: CanvasRenderingContext2D, snap: SimSnapshot): void {
-    const [homeScore, awayScore] = snap.score;
-    const matchMinute = Math.min(90, Math.floor(snap.tick / 60));
-    const phase = snap.matchPhase;
-
-    // Phase label
-    const phaseLabels: Record<string, string> = {
-      KICKOFF: 'Kickoff',
-      FIRST_HALF: `${matchMinute}'`,
-      HALFTIME: 'HT',
-      SECOND_HALF: `${matchMinute}'`,
-      FULL_TIME: 'FT',
-    };
-    const timeLabel = phaseLabels[phase] ?? phase;
-
-    // Score text
-    const scoreText = `${homeScore} - ${awayScore}`;
-
-    // Draw HUD at top center
-    const hudX = this.canvas.width / 2;
-    const hudY = 8;
-    const boxW = 130;
-    const boxH = 28;
-
-    ctx.save();
-    ctx.fillStyle = HUD_BG;
-    this.drawRoundedRect(ctx, hudX - boxW / 2, hudY, boxW, boxH, 6);
-    ctx.fill();
-
-    ctx.fillStyle = HUD_TEXT;
-    ctx.font = HUD_FONT;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-
-    // Score
-    ctx.fillText(scoreText, hudX - 20, hudY + boxH / 2);
-
-    // Time
-    ctx.fillStyle = '#aaccff';
-    ctx.font = HUD_FONT_SMALL;
-    ctx.fillText(timeLabel, hudX + 35, hudY + boxH / 2);
-
-    ctx.restore();
-
-    // Key hints at bottom
-    this.drawKeyHints(ctx);
-  }
-
   private drawKeyHints(ctx: CanvasRenderingContext2D): void {
     ctx.save();
     ctx.fillStyle = 'rgba(255,255,255,0.35)';
@@ -393,11 +381,8 @@ export class CanvasRenderer {
     ctx.textBaseline = 'bottom';
 
     const hints = [
-      '[S] Stats',
       '[D] Debug',
-      '[H] Heatmap',
-      '[1/2/3] Speed',
-      '[P] Pause',
+      '[Space] Pause',
     ].join('  ');
 
     ctx.fillText(hints, 6, this.canvas.height - 4);
@@ -414,6 +399,7 @@ export class CanvasRenderer {
       'MATCH STATS',
       `Possession:  H ${stats.possession[0].toFixed(0)}%  A ${stats.possession[1].toFixed(0)}%`,
       `Shots:       H ${stats.shots[0]}  A ${stats.shots[1]}`,
+      `On Target:   H ${stats.shotsOnTarget[0]}  A ${stats.shotsOnTarget[1]}`,
       `Passes:      H ${stats.passes[0]}  A ${stats.passes[1]}`,
       `Tackles:     H ${stats.tackles[0]}  A ${stats.tackles[1]}`,
     ];
@@ -440,6 +426,260 @@ export class CanvasRenderer {
       ctx.fillStyle = i === 0 ? '#aaccff' : HUD_TEXT;
       ctx.fillText(lines[i]!, panelX + padding, lineY);
       lineY += lineH;
+    }
+
+    ctx.restore();
+  }
+
+  // ============================================================
+  // Anchor overlay (V1 overhaul — tactics editing visualization)
+  // ============================================================
+
+  /**
+   * Draws formation anchor positions as the primary player display (replaces live positions).
+   * Solid circles with shirt numbers and surnames at anchor positions.
+   * Structure lines show defensive, midfield, and forward lines.
+   */
+  private drawAnchorOverlay(ctx: CanvasRenderingContext2D, snap: SimSnapshot): void {
+    const homePlayers = snap.players.filter(p => p.teamId === 'home');
+    if (homePlayers.length === 0) return;
+
+    ctx.save();
+
+    // Draw freedom radius circle for SELECTED player only (behind player circles)
+    if (this.freedomValues.length > 0 && this.selectedHomePlayerIndex >= 0) {
+      const i = this.selectedHomePlayerIndex;
+      const freedom = this.freedomValues[i] ?? 0.5;
+      if (freedom > 0.05) {
+        const p = homePlayers[i]!;
+        const anchor = this.pitchToCanvas(p.formationAnchor);
+        const radiusM = freedom * 20;
+        const radiusPx = Math.max(0, radiusM * Math.min(this.scaleX, this.scaleY));
+        if (radiusPx > PLAYER_RADIUS) {
+          ctx.beginPath();
+          ctx.arc(anchor.x, anchor.y, radiusPx, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(59, 130, 246, ${0.08 + freedom * 0.12})`;
+          ctx.fill();
+          ctx.strokeStyle = `rgba(96, 165, 250, ${0.35 + freedom * 0.35})`;
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([5, 3]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      }
+    }
+
+    // Transition edit mode: when editing def/att trans with a player selected,
+    // fade non-selected players and show both phase positions for the selected one
+    const inTransEdit = this.editingTransitionPhase !== null
+      && this.selectedHomePlayerIndex >= 0
+      && this.inPossAnchors.length > 0;
+
+    // Draw solid player circles at anchor positions
+    for (let i = 0; i < homePlayers.length; i++) {
+      const p = homePlayers[i]!;
+      const anchor = this.pitchToCanvas(p.formationAnchor);
+      const isGK = p.role === 'GK';
+      const isSelected = i === this.selectedHomePlayerIndex;
+      // Selected player: bright white/gold, non-selected: standard team color
+      const fillColor = isSelected
+        ? (isGK ? '#88eebb' : '#5599ee')
+        : (isGK ? HOME_GK_COLOR : HOME_COLOR);
+
+      // In transition edit, fade non-selected players
+      if (inTransEdit && !isSelected) {
+        ctx.save();
+        ctx.globalAlpha = 0.15;
+        ctx.beginPath();
+        ctx.arc(anchor.x, anchor.y, PLAYER_RADIUS, 0, Math.PI * 2);
+        ctx.fillStyle = fillColor;
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.font = SHIRT_FONT;
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(String(i + 1), anchor.x, anchor.y + 1);
+        ctx.restore();
+        continue;
+      }
+
+      // Selected player highlight ring
+      if (isSelected) {
+        ctx.beginPath();
+        ctx.arc(anchor.x, anchor.y, PLAYER_RADIUS + 4, 0, Math.PI * 2);
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+      }
+
+      // Solid player circle
+      ctx.beginPath();
+      ctx.arc(anchor.x, anchor.y, PLAYER_RADIUS, 0, Math.PI * 2);
+      ctx.fillStyle = fillColor;
+      ctx.fill();
+      ctx.strokeStyle = isSelected ? '#fbbf24' : '#ffffff';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Shirt number
+      const shirtNum = String(i + 1);
+      ctx.font = SHIRT_FONT;
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(shirtNum, anchor.x, anchor.y + 1);
+
+      // Player surname above circle
+      const name = p.name ?? p.role;
+      const surname = name.split(' ').pop() ?? name;
+      ctx.font = ROLE_FONT;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(surname, anchor.x, anchor.y + ROLE_LABEL_OFFSET_Y);
+
+      // Transition edit: draw "to" ghost + arrow from main circle
+      // The main circle already shows the "from" position (engine pushes the from-phase config)
+      if (inTransEdit && isSelected) {
+        const idx = this.selectedHomePlayerIndex;
+        // Def trans: player moves from in-poss → OOP
+        // Att trans: player moves from OOP → in-poss
+        const toAnchors = this.editingTransitionPhase === 'defensiveTransition'
+          ? this.oopAnchors : this.inPossAnchors;
+        const toPos = toAnchors[idx];
+
+        if (toPos) {
+          const to = this.pitchToCanvas(toPos);
+
+          // "To" ghost marker (where player moves to)
+          ctx.save();
+          ctx.globalAlpha = 0.75;
+          ctx.beginPath();
+          ctx.arc(to.x, to.y, PLAYER_RADIUS, 0, Math.PI * 2);
+          ctx.fillStyle = '#22c55e';
+          ctx.fill();
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([3, 3]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.font = SHIRT_FONT;
+          ctx.fillStyle = '#ffffff';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(shirtNum, to.x, to.y + 1);
+          // Label
+          ctx.font = ROLE_FONT;
+          ctx.fillStyle = '#22c55e';
+          ctx.textBaseline = 'bottom';
+          const toLabel = this.editingTransitionPhase === 'defensiveTransition' ? 'OOP' : 'IN POSS';
+          ctx.fillText(toLabel, to.x, to.y + ROLE_LABEL_OFFSET_Y);
+          ctx.restore();
+
+          // Arrow from main circle → to ghost
+          ctx.save();
+          ctx.strokeStyle = 'rgba(250, 204, 21, 0.7)';
+          ctx.lineWidth = 2;
+          ctx.setLineDash([6, 4]);
+          ctx.beginPath();
+          ctx.moveTo(anchor.x, anchor.y);
+          ctx.lineTo(to.x, to.y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          // Arrow head
+          const angle = Math.atan2(to.y - anchor.y, to.x - anchor.x);
+          const headLen = 10;
+          ctx.fillStyle = 'rgba(250, 204, 21, 0.7)';
+          ctx.beginPath();
+          ctx.moveTo(to.x, to.y);
+          ctx.lineTo(to.x - headLen * Math.cos(angle - 0.4), to.y - headLen * Math.sin(angle - 0.4));
+          ctx.lineTo(to.x - headLen * Math.cos(angle + 0.4), to.y - headLen * Math.sin(angle + 0.4));
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+    }
+
+    // Structure lines from anchor positions (cluster-based grouping)
+    const outfield = homePlayers.filter(p => p.role !== 'GK');
+    if (outfield.length >= 4) {
+      const sorted = [...outfield].sort((a, b) => a.formationAnchor.x - b.formationAnchor.x);
+
+      // Cluster forwards: players within 8m of the most advanced
+      const mostAdvX = sorted[sorted.length - 1]!.formationAnchor.x;
+      const fwdGroup = sorted.filter(p => mostAdvX - p.formationAnchor.x < 8);
+      const fwdLine = fwdGroup.reduce((s, p) => s + p.formationAnchor.x, 0) / fwdGroup.length;
+
+      // Cluster defenders: players within 8m of the least advanced
+      const leastAdvX = sorted[0]!.formationAnchor.x;
+      const defGroup = sorted.filter(p => p.formationAnchor.x - leastAdvX < 8);
+      const defLine = defGroup.reduce((s, p) => s + p.formationAnchor.x, 0) / defGroup.length;
+
+      // Midfield: everything in between
+      const midGroup = sorted.filter(p => !fwdGroup.includes(p) && !defGroup.includes(p));
+      const midLine = midGroup.length > 0
+        ? midGroup.reduce((s, p) => s + p.formationAnchor.x, 0) / midGroup.length
+        : (defLine + fwdLine) / 2;
+
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([8, 6]);
+
+      // Extend lines 3m beyond pitch edges so they're visible even on halfway line
+      for (const lineX of [defLine, midLine, fwdLine]) {
+        const left = this.pitchToCanvas({ x: lineX, y: -3 });
+        const right = this.pitchToCanvas({ x: lineX, y: 71 });
+        ctx.beginPath();
+        ctx.moveTo(left.x, left.y);
+        ctx.lineTo(right.x, right.y);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+    }
+
+    ctx.restore();
+  }
+
+  // ============================================================
+  // Ghost anchors (live play — faint formation position markers)
+  // ============================================================
+
+  /**
+   * Draws faint ghost circles at home team anchor positions during live play.
+   * Shows where players SHOULD be relative to their formation.
+   */
+  private drawGhostAnchors(ctx: CanvasRenderingContext2D, snap: SimSnapshot): void {
+    const homePlayers = snap.players.filter(p => p.teamId === 'home');
+    if (homePlayers.length === 0) return;
+
+    ctx.save();
+    ctx.globalAlpha = 0.25;
+
+    for (let i = 0; i < homePlayers.length; i++) {
+      const p = homePlayers[i]!;
+      const anchor = this.pitchToCanvas(p.formationAnchor);
+      const isGK = p.role === 'GK';
+      const fillColor = isGK ? HOME_GK_COLOR : HOME_COLOR;
+
+      // Ghost circle (smaller, unfilled)
+      ctx.beginPath();
+      ctx.arc(anchor.x, anchor.y, PLAYER_RADIUS - 2, 0, Math.PI * 2);
+      ctx.strokeStyle = fillColor;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([3, 3]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Shirt number
+      ctx.font = SHIRT_FONT;
+      ctx.fillStyle = fillColor;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(i + 1), anchor.x, anchor.y + 1);
     }
 
     ctx.restore();

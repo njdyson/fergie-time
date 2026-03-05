@@ -23,6 +23,7 @@ const BASE_ATTRS: PlayerAttributes = {
   tackling: 0.6,
   aerial: 0.5,
   positioning: 0.7,
+  vision: 0.7,
 };
 
 const BASE_PERSONALITY: PersonalityVector = {

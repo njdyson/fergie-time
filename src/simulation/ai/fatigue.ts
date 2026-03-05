@@ -120,6 +120,7 @@ export function applyFatigueToAttributes(
     tackling: base.tackling * techFactor,
     aerial: base.aerial * techFactor,
     positioning: base.positioning * techFactor,
+    vision: base.vision * techFactor,
   };
 }
 

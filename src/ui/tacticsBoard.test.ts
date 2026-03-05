@@ -74,10 +74,10 @@ describe('TacticsBoard', () => {
       expect(config.duties).toHaveLength(11);
     });
 
-    it('formation is "4-4-2" by default', () => {
+    it('formation is always Vec2[] (snap-grid mode)', () => {
       const config = board.getTacticalConfig();
-      // When positions match template, returns the FormationId string
-      expect(config.formation).toBe('4-4-2');
+      expect(Array.isArray(config.formation)).toBe(true);
+      expect((config.formation as unknown[]).length).toBe(11);
     });
 
     it('all duties default to SUPPORT', () => {
@@ -94,17 +94,18 @@ describe('TacticsBoard', () => {
     });
   });
 
-  // ── setFormation ──────────────────────────────────────────
+  // ── applyPresetPositions ──────────────────────────────────
 
-  describe('setFormation', () => {
-    it('changes positions to match the new template', () => {
-      board.setFormation('4-3-3');
+  describe('applyPresetPositions', () => {
+    it('changes positions and roles to match the new template', () => {
+      board.applyPresetPositions('4-3-3');
       const config = board.getTacticalConfig();
-      expect(config.formation).toBe('4-3-3');
+      const template = FORMATION_TEMPLATES['4-3-3'];
+      expect(config.roles).toEqual(template.roles);
     });
 
     it('roles update to match new formation', () => {
-      board.setFormation('4-2-3-1');
+      board.applyPresetPositions('4-2-3-1');
       const config = board.getTacticalConfig();
       const template = FORMATION_TEMPLATES['4-2-3-1'];
       expect(config.roles).toEqual(template.roles);
@@ -112,24 +113,27 @@ describe('TacticsBoard', () => {
 
     it('preserves duties across formation change', () => {
       board.setPlayerDuty(9, 'ATTACK');
-      board.setFormation('4-3-3');
+      board.applyPresetPositions('4-3-3');
       const config = board.getTacticalConfig();
       expect(config.duties[9]).toBe('ATTACK');
     });
 
-    it('returns the new formation from getFormation()', () => {
-      board.setFormation('3-5-2');
-      expect(board.getFormation()).toBe('3-5-2');
+    it('getFormationString returns the correct string', () => {
+      board.applyPresetPositions('3-5-2');
+      // 3-5-2 template: 3 defenders, 5 midfielders, 2 forwards
+      // After snapping to bands, the formation string should reflect the structure
+      const str = board.getFormationString();
+      expect(str.split('-').reduce((s, n) => s + Number(n), 0)).toBe(10);
     });
 
     it('supports all 5 formation presets', () => {
       const formations = ['4-4-2', '4-3-3', '4-5-1', '3-5-2', '4-2-3-1'] as const;
       for (const f of formations) {
-        board.setFormation(f);
-        expect(board.getFormation()).toBe(f);
+        board.applyPresetPositions(f);
         const config = board.getTacticalConfig();
         expect(config.roles).toHaveLength(11);
         expect(config.duties).toHaveLength(11);
+        expect(Array.isArray(config.formation)).toBe(true);
       }
     });
   });
@@ -166,20 +170,11 @@ describe('TacticsBoard', () => {
     });
   });
 
-  // ── getTacticalConfig with custom positions ───────────────
+  // ── getTacticalConfig always returns Vec2[] ────────────────
 
-  describe('getTacticalConfig with custom drag', () => {
-    it('returns Vec2[] when player is dragged from template position', () => {
-      // Simulate dragging player 9 (ST) to a very different position
-      // by directly calling the internal method via casting
-      const boardAny = board as unknown as Record<string, unknown>;
-      const positions = boardAny['positions'] as Array<{ x: number; y: number }>;
-      // Move player 9 significantly
-      positions[9] = { x: 80, y: 34 };
-      (boardAny['roles'] as string[])[9] = 'ST';
-
+  describe('getTacticalConfig with custom positions', () => {
+    it('always returns Vec2[] formation (snap-grid mode)', () => {
       const config = board.getTacticalConfig();
-      // Formation should be a Vec2[] since position deviated
       expect(Array.isArray(config.formation)).toBe(true);
       expect((config.formation as unknown[]).length).toBe(11);
     });

@@ -14,7 +14,7 @@ function makePlayer(id: string, teamId: TeamId): PlayerState {
     attributes: {
       pace: 0.7, strength: 0.7, stamina: 0.7,
       dribbling: 0.7, passing: 0.7, shooting: 0.7,
-      tackling: 0.7, aerial: 0.7, positioning: 0.7,
+      tackling: 0.7, aerial: 0.7, positioning: 0.7, vision: 0.7,
     },
     personality: {
       directness: 0.5, risk_appetite: 0.5, composure: 0.5,
@@ -37,7 +37,9 @@ describe('createEmptyStats', () => {
     const stats = createEmptyStats();
     expect(stats.possession).toEqual([0, 0]);
     expect(stats.shots).toEqual([0, 0]);
+    expect(stats.shotsOnTarget).toEqual([0, 0]);
     expect(stats.passes).toEqual([0, 0]);
+    expect(stats.passesCompleted).toEqual([0, 0]);
     expect(stats.tackles).toEqual([0, 0]);
   });
 });
@@ -49,7 +51,9 @@ describe('StatsAccumulator', () => {
       const snapshot = acc.getSnapshot();
       expect(snapshot.possession).toEqual([0, 0]);
       expect(snapshot.shots).toEqual([0, 0]);
+      expect(snapshot.shotsOnTarget).toEqual([0, 0]);
       expect(snapshot.passes).toEqual([0, 0]);
+      expect(snapshot.passesCompleted).toEqual([0, 0]);
       expect(snapshot.tackles).toEqual([0, 0]);
     });
   });
@@ -100,6 +104,38 @@ describe('StatsAccumulator', () => {
       acc.recordPass('home');
       const s = acc.getSnapshot();
       expect(s.passes).toEqual([2, 0]);
+    });
+  });
+
+  describe('recordPassCompletion', () => {
+    it('increments home pass completions', () => {
+      const acc = new StatsAccumulator();
+      acc.recordPassCompletion('home');
+      const s = acc.getSnapshot();
+      expect(s.passesCompleted).toEqual([1, 0]);
+    });
+
+    it('increments away pass completions', () => {
+      const acc = new StatsAccumulator();
+      acc.recordPassCompletion('away');
+      const s = acc.getSnapshot();
+      expect(s.passesCompleted).toEqual([0, 1]);
+    });
+  });
+
+  describe('recordShotOnTarget', () => {
+    it('increments home shots on target', () => {
+      const acc = new StatsAccumulator();
+      acc.recordShotOnTarget('home');
+      const s = acc.getSnapshot();
+      expect(s.shotsOnTarget).toEqual([1, 0]);
+    });
+
+    it('increments away shots on target', () => {
+      const acc = new StatsAccumulator();
+      acc.recordShotOnTarget('away');
+      const s = acc.getSnapshot();
+      expect(s.shotsOnTarget).toEqual([0, 1]);
     });
   });
 

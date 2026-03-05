@@ -8,6 +8,7 @@ import {
   GROUND_FRICTION,
   BOUNCE_COEFFICIENT,
   SETTLE_THRESHOLD,
+  AIR_DRAG,
 } from './ball.ts';
 
 // Helper: create a minimal BallState for testing
@@ -38,8 +39,8 @@ describe('Physics constants', () => {
     expect(GRAVITY).toBe(9.8);
   });
 
-  it('GROUND_FRICTION is 0.985', () => {
-    expect(GROUND_FRICTION).toBe(0.985);
+  it('GROUND_FRICTION is 0.975', () => {
+    expect(GROUND_FRICTION).toBe(0.975);
   });
 
   it('BOUNCE_COEFFICIENT is 0.55', () => {
@@ -58,28 +59,26 @@ describe('integrateBall — ground friction', () => {
   it('decelerates XY velocity each tick via GROUND_FRICTION when z=0', () => {
     const ball = makeBall(10, 0);
     const next = integrateBall(ball, DT_ONE_TICK);
-    // vx should be 10 * 0.985 = 9.85
-    expect(next.velocity.x).toBeCloseTo(9.85, 5);
+    // vx should be 10 * GROUND_FRICTION
+    expect(next.velocity.x).toBeCloseTo(10 * GROUND_FRICTION, 5);
     expect(next.velocity.y).toBeCloseTo(0, 5);
   });
 
   it('ball on ground decelerates via friction and stops well within 3 seconds', () => {
-    // 10 * 0.985^N — how many ticks to < 0.5?
-    // 0.985^N < 0.05 → N > ln(0.05)/ln(0.985) = -2.996 / -0.01511 ≈ 198 ticks (~6.6 sec)
-    // Test at 300 ticks to be well below 0.5
     let ball = makeBall(10, 0);
     for (let i = 0; i < 300; i++) {
       ball = integrateBall(ball, DT_ONE_TICK);
     }
-    // After 300 ticks: 10 * 0.985^300 ≈ 10 * 0.0107 ≈ 0.107 m/s
+    // 10 * GROUND_FRICTION^300 should be well below 0.5
     expect(ball.velocity.x).toBeLessThan(0.5);
   });
 
-  it('does NOT apply ground friction when ball is airborne (z > 0)', () => {
+  it('applies air drag (not ground friction) when ball is airborne (z > 0)', () => {
     const ball = makeBall(10, 0, 5, 0); // z=5 (airborne)
     const next = integrateBall(ball, DT_ONE_TICK);
-    // vx should remain 10 (no friction in air)
-    expect(next.velocity.x).toBeCloseTo(10, 5);
+    // vx should be 10 * AIR_DRAG (0.994), not 10 * GROUND_FRICTION (0.985)
+    expect(next.velocity.x).toBeCloseTo(10 * AIR_DRAG, 5);
+    expect(next.velocity.x).toBeGreaterThan(10 * GROUND_FRICTION);
   });
 
   it('position updates by velocity * dtSec each tick', () => {

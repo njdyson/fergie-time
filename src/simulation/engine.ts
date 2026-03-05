@@ -1,10 +1,10 @@
-import type { SimSnapshot, PlayerState, BallState, ActionIntent, AgentContext, TeamId, FormationId, Role, Duty } from './types.ts';
+import type { SimSnapshot, PlayerState, PlayerAttributes, BallState, ActionIntent, AgentContext, TeamId, FormationId, Role, Duty, DeadBallInfo, PlayerTacticalMultipliers, TeamControls, PressConfig, TransitionConfig } from './types.ts';
 import { Vec2 } from './math/vec2.ts';
 import { createRng } from './math/random.ts';
 import { integrateBall } from './physics/ball.ts';
 import { advancePhase } from './match/phases.ts';
 import { checkGoal, createInitialSnapshot, applyGoal, getKickoffPositions, PITCH_WIDTH, PITCH_HEIGHT } from './match/state.ts';
-import { MatchPhase, ActionType } from './types.ts';
+import { MatchPhase, ActionType, RestartType, defaultPlayerMultipliers, defaultTeamControls, defaultPressConfig, defaultTransitionConfig } from './types.ts';
 import { ACTIONS } from './ai/actions.ts';
 import { selectAction, evaluateAction } from './ai/agent.ts';
 import { PERSONALITY_WEIGHTS } from './ai/personality.ts';
@@ -25,7 +25,7 @@ import { GameEventLog } from './match/gameLog.ts';
 
 /**
  * Tactical configuration for one team.
- * Controls formation shape, role assignments, and duty levels.
+ * Controls formation shape, role assignments, duty levels, and V1 tactical levers.
  */
 export interface TacticalConfig {
   /** Formation identifier or custom Vec2[] positions */
@@ -34,13 +34,25 @@ export interface TacticalConfig {
   readonly roles: Role[];
   /** Duty level for each of the 11 players (index-aligned with roster order) */
   readonly duties: Duty[];
+  /** Per-player tactical instruction multipliers (V1 overhaul) */
+  readonly multipliers?: PlayerTacticalMultipliers[];
+  /** Team-level structure controls (V1 overhaul) */
+  readonly teamControls?: TeamControls;
+  /** Pressing configuration (V1 overhaul) */
+  readonly press?: PressConfig;
+  /** Transition behaviour config (V1 overhaul) */
+  readonly transitions?: TransitionConfig;
 }
 
-/** Default tactical config: 4-4-2 with SUPPORT duties */
+/** Default tactical config: 4-4-2 with SUPPORT duties and neutral multipliers */
 const DEFAULT_TACTICAL_CONFIG: TacticalConfig = {
   formation: '4-4-2',
   roles: ['GK', 'LB', 'CB', 'CB', 'RB', 'LW', 'CM', 'CM', 'RW', 'ST', 'ST'],
   duties: ['SUPPORT', 'SUPPORT', 'SUPPORT', 'SUPPORT', 'SUPPORT', 'SUPPORT', 'SUPPORT', 'SUPPORT', 'SUPPORT', 'SUPPORT', 'SUPPORT'],
+  multipliers: defaultPlayerMultipliers(),
+  teamControls: defaultTeamControls(),
+  press: defaultPressConfig(),
+  transitions: defaultTransitionConfig(),
 };
 
 // ============================================================
@@ -63,6 +75,14 @@ export interface MatchConfig {
   readonly homeTacticalConfig?: TacticalConfig;
   /** Optional tactical configuration for away team (defaults to 4-4-2 SUPPORT) */
   readonly awayTacticalConfig?: TacticalConfig;
+  /** Optional out-of-possession tactical config for home team (defaults to in-possession config) */
+  readonly homeTacticalConfigOOP?: TacticalConfig;
+  /** Optional out-of-possession tactical config for away team (defaults to in-possession config) */
+  readonly awayTacticalConfigOOP?: TacticalConfig;
+  /** Optional defensive transition config for home team (multipliers used during counter-press window) */
+  readonly homeTacticalConfigDefTrans?: TacticalConfig;
+  /** Optional attacking transition config for home team (multipliers used during counter-attack window) */
+  readonly homeTacticalConfigAttTrans?: TacticalConfig;
 }
 
 import { TUNING } from './tuning.ts';
@@ -82,6 +102,7 @@ const DEFAULT_ATTRIBUTES = {
   tackling: 0.6,
   aerial: 0.6,
   positioning: 0.65,
+  vision: 0.65,
 } as const;
 
 const DEFAULT_PERSONALITY = {
@@ -135,9 +156,35 @@ export function createTestRosters(): { home: PlayerState[]; away: PlayerState[] 
 }
 
 /**
+ * Apply per-player randomisation to archetype attributes.
+ * Each attribute is jittered by ±spread (default ±0.08), clamped to [0.1, 0.98].
+ * Uses a simple seeded-ish approach via the provided rng function.
+ */
+function jitterAttributes(
+  base: PlayerAttributes,
+  rng: () => number,
+  spread = 0.08,
+): PlayerAttributes {
+  const j = (v: number) => Math.min(0.98, Math.max(0.1, v + (rng() - 0.5) * 2 * spread));
+  return {
+    pace: j(base.pace),
+    strength: j(base.strength),
+    stamina: j(base.stamina),
+    dribbling: j(base.dribbling),
+    passing: j(base.passing),
+    shooting: j(base.shooting),
+    tackling: j(base.tackling),
+    aerial: j(base.aerial),
+    positioning: j(base.positioning),
+    vision: j(base.vision),
+  };
+}
+
+/**
  * Creates 32 players (11 starters + 5 bench per team) with varied archetypes for an interesting match.
  * Home team: maverick striker, metronome midfielder, aggressive defender + 5 bench players.
  * Away team: contrasting archetypes for visible behavioral differences + 5 bench players.
+ * Each player's attributes are individually randomised around their archetype base (±0.08).
  *
  * Returns: { home, away, homeBench, awayBench }
  */
@@ -153,56 +200,56 @@ export function createMatchRosters(): {
   // Archetype definitions
   const archetypes = {
     aggressiveDefender: {
-      attributes: { pace: 0.65, strength: 0.80, stamina: 0.75, dribbling: 0.45, passing: 0.60, shooting: 0.45, tackling: 0.82, aerial: 0.78, positioning: 0.70 },
+      attributes: { pace: 0.65, strength: 0.80, stamina: 0.75, dribbling: 0.45, passing: 0.60, shooting: 0.45, tackling: 0.82, aerial: 0.78, positioning: 0.70, vision: 0.60 },
       personality: { directness: 0.35, risk_appetite: 0.3, composure: 0.55, creativity: 0.3, work_rate: 0.85, aggression: 0.85, anticipation: 0.75, flair: 0.25 },
     },
     steadyDefender: {
-      attributes: { pace: 0.60, strength: 0.72, stamina: 0.70, dribbling: 0.50, passing: 0.65, shooting: 0.40, tackling: 0.75, aerial: 0.72, positioning: 0.72 },
+      attributes: { pace: 0.60, strength: 0.72, stamina: 0.70, dribbling: 0.50, passing: 0.65, shooting: 0.40, tackling: 0.75, aerial: 0.72, positioning: 0.72, vision: 0.65 },
       personality: { directness: 0.4, risk_appetite: 0.25, composure: 0.70, creativity: 0.3, work_rate: 0.70, aggression: 0.60, anticipation: 0.70, flair: 0.2 },
     },
     metronome: {
-      attributes: { pace: 0.65, strength: 0.62, stamina: 0.78, dribbling: 0.65, passing: 0.85, shooting: 0.55, tackling: 0.65, aerial: 0.58, positioning: 0.80 },
+      attributes: { pace: 0.65, strength: 0.62, stamina: 0.78, dribbling: 0.65, passing: 0.85, shooting: 0.55, tackling: 0.65, aerial: 0.58, positioning: 0.80, vision: 0.85 },
       personality: { directness: 0.45, risk_appetite: 0.35, composure: 0.90, creativity: 0.55, work_rate: 0.80, aggression: 0.40, anticipation: 0.82, flair: 0.35 },
     },
     boxToBox: {
-      attributes: { pace: 0.75, strength: 0.68, stamina: 0.85, dribbling: 0.62, passing: 0.72, shooting: 0.60, tackling: 0.70, aerial: 0.65, positioning: 0.72 },
+      attributes: { pace: 0.75, strength: 0.68, stamina: 0.85, dribbling: 0.62, passing: 0.72, shooting: 0.60, tackling: 0.70, aerial: 0.65, positioning: 0.72, vision: 0.68 },
       personality: { directness: 0.62, risk_appetite: 0.52, composure: 0.65, creativity: 0.45, work_rate: 0.90, aggression: 0.68, anticipation: 0.70, flair: 0.42 },
     },
     maverick: {
-      attributes: { pace: 0.88, strength: 0.55, stamina: 0.70, dribbling: 0.88, passing: 0.68, shooting: 0.82, tackling: 0.38, aerial: 0.55, positioning: 0.70 },
+      attributes: { pace: 0.88, strength: 0.55, stamina: 0.70, dribbling: 0.88, passing: 0.68, shooting: 0.82, tackling: 0.38, aerial: 0.55, positioning: 0.70, vision: 0.72 },
       personality: { directness: 0.88, risk_appetite: 0.85, composure: 0.50, creativity: 0.90, work_rate: 0.58, aggression: 0.55, anticipation: 0.65, flair: 0.92 },
     },
     poacher: {
-      attributes: { pace: 0.82, strength: 0.62, stamina: 0.68, dribbling: 0.70, passing: 0.55, shooting: 0.88, tackling: 0.35, aerial: 0.72, positioning: 0.85 },
+      attributes: { pace: 0.82, strength: 0.62, stamina: 0.68, dribbling: 0.70, passing: 0.55, shooting: 0.88, tackling: 0.35, aerial: 0.72, positioning: 0.85, vision: 0.75 },
       personality: { directness: 0.82, risk_appetite: 0.78, composure: 0.72, creativity: 0.52, work_rate: 0.65, aggression: 0.65, anticipation: 0.80, flair: 0.65 },
     },
     goalKeeper: {
-      attributes: { pace: 0.55, strength: 0.72, stamina: 0.72, dribbling: 0.42, passing: 0.62, shooting: 0.35, tackling: 0.50, aerial: 0.82, positioning: 0.85 },
+      attributes: { pace: 0.55, strength: 0.72, stamina: 0.72, dribbling: 0.42, passing: 0.62, shooting: 0.35, tackling: 0.50, aerial: 0.82, positioning: 0.85, vision: 0.80 },
       personality: { directness: 0.30, risk_appetite: 0.20, composure: 0.82, creativity: 0.30, work_rate: 0.70, aggression: 0.40, anticipation: 0.85, flair: 0.20 },
     },
     technician: {
-      attributes: { pace: 0.72, strength: 0.55, stamina: 0.72, dribbling: 0.80, passing: 0.78, shooting: 0.62, tackling: 0.55, aerial: 0.52, positioning: 0.75 },
+      attributes: { pace: 0.72, strength: 0.55, stamina: 0.72, dribbling: 0.80, passing: 0.78, shooting: 0.62, tackling: 0.55, aerial: 0.52, positioning: 0.75, vision: 0.78 },
       personality: { directness: 0.58, risk_appetite: 0.65, composure: 0.72, creativity: 0.80, work_rate: 0.70, aggression: 0.42, anticipation: 0.72, flair: 0.72 },
     },
     // Bench archetypes
     utilityDefender: {
-      attributes: { pace: 0.62, strength: 0.70, stamina: 0.68, dribbling: 0.48, passing: 0.62, shooting: 0.42, tackling: 0.72, aerial: 0.70, positioning: 0.68 },
+      attributes: { pace: 0.62, strength: 0.70, stamina: 0.68, dribbling: 0.48, passing: 0.62, shooting: 0.42, tackling: 0.72, aerial: 0.70, positioning: 0.68, vision: 0.62 },
       personality: { directness: 0.38, risk_appetite: 0.28, composure: 0.65, creativity: 0.32, work_rate: 0.72, aggression: 0.65, anticipation: 0.68, flair: 0.22 },
     },
     youngProspect: {
-      attributes: { pace: 0.85, strength: 0.50, stamina: 0.80, dribbling: 0.72, passing: 0.62, shooting: 0.65, tackling: 0.50, aerial: 0.52, positioning: 0.62 },
+      attributes: { pace: 0.85, strength: 0.50, stamina: 0.80, dribbling: 0.72, passing: 0.62, shooting: 0.65, tackling: 0.50, aerial: 0.52, positioning: 0.62, vision: 0.58 },
       personality: { directness: 0.70, risk_appetite: 0.72, composure: 0.42, creativity: 0.68, work_rate: 0.85, aggression: 0.55, anticipation: 0.58, flair: 0.78 },
     },
     targetMan: {
-      attributes: { pace: 0.62, strength: 0.88, stamina: 0.70, dribbling: 0.52, passing: 0.58, shooting: 0.78, tackling: 0.42, aerial: 0.92, positioning: 0.78 },
+      attributes: { pace: 0.62, strength: 0.88, stamina: 0.70, dribbling: 0.52, passing: 0.58, shooting: 0.78, tackling: 0.42, aerial: 0.92, positioning: 0.78, vision: 0.60 },
       personality: { directness: 0.78, risk_appetite: 0.62, composure: 0.68, creativity: 0.38, work_rate: 0.72, aggression: 0.78, anticipation: 0.72, flair: 0.42 },
     },
     playmaker: {
-      attributes: { pace: 0.68, strength: 0.55, stamina: 0.75, dribbling: 0.75, passing: 0.90, shooting: 0.58, tackling: 0.58, aerial: 0.50, positioning: 0.82 },
+      attributes: { pace: 0.68, strength: 0.55, stamina: 0.75, dribbling: 0.75, passing: 0.90, shooting: 0.58, tackling: 0.58, aerial: 0.50, positioning: 0.82, vision: 0.90 },
       personality: { directness: 0.42, risk_appetite: 0.45, composure: 0.88, creativity: 0.88, work_rate: 0.75, aggression: 0.38, anticipation: 0.85, flair: 0.65 },
     },
     speedster: {
-      attributes: { pace: 0.95, strength: 0.50, stamina: 0.78, dribbling: 0.78, passing: 0.62, shooting: 0.72, tackling: 0.42, aerial: 0.48, positioning: 0.70 },
+      attributes: { pace: 0.95, strength: 0.50, stamina: 0.78, dribbling: 0.78, passing: 0.62, shooting: 0.72, tackling: 0.42, aerial: 0.48, positioning: 0.70, vision: 0.62 },
       personality: { directness: 0.88, risk_appetite: 0.80, composure: 0.52, creativity: 0.58, work_rate: 0.72, aggression: 0.58, anticipation: 0.65, flair: 0.75 },
     },
   };
@@ -263,12 +310,15 @@ export function createMatchRosters(): {
   // Use a central midfield position as a generic "bench" position
   const benchPosition = new Vec2(52.5, 34); // Centre circle
 
+  // Simple RNG for per-player attribute jitter
+  const rng = () => Math.random();
+
   const home: PlayerState[] = homePositions.map((pos, i) => ({
     id: `home-${i}`,
     teamId: 'home' as TeamId,
     position: pos,
     velocity: Vec2.zero(),
-    attributes: { ...homeArchetypes[i]!.attributes },
+    attributes: jitterAttributes(homeArchetypes[i]!.attributes, rng),
     personality: { ...homeArchetypes[i]!.personality },
     fatigue: 0,
     role: roleLabels[i] ?? 'CM',
@@ -282,7 +332,7 @@ export function createMatchRosters(): {
     teamId: 'away' as TeamId,
     position: pos,
     velocity: Vec2.zero(),
-    attributes: { ...awayArchetypes[i]!.attributes },
+    attributes: jitterAttributes(awayArchetypes[i]!.attributes, rng),
     personality: { ...awayArchetypes[i]!.personality },
     fatigue: 0,
     role: roleLabels[i] ?? 'CM',
@@ -297,7 +347,7 @@ export function createMatchRosters(): {
     teamId: 'home' as TeamId,
     position: benchPosition,
     velocity: Vec2.zero(),
-    attributes: { ...arch.attributes },
+    attributes: jitterAttributes(arch.attributes, rng),
     personality: { ...arch.personality },
     fatigue: 0,
     role: benchRoleLabels[i] ?? 'CM',
@@ -311,7 +361,7 @@ export function createMatchRosters(): {
     teamId: 'away' as TeamId,
     position: benchPosition,
     velocity: Vec2.zero(),
-    attributes: { ...arch.attributes },
+    attributes: jitterAttributes(arch.attributes, rng),
     personality: { ...arch.personality },
     fatigue: 0,
     role: benchRoleLabels[i] ?? 'CM',
@@ -347,6 +397,16 @@ export function createMatchRosters(): {
  *  14. Accumulate match statistics
  *  15. Produce new SimSnapshot
  */
+/** Engine-internal dead ball state for restarts (kickoffs, throw-ins, corners, goal kicks). */
+interface DeadBallState {
+  readonly type: RestartType;
+  readonly position: Vec2;          // where the ball is placed for restart
+  readonly teamId: TeamId;          // team that takes the restart
+  readonly tickStarted: number;     // tick when dead ball began
+  readonly repositionTicks: number; // ticks to wait before play resumes
+  readonly takerId: string | null;  // player who will take the restart
+}
+
 export class SimulationEngine {
   private snapshot: SimSnapshot;
   private readonly rng: () => number;
@@ -362,12 +422,36 @@ export class SimulationEngine {
   private carrierKickLockoutUntil: number = 0;    // carrier can't kick until this tick (prevents micro-pass spam)
   private homeTacticalConfig: TacticalConfig;
   private awayTacticalConfig: TacticalConfig;
+  private homeTacticalConfigOOP: TacticalConfig;
+  private awayTacticalConfigOOP: TacticalConfig;
+  private homeTacticalConfigDefTrans: TacticalConfig;
+  private homeTacticalConfigAttTrans: TacticalConfig;
   private homeBench: PlayerState[];
   private awayBench: PlayerState[];
   private homeSubCount: number = 0;  // substitutions made for home team this match
   private awaySubCount: number = 0;  // substitutions made for away team this match
   private halftimeLatched: boolean = false; // true when in HALFTIME, blocks auto-advance to SECOND_HALF
   private halftimeHandled: boolean = false; // true after startSecondHalf() — prevents re-latch on post-goal HALFTIME
+  private deadBall: DeadBallState | null = null;       // non-null during dead ball restarts
+  private lastTouchTeamId: TeamId | null = null;       // team that last touched the ball
+  private restartProtectionUntil: number = 0;          // tick until which tackles are blocked after a dead ball restart
+  private pendingPassPlayerId: string | null = null;   // player who last kicked a pass (for completion tracking)
+  private pendingPassTeamId: TeamId | null = null;     // team of the pending pass
+  private lastKickWasShot: boolean = false;            // true if last kick was a SHOOT (prevents double-counting on goal)
+
+  // ── Transition detection (V1 overhaul) ─────────────────────────────────────
+  private previousPossessionTeam: TeamId | null = null; // possession team last tick
+  private transitionTeam: TeamId | null = null;         // team currently in transition (lost possession)
+  private transitionTicksRemaining: number = 0;          // ticks left in transition window
+
+  // ── Smooth adoption (V1 overhaul) ─────────────────────────────────────────
+  private adoptionTicksRemaining: number = 0;            // ticks remaining in anchor lerp
+  private preAdoptionAnchorsHome: Vec2[] | null = null;  // anchors before tactical change
+  private preAdoptionAnchorsAway: Vec2[] | null = null;
+
+  // ── Vision system ──────────────────────────────────────────────────────────
+  private visionCache: Map<string, readonly PlayerState[]> = new Map();
+  private visionCacheTick: Map<string, number> = new Map();
 
   constructor(config: MatchConfig) {
     let initialSnapshot = createInitialSnapshot(config.homeRoster, config.awayRoster);
@@ -394,12 +478,30 @@ export class SimulationEngine {
     this.grid = new SpatialGrid(PITCH_WIDTH, PITCH_HEIGHT, 10);
     this.homeTacticalConfig = config.homeTacticalConfig ?? DEFAULT_TACTICAL_CONFIG;
     this.awayTacticalConfig = config.awayTacticalConfig ?? DEFAULT_TACTICAL_CONFIG;
+    this.homeTacticalConfigOOP = config.homeTacticalConfigOOP ?? this.homeTacticalConfig;
+    this.awayTacticalConfigOOP = config.awayTacticalConfigOOP ?? this.awayTacticalConfig;
+    this.homeTacticalConfigDefTrans = config.homeTacticalConfigDefTrans ?? this.homeTacticalConfigOOP;
+    this.homeTacticalConfigAttTrans = config.homeTacticalConfigAttTrans ?? this.homeTacticalConfig;
     this.homeBench = config.homeBench ? [...config.homeBench] : [];
     this.awayBench = config.awayBench ? [...config.awayBench] : [];
 
     // Apply tactical config to initial snapshot so players start at correct
     // formation positions (not hard-coded 4-4-2 kickoff positions)
     this.snapshot = this._applyInitialFormation(this.snapshot);
+
+    // Start match with a kickoff dead ball (home kicks off)
+    // Skip if test overrides are provided (initialBallVelocity/Position)
+    if (!config.initialBallVelocity && !config.initialBallPosition) {
+      const center = new Vec2(PITCH_WIDTH / 2, PITCH_HEIGHT / 2);
+      this.deadBall = {
+        type: RestartType.KICKOFF,
+        position: center,
+        teamId: 'home',
+        tickStarted: 0,
+        repositionTicks: TUNING.kickoffPauseTicks,
+        takerId: this._findTaker(RestartType.KICKOFF, 'home', center, this.snapshot.players as PlayerState[]),
+      };
+    }
   }
 
   /**
@@ -407,6 +509,7 @@ export class SimulationEngine {
    * Takes effect from the next tick onwards.
    */
   setHomeTactics(config: TacticalConfig): void {
+    this._startAdoption('home');
     this.homeTacticalConfig = config;
     // Update player role and duty fields in current snapshot
     this.snapshot = this._applyTacticConfigToSnapshot(this.snapshot, config, 'home');
@@ -417,9 +520,61 @@ export class SimulationEngine {
    * Takes effect from the next tick onwards.
    */
   setAwayTactics(config: TacticalConfig): void {
+    this._startAdoption('away');
     this.awayTacticalConfig = config;
     // Update player role and duty fields in current snapshot
     this.snapshot = this._applyTacticConfigToSnapshot(this.snapshot, config, 'away');
+  }
+
+  /**
+   * Set out-of-possession tactical config for the home team.
+   * Used when the home team doesn't have the ball.
+   */
+  setHomeTacticsOOP(config: TacticalConfig): void {
+    this._startAdoption('home');
+    this.homeTacticalConfigOOP = config;
+  }
+
+  /**
+   * Set out-of-possession tactical config for the away team.
+   * Used when the away team doesn't have the ball.
+   */
+  setAwayTacticsOOP(config: TacticalConfig): void {
+    this._startAdoption('away');
+    this.awayTacticalConfigOOP = config;
+  }
+
+  /**
+   * Set defensive transition config for the home team.
+   * Multipliers are used during the counter-press window after losing possession.
+   */
+  setHomeTacticsDefTrans(config: TacticalConfig): void {
+    this.homeTacticalConfigDefTrans = config;
+  }
+
+  /**
+   * Set attacking transition config for the home team.
+   * Multipliers are used during the counter-attack window after winning possession.
+   */
+  setHomeTacticsAttTrans(config: TacticalConfig): void {
+    this.homeTacticalConfigAttTrans = config;
+  }
+
+  /**
+   * Snapshot current anchor positions and start the smooth adoption window.
+   * During adoption, anchors lerp from pre-change positions to new target.
+   */
+  private _startAdoption(teamId: TeamId): void {
+    const snap = this.snapshot;
+    // Capture current player positions as "old anchors"
+    const teamPlayers = snap.players.filter(p => p.teamId === teamId);
+    const anchors = teamPlayers.map(p => p.formationAnchor);
+    if (teamId === 'home') {
+      this.preAdoptionAnchorsHome = anchors as Vec2[];
+    } else {
+      this.preAdoptionAnchorsAway = anchors as Vec2[];
+    }
+    this.adoptionTicksRemaining = TUNING.adoptionTicks;
   }
 
   /**
@@ -430,6 +585,8 @@ export class SimulationEngine {
   startSecondHalf(): void {
     this.halftimeLatched = false;
     this.halftimeHandled = true;
+    this.visionCache.clear();
+    this.visionCacheTick.clear();
   }
 
   /**
@@ -488,6 +645,10 @@ export class SimulationEngine {
       this.awaySubCount++;
     }
 
+    // Clear vision cache — new player on pitch invalidates cached opponent lists
+    this.visionCache.clear();
+    this.visionCacheTick.clear();
+
     return true;
   }
 
@@ -496,6 +657,11 @@ export class SimulationEngine {
    */
   getSubstitutionCount(teamId: TeamId): number {
     return teamId === 'home' ? this.homeSubCount : this.awaySubCount;
+  }
+
+  /** Returns the current transition state (which team lost possession, ticks remaining). */
+  getTransitionState(): { team: TeamId | null; ticksRemaining: number } {
+    return { team: this.transitionTeam, ticksRemaining: this.transitionTicksRemaining };
   }
 
   /**
@@ -514,13 +680,22 @@ export class SimulationEngine {
     config: TacticalConfig,
     teamId: TeamId,
   ): SimSnapshot {
+    // Recompute formation anchors in neutral mode (no ball influence / possession shift)
+    // so the overlay shows the clean formation shape while paused
+    const anchors = computeFormationAnchors(
+      config.formation, teamId, snapshot.ball.position, false,
+      config.teamControls,
+      true, // neutral — skip ball pull, possession shift, rest defence
+    );
+
     let teamIdx = 0;
     const updatedPlayers = snapshot.players.map(p => {
       if (p.teamId !== teamId) return p;
       const role = config.roles[teamIdx] ?? p.role;
       const duty = config.duties[teamIdx] ?? p.duty;
+      const anchor = anchors[teamIdx] ?? p.formationAnchor;
       teamIdx++;
-      return { ...p, role, duty };
+      return { ...p, role, duty, formationAnchor: anchor };
     });
     return { ...snapshot, players: updatedPlayers };
   }
@@ -533,10 +708,25 @@ export class SimulationEngine {
   private _applyInitialFormation(snapshot: SimSnapshot): SimSnapshot {
     const homeAnchors = computeFormationAnchors(
       this.homeTacticalConfig.formation, 'home', snapshot.ball.position, false,
+      this.homeTacticalConfig.teamControls,
+      true, // neutral — clean formation shape for initial placement
     );
     const awayAnchors = computeFormationAnchors(
       this.awayTacticalConfig.formation, 'away', snapshot.ball.position, false,
+      this.awayTacticalConfig.teamControls,
+      true, // neutral
     );
+
+    // Clamp to own half for kickoff
+    const halfX = PITCH_WIDTH / 2;
+    for (let i = 0; i < homeAnchors.length; i++) {
+      const a = homeAnchors[i]!;
+      if (a.x > halfX - 1) homeAnchors[i] = new Vec2(halfX - 1, a.y);
+    }
+    for (let i = 0; i < awayAnchors.length; i++) {
+      const a = awayAnchors[i]!;
+      if (a.x < halfX + 1) awayAnchors[i] = new Vec2(halfX + 1, a.y);
+    }
 
     let homeIdx = 0;
     let awayIdx = 0;
@@ -551,6 +741,173 @@ export class SimulationEngine {
       return { ...p, position: anchor, formationAnchor: anchor, role, duty };
     });
     return { ...snapshot, players: updatedPlayers };
+  }
+
+  // ── Dead ball helpers ─────────────────────────────────────────────────
+
+  /**
+   * Enter a dead ball state. Ball is frozen at the restart position.
+   */
+  private _enterDeadBall(state: DeadBallState): void {
+    this.deadBall = state;
+  }
+
+  /**
+   * Find the appropriate restart taker for a given dead ball type.
+   */
+  private _findTaker(
+    type: RestartType,
+    teamId: TeamId,
+    restartPos: Vec2,
+    players: readonly PlayerState[],
+  ): string | null {
+    const teamPlayers = players.filter(p => p.teamId === teamId);
+
+    if (type === RestartType.GOAL_KICK) {
+      const gk = teamPlayers.find(p => p.role === 'GK');
+      return gk?.id ?? teamPlayers[0]?.id ?? null;
+    }
+
+    if (type === RestartType.KICKOFF) {
+      // Prefer a forward/striker nearest to center
+      const center = new Vec2(PITCH_WIDTH / 2, PITCH_HEIGHT / 2);
+      let nearest: PlayerState | null = null;
+      let minDist = Infinity;
+      for (const p of teamPlayers) {
+        if (p.role === 'GK') continue;
+        const d = p.position.distanceTo(center);
+        if (d < minDist) { minDist = d; nearest = p; }
+      }
+      return nearest?.id ?? teamPlayers[0]?.id ?? null;
+    }
+
+    // THROW_IN, CORNER: nearest outfield player
+    let nearest: PlayerState | null = null;
+    let minDist = Infinity;
+    for (const p of teamPlayers) {
+      if (p.role === 'GK') continue;
+      const d = p.position.distanceTo(restartPos);
+      if (d < minDist) { minDist = d; nearest = p; }
+    }
+    return nearest?.id ?? teamPlayers[0]?.id ?? null;
+  }
+
+  /**
+   * Process a dead ball tick: freeze ball, move players to anchors, resume when countdown expires.
+   */
+  private _tickDeadBall(dt: number, nextTick: number, phaseResult: { phase: MatchPhase; events: import('./types.ts').MatchEvent[] }): SimSnapshot {
+    const current = this.snapshot;
+    const db = this.deadBall!;
+    const elapsed = nextTick - db.tickStarted;
+
+    let ball = current.ball;
+    let players = [...current.players] as PlayerState[];
+
+    // Check if repositioning is truly complete
+    let repositioningComplete = elapsed >= db.repositionTicks;
+
+    // For kickoffs, ensure all players are in their own half before resuming (cap at 300 ticks)
+    if (repositioningComplete && db.type === RestartType.KICKOFF && elapsed < 300) {
+      const halfX = PITCH_WIDTH / 2;
+      const allInOwnHalf = players.every(p => {
+        if (p.teamId === 'home') return p.position.x <= halfX + 2;
+        return p.position.x >= halfX - 2;
+      });
+      if (!allInOwnHalf) repositioningComplete = false;
+    }
+
+    if (repositioningComplete) {
+      // Reposition complete — snap taker to restart position and give them the ball
+      const takerIdx = players.findIndex(p => p.id === db.takerId);
+      const taker = takerIdx >= 0 ? players[takerIdx] : null;
+      if (taker) {
+        // Snap taker to the exact restart position (ensures throw-ins are on the line)
+        players[takerIdx] = { ...taker, position: db.position, velocity: Vec2.zero() };
+        ball = {
+          ...ball,
+          position: db.position,
+          velocity: Vec2.zero(),
+          z: 0,
+          vz: 0,
+          carrierId: taker.id,
+        };
+        this.lastTouchTeamId = db.teamId;
+        this.carrierKickLockoutUntil = nextTick + 5;
+        // Protect taker from immediate tackles — opponents must be 10 yards away at restart
+        this.restartProtectionUntil = nextTick + 20;
+      } else {
+        // Fallback: drop ball at restart position
+        ball = { ...ball, position: db.position, velocity: Vec2.zero(), z: 0, vz: 0, carrierId: null };
+      }
+      this.deadBall = null;
+    } else {
+      // Still repositioning — freeze ball, move players toward anchors
+      ball = { ...ball, position: db.position, velocity: Vec2.zero(), z: 0, vz: 0, carrierId: null };
+
+      // Compute formation anchors for player movement
+      const homeAnchors = computeFormationAnchors(
+        this.homeTacticalConfig.formation, 'home', db.position, false,
+        this.homeTacticalConfig.teamControls,
+      );
+      const awayAnchors = computeFormationAnchors(
+        this.awayTacticalConfig.formation, 'away', db.position, false,
+        this.awayTacticalConfig.teamControls,
+      );
+
+      // Kickoff own-half enforcement: clamp each team's anchors to their own half
+      const halfX = PITCH_WIDTH / 2;
+      if (db.type === RestartType.KICKOFF) {
+        for (let i = 0; i < homeAnchors.length; i++) {
+          const a = homeAnchors[i]!;
+          if (a.x > halfX - 1) homeAnchors[i] = new Vec2(halfX - 1, a.y);
+        }
+        for (let i = 0; i < awayAnchors.length; i++) {
+          const a = awayAnchors[i]!;
+          if (a.x < halfX + 1) awayAnchors[i] = new Vec2(halfX + 1, a.y);
+        }
+      }
+
+      let homeIdx = 0;
+      let awayIdx = 0;
+      players = players.map(p => {
+        const isHome = p.teamId === 'home';
+        const anchors = isHome ? homeAnchors : awayAnchors;
+        const idx = isHome ? homeIdx++ : awayIdx++;
+        const anchor = anchors[idx] ?? p.formationAnchor;
+
+        // Move taker toward the restart position instead of their anchor
+        const target = (p.id === db.takerId) ? db.position : anchor;
+
+        const dist = p.position.distanceTo(target);
+        if (dist < 1) return { ...p, velocity: Vec2.zero(), formationAnchor: anchor };
+
+        const speedFrac = db.type === RestartType.KICKOFF ? 1.0 : 0.8; // jog back for kickoff
+        const maxSpeed = p.attributes.pace * TUNING.playerBaseSpeed * speedFrac;
+        const desired = arrive(p.position, target, maxSpeed, 5.0);
+        const newVel = clampVelocity(desired, maxSpeed);
+        const dtSec = dt / 1000;
+        const newPos = clampToPitch(p.position.add(newVel.scale(dtSec)));
+        return { ...p, position: newPos, velocity: newVel, formationAnchor: anchor };
+      });
+    }
+
+    const deadBallInfo: DeadBallInfo | undefined = this.deadBall
+      ? { type: this.deadBall.type, teamId: this.deadBall.teamId, position: this.deadBall.position }
+      : undefined;
+
+    const newSnapshot: SimSnapshot = {
+      tick: nextTick,
+      timestamp: current.timestamp + dt,
+      ball,
+      players,
+      matchPhase: phaseResult.phase,
+      score: current.score,
+      events: [...phaseResult.events],
+      stats: this.statsAccumulator.getSnapshot(),
+      deadBallInfo,
+    };
+    this.snapshot = newSnapshot;
+    return newSnapshot;
   }
 
   /**
@@ -589,6 +946,8 @@ export class SimulationEngine {
       (phaseResult.phase === MatchPhase.SECOND_HALF && current.matchPhase === MatchPhase.HALFTIME);
 
     if (isBreakTick) {
+      // Clear any pending dead ball when entering halftime/fulltime
+      this.deadBall = null;
       // Reset ball to stopped state at break or on second-half kickoff transition
       const stoppedBall: BallState = {
         ...current.ball,
@@ -607,6 +966,11 @@ export class SimulationEngine {
       };
       this.snapshot = newSnapshot;
       return newSnapshot;
+    }
+
+    // ── 2b. Dead ball tick ─────────────────────────────────────────────────
+    if (this.deadBall !== null) {
+      return this._tickDeadBall(dt, nextTick, phaseResult);
     }
 
     // ── 3. Accumulate fatigue for all players ────────────────────────────────
@@ -637,6 +1001,7 @@ export class SimulationEngine {
     }
 
     // ── 6. Compute formation anchors ─────────────────────────────────────────
+    // Select in-possession or out-of-possession config based on ball carrier
     const ballCarrierId = current.ball.carrierId;
     const ballCarrier = ballCarrierId
       ? playersWithFatigue.find(p => p.id === ballCarrierId)
@@ -644,18 +1009,73 @@ export class SimulationEngine {
     const homePossession = ballCarrier?.teamId === 'home';
     const awayPossession = ballCarrier?.teamId === 'away';
 
+    // ── 6a. Transition detection ─────────────────────────────────────────────
+    const currentPossTeam: TeamId | null = homePossession ? 'home' : awayPossession ? 'away' : null;
+    if (currentPossTeam !== null && this.previousPossessionTeam !== null && currentPossTeam !== this.previousPossessionTeam) {
+      // Possession changed — start transition window for the team that lost it
+      this.transitionTeam = this.previousPossessionTeam;
+      const loserConfig = this.transitionTeam === 'home' ? this.homeTacticalConfigOOP : this.awayTacticalConfigOOP;
+      const counterPressSecs = loserConfig.transitions?.counterPressDuration ?? 3;
+      this.transitionTicksRemaining = Math.round(counterPressSecs * 30); // 30 ticks/sec
+    }
+    if (currentPossTeam !== null) {
+      this.previousPossessionTeam = currentPossTeam;
+    }
+    // Decrement transition timer
+    if (this.transitionTicksRemaining > 0) {
+      this.transitionTicksRemaining--;
+      if (this.transitionTicksRemaining <= 0) {
+        this.transitionTeam = null;
+      }
+    }
+
+    const activeHomeConfig = homePossession ? this.homeTacticalConfig : this.homeTacticalConfigOOP;
+    const activeAwayConfig = awayPossession ? this.awayTacticalConfig : this.awayTacticalConfigOOP;
+
     const homeAnchors = computeFormationAnchors(
-      this.homeTacticalConfig.formation,
+      activeHomeConfig.formation,
       'home',
       current.ball.position,
       homePossession,
+      activeHomeConfig.teamControls,
     );
     const awayAnchors = computeFormationAnchors(
-      this.awayTacticalConfig.formation,
+      activeAwayConfig.formation,
       'away',
       current.ball.position,
       awayPossession,
+      activeAwayConfig.teamControls,
     );
+
+    // ── 6b. Smooth adoption: lerp anchors from pre-change to target ──────────
+    if (this.adoptionTicksRemaining > 0) {
+      this.adoptionTicksRemaining--;
+      const t = 1 - this.adoptionTicksRemaining / TUNING.adoptionTicks; // 0→1 over window
+      if (this.preAdoptionAnchorsHome) {
+        for (let i = 0; i < homeAnchors.length && i < this.preAdoptionAnchorsHome.length; i++) {
+          const old = this.preAdoptionAnchorsHome[i]!;
+          const target = homeAnchors[i]!;
+          homeAnchors[i] = new Vec2(
+            old.x + (target.x - old.x) * t,
+            old.y + (target.y - old.y) * t,
+          );
+        }
+      }
+      if (this.preAdoptionAnchorsAway) {
+        for (let i = 0; i < awayAnchors.length && i < this.preAdoptionAnchorsAway.length; i++) {
+          const old = this.preAdoptionAnchorsAway[i]!;
+          const target = awayAnchors[i]!;
+          awayAnchors[i] = new Vec2(
+            old.x + (target.x - old.x) * t,
+            old.y + (target.y - old.y) * t,
+          );
+        }
+      }
+      if (this.adoptionTicksRemaining <= 0) {
+        this.preAdoptionAnchorsHome = null;
+        this.preAdoptionAnchorsAway = null;
+      }
+    }
 
     // Assign updated formation anchors and tactical role/duty to players
     // Home players are first 11, away are next 11
@@ -664,7 +1084,7 @@ export class SimulationEngine {
 
     const playersWithAnchors: PlayerState[] = playersWithFatigue.map((p) => {
       const isHome = p.teamId === 'home';
-      const tacticalConfig = isHome ? this.homeTacticalConfig : this.awayTacticalConfig;
+      const tacticalConfig = isHome ? activeHomeConfig : activeAwayConfig;
       const anchors = isHome ? homeAnchors : awayAnchors;
       const roleIdx = isHome ? homeIdx++ : awayIdx++;
       const anchor = anchors[roleIdx] ?? p.formationAnchor;
@@ -674,10 +1094,26 @@ export class SimulationEngine {
       return { ...p, formationAnchor: anchor, role, duty };
     });
 
-    // ── 7. Build AgentContext for each player ─────────────────────────────────
+    // ── 7. Build AgentContext for each player (with vision filtering) ────────
     const contexts: AgentContext[] = playersWithAnchors.map((p, idx) => {
       const teammates = playersWithAnchors.filter(op => op.teamId === p.teamId && op.id !== p.id);
-      const opponents = playersWithAnchors.filter(op => op.teamId !== p.teamId);
+      const allOpponents = playersWithAnchors.filter(op => op.teamId !== p.teamId);
+
+      // Vision-filtered opponents: each player only "sees" opponents within their
+      // vision radius and facing direction. Uses a per-player cache with refresh
+      // interval driven by anticipation personality trait.
+      const effVision = effectiveAttributes[idx]!.vision;
+      const effAnticipation = effectivePersonality[idx]!.anticipation;
+      const refreshInterval = visionRefreshInterval(effAnticipation);
+      const lastRefresh = this.visionCacheTick.get(p.id) ?? -Infinity;
+      let visibleOpponents: readonly PlayerState[];
+      if (nextTick - lastRefresh >= refreshInterval) {
+        visibleOpponents = filterOpponentsByVision(p, allOpponents, effVision);
+        this.visionCache.set(p.id, visibleOpponents);
+        this.visionCacheTick.set(p.id, nextTick);
+      } else {
+        visibleOpponents = this.visionCache.get(p.id) ?? allOpponents;
+      }
 
       // Opponent goal position
       const opponentGoalX = p.teamId === 'home' ? PITCH_WIDTH : 0;
@@ -691,10 +1127,12 @@ export class SimulationEngine {
         ? (p.teamId === 'home' ? homePossession : awayPossession)
         : false;
 
-      // Nearest defender (opponent) and teammate distances
+      // Nearest defender uses ALL opponents (ground truth) — you can feel physical
+      // pressure even from opponents you can't see. Vision filtering only affects
+      // the opponents list used by action considerations (lane clearance, etc.)
       let nearestDefenderDistance = 100;
       let nearestTeammateDistance = 100;
-      for (const opp of opponents) {
+      for (const opp of allOpponents) {
         const d = p.position.distanceTo(opp.position);
         if (d < nearestDefenderDistance) nearestDefenderDistance = d;
       }
@@ -713,7 +1151,7 @@ export class SimulationEngine {
       return {
         self: effectivePlayer,
         teammates,
-        opponents,
+        opponents: visibleOpponents as PlayerState[],
         ball: current.ball,
         matchPhase: phaseResult.phase,
         score: current.score,
@@ -727,6 +1165,12 @@ export class SimulationEngine {
     });
 
     // ── 8. Select action for each player ─────────────────────────────────────
+
+    // Pre-compute press height activation lines for each team
+    // low = own third only (35m from own goal), mid = own half (52m), high = anywhere (105m)
+    const pressLineHome = _pressActivationX(activeHomeConfig.press?.height ?? 'mid', 'home');
+    const pressLineAway = _pressActivationX(activeAwayConfig.press?.height ?? 'mid', 'away');
+
     const intents: ActionIntent[] = contexts.map((ctx, i) => {
       const player = playersWithAnchors[i]!;
       const playerId = player.id;
@@ -736,7 +1180,43 @@ export class SimulationEngine {
       const duty = (player.duty as Duty) ?? 'SUPPORT';
       const dutyModifier = (actionType: ActionType) =>
         getDutyWeightModifier(role, duty, actionType);
-      return selectAction(ACTIONS, ctx, effectivePersonality[i]!, PERSONALITY_WEIGHTS, this.rng, prevAction, dutyModifier);
+      // Resolve per-player tactical multipliers from active config
+      const isHome = player.teamId === 'home';
+      const config = isHome ? activeHomeConfig : activeAwayConfig;
+      const playerIdx = isHome ? i : i - 11;
+      let tactMult = config.multipliers?.[playerIdx];
+
+      // Press height suppression: if ball is beyond team's press activation line,
+      // clamp the press multiplier to near-zero so pressing is soft-suppressed
+      if (tactMult) {
+        const pressLine = isHome ? pressLineHome : pressLineAway;
+        const ballBeyondLine = isHome
+          ? current.ball.position.x > pressLine  // home presses toward x=105
+          : current.ball.position.x < pressLine; // away presses toward x=0
+        if (ballBeyondLine) {
+          tactMult = { ...tactMult, press: tactMult.press * 0.1 };
+        }
+      }
+
+      // During transition window, swap in transition phase multipliers
+      if (this.transitionTeam === player.teamId && this.transitionTicksRemaining > 0) {
+        // Defensive transition: use the player's def trans multipliers
+        const defTransConfig = isHome ? this.homeTacticalConfigDefTrans : config;
+        const defTransMult = defTransConfig.multipliers?.[playerIdx];
+        if (defTransMult) {
+          tactMult = defTransMult;
+        }
+      }
+      if (this.transitionTeam !== null && this.transitionTeam !== player.teamId && this.transitionTicksRemaining > 0) {
+        // Attacking transition: use the player's att trans multipliers
+        const attTransConfig = isHome ? this.homeTacticalConfigAttTrans : config;
+        const attTransMult = attTransConfig.multipliers?.[playerIdx];
+        if (attTransMult) {
+          tactMult = attTransMult;
+        }
+      }
+
+      return selectAction(ACTIONS, ctx, effectivePersonality[i]!, PERSONALITY_WEIGHTS, this.rng, prevAction, dutyModifier, tactMult);
     });
 
     // Store selected actions for next tick's hysteresis
@@ -765,6 +1245,23 @@ export class SimulationEngine {
       this.decisionLog.log(entry);
     }
 
+    // ── 9b. GK ball release override ─────────────────────────────────────────
+    // When the GK has the ball and is near their formation position,
+    // force a pass instead of holding indefinitely.
+    if (current.ball.carrierId !== null) {
+      for (let i = 0; i < playersWithAnchors.length; i++) {
+        const p = playersWithAnchors[i]!;
+        if (p.id === current.ball.carrierId && p.role === 'GK') {
+          const distToAnchor = p.position.distanceTo(p.formationAnchor);
+          const canKick = nextTick >= this.carrierKickLockoutUntil;
+          if (canKick && distToAnchor < 10) {
+            intents[i] = { ...intents[i]!, action: 'PASS_SAFE' as ActionType };
+          }
+          break;
+        }
+      }
+    }
+
     // ── 10. Resolve action intents ────────────────────────────────────────────
     // Ball control and player movement
     let ball = current.ball;
@@ -790,7 +1287,22 @@ export class SimulationEngine {
         }
       }
       if (closestIdx >= 0) {
-        ball = { ...ball, carrierId: updatedPlayers[closestIdx]!.id };
+        const newCarrier = updatedPlayers[closestIdx]!;
+        ball = { ...ball, carrierId: newCarrier.id };
+        // Track last touch for out-of-play decisions
+        this.lastTouchTeamId = newCarrier.teamId;
+
+        // Pass completion detection
+        if (this.pendingPassPlayerId && this.pendingPassTeamId) {
+          if (newCarrier.teamId === this.pendingPassTeamId && newCarrier.id !== this.pendingPassPlayerId) {
+            // Teammate received the pass — completed
+            this.statsAccumulator.recordPassCompletion(this.pendingPassTeamId);
+            this.gameLog.recordPassCompletion(this.pendingPassPlayerId);
+          }
+          this.pendingPassPlayerId = null;
+          this.pendingPassTeamId = null;
+        }
+
         // Clear kicker cooldown once someone else picks up the ball
         this.lastKickerId = null;
         // Kick lockout: new carrier must hold the ball before they can pass/shoot
@@ -832,7 +1344,14 @@ export class SimulationEngine {
               }
             }
             if (isClosest) {
-              moveTarget = ball.position;
+              // Chase predicted ball position, not where it is now
+              const ballSpd = ball.velocity.length();
+              if (ballSpd > 2) {
+                const travelTime = myDistToBall / Math.max(maxSpeed, 0.1);
+                moveTarget = clampToPitch(ball.position.add(ball.velocity.scale(travelTime)));
+              } else {
+                moveTarget = ball.position;
+              }
             }
           }
 
@@ -859,12 +1378,82 @@ export class SimulationEngine {
                 const supportPos = midpoint.add(lateralOffset);
 
                 // Blend: further from carrier = stronger pull toward support pos
-                const pullStrength = Math.min((distToCarrier - 12) / 30, 1) * TUNING.supportPull;
+                // Scale by player's freedom: high freedom = stronger pull toward carrier
+                const plConfig = p.teamId === 'home' ? activeHomeConfig : activeAwayConfig;
+                const plMultIdx = p.teamId === 'home' ? i : i - 11;
+                const playerFreedom = plConfig.multipliers?.[plMultIdx]?.freedom ?? 0.5;
+                const freedomFactor = 0.5 + (playerFreedom * 0.5); // 0.5..1.0
+                // Defenders hold shape — minimal pull toward carrier
+                const rolePullFactor = (p.role === 'CB' || p.role === 'LB' || p.role === 'RB') ? 0.15 : 1.0;
+                const pullStrength = Math.min((distToCarrier - 12) / 30, 1) * TUNING.supportPull * freedomFactor * rolePullFactor;
                 moveTarget = new Vec2(
                   p.formationAnchor.x + (supportPos.x - p.formationAnchor.x) * pullStrength,
                   p.formationAnchor.y + (supportPos.y - p.formationAnchor.y) * pullStrength,
                 );
               }
+            }
+          }
+
+          // CSP nudge: when in possession, attacking/midfield players drift toward
+          // better passing lanes. Defenders hold formation — no nudge.
+          const isDefensiveRole = p.role === 'GK' || p.role === 'CB' || p.role === 'LB' || p.role === 'RB';
+          if (ball.carrierId !== null && ball.carrierId !== p.id && !isDefensiveRole) {
+            const cspCarrier = updatedPlayers.find(cp => cp.id === ball.carrierId);
+            if (cspCarrier && cspCarrier.teamId === p.teamId) {
+              const cspOpponents = updatedPlayers.filter(op => op.teamId !== p.teamId);
+              const cspTeammates = updatedPlayers.filter(tp => tp.teamId === p.teamId && tp.id !== p.id);
+              const bestCSP = selectBestCSP(
+                { ...p, position: moveTarget }, // evaluate CSPs around current target, not player pos
+                cspOpponents,
+                cspTeammates,
+                cspCarrier,
+              );
+              // Only nudge if the CSP is reasonably close to the current target
+              if (moveTarget.distanceTo(bestCSP) < 15) {
+                const influence = TUNING.cspSupportInfluence;
+                moveTarget = new Vec2(
+                  moveTarget.x + (bestCSP.x - moveTarget.x) * influence,
+                  moveTarget.y + (bestCSP.y - moveTarget.y) * influence,
+                );
+              }
+            }
+          }
+
+          // Defender runner-tracking: when out of possession, CB/LB/RB shadow nearby
+          // opponents making forward runs. Only the closest defender to each runner tracks them.
+          const teamHasBall = ball.carrierId !== null &&
+            updatedPlayers.find(cp => cp.id === ball.carrierId)?.teamId === p.teamId;
+          if ((p.role === 'CB' || p.role === 'LB' || p.role === 'RB') && !teamHasBall) {
+            const oppRunners = updatedPlayers.filter(op =>
+              op.teamId !== p.teamId && op.role !== 'GK' && op.velocity.length() > 2.5,
+            );
+            let markTarget: typeof updatedPlayers[0] | undefined;
+            let bestMarkScore = -Infinity;
+            for (const opp of oppRunners) {
+              const d = p.position.distanceTo(opp.position);
+              if (d > 18) continue;
+              // Only track if we're the closest defensive player to this runner
+              const defTeammates = updatedPlayers.filter(tp =>
+                tp.teamId === p.teamId && tp.id !== p.id &&
+                (tp.role === 'CB' || tp.role === 'LB' || tp.role === 'RB'),
+              );
+              const isClosestDef = !defTeammates.some(tm => tm.position.distanceTo(opp.position) < d);
+              if (!isClosestDef) continue;
+              // Prefer faster runners in more dangerous positions
+              const dangerX = p.teamId === 'home' ? opp.position.x : (PITCH_WIDTH - opp.position.x);
+              const score = opp.velocity.length() + dangerX * 0.03 - d * 0.08;
+              if (score > bestMarkScore) { bestMarkScore = score; markTarget = opp; }
+            }
+            if (markTarget) {
+              // Shadow ~0.6s ahead of the runner, blending toward tracking as they get closer
+              const predicted = markTarget.position.add(markTarget.velocity.scale(0.6));
+              const clamped = clampToPitch(predicted);
+              const closeness = Math.max(0, 1 - p.position.distanceTo(markTarget.position) / 18);
+              const blend = 0.4 + closeness * 0.45; // 40%–85% toward runner
+              moveTarget = new Vec2(
+                moveTarget.x * (1 - blend) + clamped.x * blend,
+                moveTarget.y * (1 - blend) + clamped.y * blend,
+              );
             }
           }
 
@@ -889,8 +1478,31 @@ export class SimulationEngine {
 
         case 'PRESS': {
           // Pursuit of ball carrier or ball position
-          const pressTarget = ball.position;
-          const desired = seek(p.position, pressTarget, maxSpeed);
+          let pressTarget = ball.position;
+
+          // GK containment: clamp press target to penalty area bounds
+          if (p.role === 'GK') {
+            const paDepth = 16.5;
+            const paCenterY = PITCH_HEIGHT / 2;
+            const paHalfWidth = 20.16;
+            if (p.teamId === 'home') {
+              pressTarget = new Vec2(
+                Math.min(pressTarget.x, paDepth),
+                Math.max(paCenterY - paHalfWidth, Math.min(paCenterY + paHalfWidth, pressTarget.y)),
+              );
+            } else {
+              pressTarget = new Vec2(
+                Math.max(PITCH_WIDTH - paDepth, pressTarget.x),
+                Math.max(paCenterY - paHalfWidth, Math.min(paCenterY + paHalfWidth, pressTarget.y)),
+              );
+            }
+          }
+
+          // Use arrive (decelerate) when close to prevent seek→separation oscillation
+          const pressDist = p.position.distanceTo(pressTarget);
+          const desired = pressDist < 5
+            ? arrive(p.position, pressTarget, maxSpeed, 3.0)
+            : seek(p.position, pressTarget, maxSpeed);
           const newVel = clampVelocity(desired, maxSpeed);
           const dtSec = dt / 1000;
           const newPos = p.position.add(newVel.scale(dtSec));
@@ -903,22 +1515,20 @@ export class SimulationEngine {
         }
 
         case 'MAKE_RUN': {
-          // Run into space toward opponent goal, with diagonal offset
-          const opponentGoalX = p.teamId === 'home' ? PITCH_WIDTH : 0;
-          const forwardX = p.position.x + (opponentGoalX - p.position.x) * 0.3;
-
-          // Diagonal run: spread away from ball carrier to create width
-          let runY = p.formationAnchor.y;
-          if (ball.carrierId !== null) {
-            const carrier = updatedPlayers.find(cp => cp.id === ball.carrierId);
-            if (carrier && carrier.teamId === p.teamId) {
-              // Move away from carrier's y to provide width
-              const yDiff = p.position.y - carrier.position.y;
-              runY = p.formationAnchor.y + Math.sign(yDiff || 1) * 8;
-            }
+          // Ball intercept: when ball is loose and moving, run to meet it
+          // rather than continuing a CSP run that won't align with ball trajectory.
+          let runTarget: Vec2;
+          if (ball.carrierId === null && ball.velocity.length() > 2) {
+            const travelTime = p.position.distanceTo(ball.position) / Math.max(maxSpeed, 0.1);
+            runTarget = clampToPitch(ball.position.add(ball.velocity.scale(travelTime)));
+          } else {
+            // CSP-based off-ball run: find the best space between defenders
+            const allOpponentsForCSP = updatedPlayers.filter(op => op.teamId !== p.teamId);
+            const runTeammates = updatedPlayers.filter(tp => tp.teamId === p.teamId && tp.id !== p.id);
+            const runCarrier = ball.carrierId ? updatedPlayers.find(cp => cp.id === ball.carrierId) : undefined;
+            runTarget = selectBestCSP(p, allOpponentsForCSP, runTeammates, runCarrier);
           }
 
-          const runTarget = new Vec2(forwardX, runY);
           const desired = seek(p.position, runTarget, maxSpeed);
           const newVel = clampVelocity(desired, maxSpeed);
           const dtSec = dt / 1000;
@@ -934,13 +1544,13 @@ export class SimulationEngine {
         case 'PASS_FORWARD':
         case 'PASS_SAFE': {
           if (ball.carrierId === p.id && nextTick >= this.carrierKickLockoutUntil) {
-            // Find a target teammate
+            // Find a target teammate — factor in lane clearance to avoid interceptions
             const teammates = updatedPlayers.filter(tp => tp.teamId === p.teamId && tp.id !== p.id);
+            const opponents = updatedPlayers.filter(op => op.teamId !== p.teamId);
             let target = teammates[0];
             if (intent.action === 'PASS_FORWARD') {
-              // Progressive passing: score teammates by advancement gain vs distance.
-              // Prefers nearby teammates who are further up the pitch than the passer,
-              // producing CB→CM (15m), CM→ST (20m) chains instead of CB→ST (60m) long balls.
+              // Progressive passing: score teammates by advancement gain vs distance,
+              // penalising targets with blocked lanes.
               const passerAdvance = p.teamId === 'home' ? p.position.x : (PITCH_WIDTH - p.position.x);
               let bestScore = -Infinity;
               for (const tm of teammates) {
@@ -953,27 +1563,34 @@ export class SimulationEngine {
                 // Sweet spot is ~15-25m ahead, with distance penalty kicking in hard past 30m.
                 const advScore = Math.min(advGain / 20, 1.5); // caps at 30m gain
                 const distPenalty = dist > 15 ? (dist - 15) / 30 : 0; // penalty starts at 15m
-                const score = advScore - distPenalty;
+                // Lane clearance: penalise targets with opponents in the passing lane
+                const laneClear = passLaneClearance(p.position, tm.position, opponents);
+                const score = advScore - distPenalty + (laneClear - 0.5) * 1.2;
                 if (score > bestScore) {
                   bestScore = score;
                   target = tm;
                 }
               }
-              // Fallback: if no forward target found (all behind), pick nearest teammate
+              // Fallback: if no forward target found (all behind), pick nearest with best lane
               if (bestScore === -Infinity) {
-                let minDist = Infinity;
+                let bestFallback = -Infinity;
                 for (const tm of teammates) {
                   const d = p.position.distanceTo(tm.position);
-                  if (d < minDist) { minDist = d; target = tm; }
+                  const laneClear = passLaneClearance(p.position, tm.position, opponents);
+                  const score = -d + laneClear * 15;
+                  if (score > bestFallback) { bestFallback = score; target = tm; }
                 }
               }
             } else {
-              // Find nearest safe teammate
-              let minDist = Infinity;
+              // PASS_SAFE: nearest teammate, weighted by lane clearance
+              let bestScore = -Infinity;
               for (const tm of teammates) {
                 const d = p.position.distanceTo(tm.position);
-                if (d < minDist) {
-                  minDist = d;
+                const laneClear = passLaneClearance(p.position, tm.position, opponents);
+                // Score: prefer close + clear lane. Blocked lanes heavily penalised.
+                const score = -d + laneClear * 15;
+                if (score > bestScore) {
+                  bestScore = score;
                   target = tm;
                 }
               }
@@ -982,14 +1599,13 @@ export class SimulationEngine {
             if (target) {
               const passDist = p.position.distanceTo(target.position);
 
-              // Lead the target only on longer passes when receiver is clearly running
-              // (speed > 2 m/s in a consistent direction). Short passes go to feet.
+              // Lead the target: aim where the receiver will be when the ball arrives.
+              // Applies to all passes where receiver is moving (>1.5 m/s), any distance >8m.
               let aimPos = target.position;
               const receiverSpeed = target.velocity.length();
-              if (passDist > 15 && receiverSpeed > 2) {
+              if (passDist > 8 && receiverSpeed > 1.5) {
                 const travelTime = passDist / TUNING.passSpeed;
-                // Modest lead — 0.35 factor, capped at 6m max offset
-                const leadDist = Math.min(receiverSpeed * travelTime * 0.35, 6);
+                const leadDist = receiverSpeed * travelTime * TUNING.passLeadFactor;
                 const leadDir = target.velocity.scale(1 / receiverSpeed); // unit direction
                 aimPos = target.position.add(leadDir.scale(leadDist));
               }
@@ -999,27 +1615,32 @@ export class SimulationEngine {
               const passLen = passDir.length();
               if (passLen > 0.01) passDir = passDir.scale(1 / passLen);
 
-              // Pass lane check: if an opponent is near the pass line, nudge the angle
-              const opponents = updatedPlayers.filter(op => op.teamId !== p.teamId);
+              // Pass lane nudge: if an opponent is near the pass line, rotate away.
+              // Finds the closest blocker and applies a single rotation to avoid them.
+              let worstPerp = Infinity;
+              let worstSide = 0;
               for (const opp of opponents) {
                 const toOpp = opp.position.subtract(p.position);
                 const proj = toOpp.dot(passDir); // how far along the pass line
-                if (proj < 3 || proj > passDist - 3) continue; // behind passer or past target
-                const perp = Math.abs(toOpp.x * passDir.y - toOpp.y * passDir.x); // cross product = perpendicular distance
-                if (perp < 3) {
-                  // Opponent blocks the lane — rotate pass direction ~8° away from them
-                  const side = (toOpp.x * passDir.y - toOpp.y * passDir.x) > 0 ? -1 : 1;
-                  const angle = side * 0.14; // ~8 degrees
-                  const cos = Math.cos(angle);
-                  const sin = Math.sin(angle);
-                  passDir = new Vec2(passDir.x * cos - passDir.y * sin, passDir.x * sin + passDir.y * cos);
-                  break; // one adjustment is enough
+                if (proj < 2 || proj > passDist - 2) continue; // behind passer or past target
+                const cross = toOpp.x * passDir.y - toOpp.y * passDir.x;
+                const perp = Math.abs(cross); // perpendicular distance
+                if (perp < 5 && perp < worstPerp) {
+                  worstPerp = perp;
+                  worstSide = cross > 0 ? -1 : 1;
                 }
+              }
+              if (worstPerp < 5) {
+                // Rotate away from closest blocker — angle scales with proximity
+                const angle = worstSide * (0.18 + (1 - worstPerp / 5) * 0.14); // 10°–18°
+                const cos = Math.cos(angle);
+                const sin = Math.sin(angle);
+                passDir = new Vec2(passDir.x * cos - passDir.y * sin, passDir.x * sin + passDir.y * cos);
               }
 
               // Loft long passes: add vertical velocity for passes > 20m
               // Short passes stay on the ground; long passes arc over defenders
-              const loftVz = passDist > 20 ? 2 + (passDist - 20) * 0.08 : 0;
+              const loftVz = passDist > 20 ? 4 + (passDist - 20) * 0.15 : 0;
 
               ball = {
                 ...ball,
@@ -1031,15 +1652,20 @@ export class SimulationEngine {
               updatedPlayers[i] = { ...p, velocity: Vec2.zero() };
               // Prevent passer from immediately re-picking up the ball
               this.lastKickerId = p.id;
+              this.lastTouchTeamId = p.teamId;
               this.kickCooldownUntil = nextTick + 10; // ~0.33s at 30 ticks/sec
               // Global cooldown: ball must travel before anyone picks up (prevents possession loops)
-              this.pickupCooldownUntil = nextTick + 12;
+              this.pickupCooldownUntil = nextTick + 16;
               // Record actual pass event
               this.statsAccumulator.recordPass(p.teamId);
               this.gameLog.recordPass(nextTick, p.teamId, p.id, p.role,
                 p.position.x, p.position.y, target.position.x, target.position.y,
                 target.id, intent.action === 'PASS_FORWARD' ? 'forward' : 'safe',
                 passDist);
+              // Track pending pass for completion detection
+              this.pendingPassPlayerId = p.id;
+              this.pendingPassTeamId = p.teamId;
+              this.lastKickWasShot = false;
             }
           }
           break;
@@ -1072,6 +1698,7 @@ export class SimulationEngine {
             };
             updatedPlayers[i] = { ...p, velocity: Vec2.zero() };
             this.lastKickerId = p.id;
+            this.lastTouchTeamId = p.teamId;
             this.kickCooldownUntil = nextTick + 10;
             this.pickupCooldownUntil = nextTick + 12;
             // Record actual shot event
@@ -1079,12 +1706,28 @@ export class SimulationEngine {
             this.statsAccumulator.recordShot(p.teamId);
             this.gameLog.recordShot(nextTick, p.teamId, p.id, p.role,
               p.position.x, p.position.y, distToGoal);
+            // Also clear pending pass (shot supersedes any pending pass)
+            this.pendingPassPlayerId = null;
+            this.pendingPassTeamId = null;
+            // On-target check: would the ball pass through the goal frame (between posts, under bar)?
+            // Goal posts at y = PITCH_HEIGHT/2 ± 3.66, crossbar at 2.44m height
+            const CROSSBAR_H = 2.44;
+            const timeToGoal = distToGoal / Math.max(Math.abs(ball.velocity.x), 0.1);
+            const zAtGoal = shotVz * timeToGoal - 0.5 * 9.8 * timeToGoal * timeToGoal;
+            // goalY is always between posts (aim randomness is ±2m from center, posts are ±3.66m)
+            const onTarget = zAtGoal >= 0 && zAtGoal <= CROSSBAR_H;
+            if (onTarget) {
+              this.statsAccumulator.recordShotOnTarget(p.teamId);
+              this.gameLog.recordShotOnTarget(p.id);
+            }
+            this.lastKickWasShot = true;
           }
           break;
         }
 
         case 'DRIBBLE': {
           if (ball.carrierId === p.id) {
+            this.lastTouchTeamId = p.teamId;
             // Move toward opponent goal, steering around nearby defenders
             const opponentGoalX = p.teamId === 'home' ? PITCH_WIDTH : 0;
             const forwardDir = new Vec2(opponentGoalX - p.position.x, 0).normalize();
@@ -1117,10 +1760,10 @@ export class SimulationEngine {
             const newPos = p.position.add(newVel.scale(dtSec));
             const clampedPos = clampToPitch(newPos);
 
-            // Ball follows dribbler
+            // Ball follows dribbler (clamped to pitch to avoid triggering out-of-play)
             ball = {
               ...ball,
-              position: clampedPos.add(dribbleDir.scale(TUNING.controlRadius * 0.8)),
+              position: clampToPitch(clampedPos.add(dribbleDir.scale(TUNING.controlRadius * 0.8))),
               velocity: newVel,
             };
             updatedPlayers[i] = {
@@ -1175,7 +1818,8 @@ export class SimulationEngine {
     // ── 10d. Tackle resolution ──────────────────────────────────────────────
     // Defenders pressing within range attempt to dispossess the ball carrier.
     // Uses resolveTackle() from contact.ts with a per-player cooldown to prevent spam.
-    if (ball.carrierId !== null) {
+    // Blocked briefly after dead ball restarts (corner, throw-in, etc.) to let taker deliver.
+    if (ball.carrierId !== null && nextTick >= this.restartProtectionUntil) {
       const carrier = updatedPlayers.find(p => p.id === ball.carrierId);
       if (carrier) {
         for (let i = 0; i < updatedPlayers.length; i++) {
@@ -1208,6 +1852,8 @@ export class SimulationEngine {
           if (result.success) {
             this.gameLog.recordTackle(nextTick, p.teamId, p.id, p.role,
               p.position.x, p.position.y, carrier.id, true);
+            // Tackler touched the ball last
+            this.lastTouchTeamId = p.teamId;
             // Ball knocked loose — add lateral component so it goes sideways, not just back
             const knockBase = p.position.subtract(carrier.position).normalize();
             const lateralSign = this.rng() > 0.5 ? 1 : -1;
@@ -1218,12 +1864,14 @@ export class SimulationEngine {
             ball = {
               ...ball,
               carrierId: null,
-              velocity: knockDir.scale(4 + this.rng() * 4),
+              velocity: knockDir.scale(8 + this.rng() * 5),
             };
-            // Prevent dispossessed player from immediately re-picking up (breaks jitter loops)
+            // Prevent dispossessed player from immediately re-picking up (breaks tackle chains)
             this.lastKickerId = carrier.id;
-            this.kickCooldownUntil = nextTick + 15;
-            this.pickupCooldownUntil = nextTick + 8;
+            this.kickCooldownUntil = nextTick + 25;
+            this.pickupCooldownUntil = nextTick + 25; // longer cooldown lets ball clear congested zone
+            // Also cool down the tackler so they don't immediately re-engage
+            this.tackleCooldowns.set(p.id, nextTick + 45);
             // Push both players apart physically to prevent immediate re-engagement
             const sepDir = carrier.position.subtract(p.position).normalize();
             const carrierIdx = updatedPlayers.findIndex(up => up.id === carrier.id);
@@ -1272,29 +1920,7 @@ export class SimulationEngine {
     // ── 12. Integrate ball physics ────────────────────────────────────────────
     // Only integrate if ball has no carrier (carried balls move with player)
     if (ball.carrierId === null) {
-      ball = integrateBall(ball, dt);
-
-      // Bounce off pitch boundary walls (simple elastic reflection)
-      if (ball.position.x < 0 || ball.position.x > PITCH_WIDTH) {
-        ball = {
-          ...ball,
-          position: new Vec2(
-            Math.max(0, Math.min(PITCH_WIDTH, ball.position.x)),
-            ball.position.y,
-          ),
-          velocity: new Vec2(-ball.velocity.x * 0.7, ball.velocity.y),
-        };
-      }
-      if (ball.position.y < 0 || ball.position.y > PITCH_HEIGHT) {
-        ball = {
-          ...ball,
-          position: new Vec2(
-            ball.position.x,
-            Math.max(0, Math.min(PITCH_HEIGHT, ball.position.y)),
-          ),
-          velocity: new Vec2(ball.velocity.x, -ball.velocity.y * 0.7),
-        };
-      }
+      ball = integrateBall(ball, dt, TUNING.ballGroundFriction, TUNING.ballAirDrag);
     }
 
     // ── 13. Check for goals ───────────────────────────────────────────────────
@@ -1310,12 +1936,37 @@ export class SimulationEngine {
       // Log the goal — find the last kicker as the scorer
       const scorerId = this.lastKickerId ?? 'unknown';
       const scorer = updatedPlayers.find(p => p.id === scorerId);
+
+      // Every goal is a shot on target. If the kick wasn't a SHOOT action (e.g. a pass
+      // that went in), retroactively record a shot + on-target for the scorer.
+      if (!this.lastKickWasShot && scorer) {
+        this.statsAccumulator.recordShot(scorer.teamId);
+        this.gameLog.recordShot(nextTick, scorer.teamId, scorerId, scorer.role,
+          scorer.position.x, scorer.position.y,
+          Math.abs(scorer.position.x - (scorer.teamId === 'home' ? PITCH_WIDTH : 0)));
+        this.statsAccumulator.recordShotOnTarget(scorer.teamId);
+        this.gameLog.recordShotOnTarget(scorerId);
+      }
+
       this.gameLog.recordGoal(nextTick, scoringTeam, scorerId, scorer?.role ?? '??',
         scorer?.position.x ?? ball.position.x, scorer?.position.y ?? ball.position.y,
         score as [number, number]);
 
       const goalPhaseResult = advancePhase(current.matchPhase, nextTick, true);
       events.push(...goalPhaseResult.events);
+
+      // Enter kickoff dead ball — team that conceded kicks off
+      const kickoffTeam: TeamId = scoringTeam === 'home' ? 'away' : 'home';
+      const center = new Vec2(PITCH_WIDTH / 2, PITCH_HEIGHT / 2);
+      ball = { ...ball, position: center, velocity: Vec2.zero(), z: 0, vz: 0, carrierId: null };
+      this._enterDeadBall({
+        type: RestartType.KICKOFF,
+        position: center,
+        teamId: kickoffTeam,
+        tickStarted: nextTick,
+        repositionTicks: TUNING.kickoffPauseTicks,
+        takerId: this._findTaker(RestartType.KICKOFF, kickoffTeam, center, updatedPlayers),
+      });
 
       const newSnapshot: SimSnapshot = {
         tick: nextTick,
@@ -1326,9 +1977,128 @@ export class SimulationEngine {
         score,
         events,
         stats: this.statsAccumulator.getSnapshot(),
+        deadBallInfo: { type: RestartType.KICKOFF, teamId: kickoffTeam, position: center },
       };
       this.snapshot = newSnapshot;
       return newSnapshot;
+    }
+
+    // ── 13b. Ball out of play — throw-ins, corners, goal kicks ────────────────
+    // Check goal line first (x boundary), then sideline (y boundary)
+    if (ball.carrierId === null) {
+      const outX = ball.position.x < 0 || ball.position.x > PITCH_WIDTH;
+      const outY = ball.position.y < 0 || ball.position.y > PITCH_HEIGHT;
+
+      // Clear pending pass on any out-of-play
+      if (outX || outY) {
+        this.pendingPassPlayerId = null;
+        this.pendingPassTeamId = null;
+      }
+
+      if (outX) {
+        // Ball crossed goal line but NOT a goal (goal check was above)
+        const isLeftGoalLine = ball.position.x < 0;
+        const defendingTeam: TeamId = isLeftGoalLine ? 'home' : 'away';
+        // Default to defending team if no touch tracked (edge case at match start)
+        const lastTouch = this.lastTouchTeamId ?? defendingTeam;
+
+        if (lastTouch === defendingTeam) {
+          // Defending team touched last → corner kick for attacking team
+          const attackingTeam: TeamId = defendingTeam === 'home' ? 'away' : 'home';
+          const cornerY = ball.position.y < PITCH_HEIGHT / 2 ? 0 : PITCH_HEIGHT;
+          const cornerX = isLeftGoalLine ? 0 : PITCH_WIDTH;
+          const cornerPos = new Vec2(cornerX, cornerY);
+
+          this.statsAccumulator.recordCorner(attackingTeam);
+          const taker = this._findTaker(RestartType.CORNER, attackingTeam, cornerPos, updatedPlayers);
+          const takerPlayer = updatedPlayers.find(p => p.id === taker);
+          this.gameLog.recordCorner(nextTick, attackingTeam, taker ?? '', takerPlayer?.role ?? '', cornerX, cornerY);
+
+          ball = { ...ball, position: cornerPos, velocity: Vec2.zero(), z: 0, vz: 0, carrierId: null };
+          this._enterDeadBall({
+            type: RestartType.CORNER,
+            position: cornerPos,
+            teamId: attackingTeam,
+            tickStarted: nextTick,
+            repositionTicks: TUNING.cornerPauseTicks,
+            takerId: taker,
+          });
+        } else {
+          // Attacking team touched last → goal kick for defending team
+          const gkX = isLeftGoalLine ? 6 : PITCH_WIDTH - 6;
+          const gkPos = new Vec2(gkX, PITCH_HEIGHT / 2);
+
+          this.statsAccumulator.recordGoalKick(defendingTeam);
+          const taker = this._findTaker(RestartType.GOAL_KICK, defendingTeam, gkPos, updatedPlayers);
+          const takerPlayer = updatedPlayers.find(p => p.id === taker);
+          this.gameLog.recordGoalKick(nextTick, defendingTeam, taker ?? '', takerPlayer?.role ?? '', gkX, PITCH_HEIGHT / 2);
+
+          ball = { ...ball, position: gkPos, velocity: Vec2.zero(), z: 0, vz: 0, carrierId: null };
+          this._enterDeadBall({
+            type: RestartType.GOAL_KICK,
+            position: gkPos,
+            teamId: defendingTeam,
+            tickStarted: nextTick,
+            repositionTicks: TUNING.goalKickPauseTicks,
+            takerId: taker,
+          });
+        }
+
+        const dbInfo: DeadBallInfo = { type: this.deadBall!.type, teamId: this.deadBall!.teamId, position: this.deadBall!.position };
+        const newSnapshot: SimSnapshot = {
+          tick: nextTick,
+          timestamp: current.timestamp + dt,
+          ball,
+          players: updatedPlayers,
+          matchPhase: phaseResult.phase,
+          score,
+          events,
+          stats: this.statsAccumulator.getSnapshot(),
+          deadBallInfo: dbInfo,
+        };
+        this.snapshot = newSnapshot;
+        return newSnapshot;
+      }
+
+      if (outY) {
+        // Ball crossed sideline → throw-in
+        const outYPos = ball.position.y < 0 ? 0 : PITCH_HEIGHT;
+        const outXPos = Math.max(0, Math.min(PITCH_WIDTH, ball.position.x));
+        // Default to away gets throw-in if no touch tracked
+        const lastTouch = this.lastTouchTeamId ?? 'home';
+        const throwTeam: TeamId = lastTouch === 'home' ? 'away' : 'home';
+        const throwPos = new Vec2(outXPos, outYPos);
+
+        this.statsAccumulator.recordThrowIn(throwTeam);
+        const taker = this._findTaker(RestartType.THROW_IN, throwTeam, throwPos, updatedPlayers);
+        const takerPlayer = updatedPlayers.find(p => p.id === taker);
+        this.gameLog.recordThrowIn(nextTick, throwTeam, taker ?? '', takerPlayer?.role ?? '', outXPos, outYPos);
+
+        ball = { ...ball, position: throwPos, velocity: Vec2.zero(), z: 0, vz: 0, carrierId: null };
+        this._enterDeadBall({
+          type: RestartType.THROW_IN,
+          position: throwPos,
+          teamId: throwTeam,
+          tickStarted: nextTick,
+          repositionTicks: TUNING.throwInPauseTicks,
+          takerId: taker,
+        });
+
+        const dbInfo: DeadBallInfo = { type: this.deadBall!.type, teamId: this.deadBall!.teamId, position: this.deadBall!.position };
+        const newSnapshot: SimSnapshot = {
+          tick: nextTick,
+          timestamp: current.timestamp + dt,
+          ball,
+          players: updatedPlayers,
+          matchPhase: phaseResult.phase,
+          score,
+          events,
+          stats: this.statsAccumulator.getSnapshot(),
+          deadBallInfo: dbInfo,
+        };
+        this.snapshot = newSnapshot;
+        return newSnapshot;
+      }
     }
 
     // ── 14. Accumulate match statistics ───────────────────────────────────────
@@ -1373,9 +2143,255 @@ export class SimulationEngine {
 // Helpers
 // ============================================================
 
+/**
+ * Compute the x-coordinate of the press activation line for a team.
+ * Ball must be on the "own side" of this line for pressing to be fully active.
+ * low = own third only, mid = own half, high = full pitch.
+ */
+function _pressActivationX(height: 'low' | 'mid' | 'high', teamId: TeamId): number {
+  // Home presses toward x=105 (opponent goal), away toward x=0
+  if (teamId === 'home') {
+    switch (height) {
+      case 'low': return 35;   // only press in own third
+      case 'mid': return 52;   // press in own half
+      case 'high': return 105; // press anywhere
+    }
+  } else {
+    switch (height) {
+      case 'low': return 70;   // mirror: 105 - 35
+      case 'mid': return 53;   // mirror: 105 - 52
+      case 'high': return 0;   // press anywhere
+    }
+  }
+}
+
 function clampToPitch(pos: Vec2): Vec2 {
   return new Vec2(
     Math.max(0, Math.min(PITCH_WIDTH, pos.x)),
     Math.max(0, Math.min(PITCH_HEIGHT, pos.y)),
   );
+}
+
+/**
+ * Compute how clear the passing lane is between passer and target.
+ * Returns 1.0 for a completely clear lane, 0.0 for totally blocked.
+ * Checks all opponents and returns the worst blockage.
+ */
+function passLaneClearance(
+  passerPos: Vec2,
+  targetPos: Vec2,
+  opponents: readonly PlayerState[],
+): number {
+  const passVec = targetPos.subtract(passerPos);
+  const passDist = passVec.length();
+  if (passDist < 1) return 1.0;
+  const dir = passVec.scale(1 / passDist);
+
+  let clearance = 1.0;
+  for (const opp of opponents) {
+    const toOpp = opp.position.subtract(passerPos);
+    const proj = toOpp.dot(dir); // distance along pass line
+    if (proj < 2 || proj > passDist - 2) continue; // behind passer or past target
+    const perp = Math.abs(toOpp.x * dir.y - toOpp.y * dir.x); // perpendicular distance
+    if (perp < 5) {
+      // 0m perp = fully blocked (0.0), 5m perp = clear (1.0)
+      const oppClearance = perp / 5;
+      if (oppClearance < clearance) clearance = oppClearance;
+    }
+  }
+  return clearance;
+}
+
+// ============================================================
+// Vision system
+// ============================================================
+
+/**
+ * Compute how many ticks between vision refreshes based on anticipation.
+ * High anticipation (≥0.85) → every tick. Low anticipation (≤0.3) → every 6 ticks.
+ */
+function visionRefreshInterval(anticipation: number): number {
+  const high = TUNING.visionAnticipationHighThreshold;
+  const low = TUNING.visionAnticipationLowThreshold;
+  const maxInterval = TUNING.visionRefreshMaxInterval;
+  if (anticipation >= high) return 1;
+  if (anticipation <= low) return maxInterval;
+  // Linear interpolation between
+  const t = (anticipation - low) / (high - low);
+  return Math.round(maxInterval + t * (1 - maxInterval));
+}
+
+/**
+ * Filter opponents by a player's vision radius, facing direction, and blind spot.
+ * - Always visible if within close range (5m)
+ * - Invisible if beyond vision radius
+ * - Blind spot: opponents behind the player (dot product < threshold) are invisible unless close
+ */
+function filterOpponentsByVision(
+  player: PlayerState,
+  opponents: readonly PlayerState[],
+  effectiveVision: number,
+): PlayerState[] {
+  const { visionRadiusMin, visionRadiusMax, visionBlindSpotDot, visionCloseRange } = TUNING;
+  const radius = visionRadiusMin + effectiveVision * (visionRadiusMax - visionRadiusMin);
+
+  // Facing direction: derived from velocity, or default facing opponent goal when stationary
+  let facing: Vec2;
+  if (player.velocity.length() > 0.1) {
+    facing = player.velocity.normalize();
+  } else {
+    // Face opponent goal
+    const goalX = player.teamId === 'home' ? PITCH_WIDTH : 0;
+    facing = new Vec2(goalX - player.position.x, 0).normalize();
+  }
+
+  return opponents.filter(opp => {
+    const toOpp = opp.position.subtract(player.position);
+    const dist = toOpp.length();
+
+    // Always visible at close range
+    if (dist < visionCloseRange) return true;
+    // Beyond vision radius → invisible
+    if (dist > radius) return false;
+    // Check blind spot: opponent behind player
+    const dot = dist > 0.01 ? toOpp.scale(1 / dist).dot(facing) : 0;
+    return dot >= visionBlindSpotDot;
+  });
+}
+
+// ============================================================
+// CSP (Candidate Space Points) — off-ball movement
+// ============================================================
+
+/**
+ * Generate candidate space points in a forward arc around the player.
+ * 3 distance rings × 4 angles = 12 candidates, clamped to pitch boundaries.
+ */
+function generateCSPs(playerPos: Vec2, teamId: TeamId): Vec2[] {
+  const { cspDist1, cspDist2, cspDist3, cspAngleSpread, cspAnglesPerRing } = TUNING;
+  const distances = [cspDist1, cspDist2, cspDist3];
+  const forwardX = teamId === 'home' ? 1 : -1;
+  const forward = new Vec2(forwardX, 0);
+
+  const points: Vec2[] = [];
+  for (const dist of distances) {
+    for (let a = 0; a < cspAnglesPerRing; a++) {
+      // Spread angles evenly across [-angleSpread, +angleSpread]
+      const t = cspAnglesPerRing > 1 ? a / (cspAnglesPerRing - 1) : 0.5;
+      const angle = -cspAngleSpread + t * 2 * cspAngleSpread;
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
+      const dir = new Vec2(
+        forward.x * cos - forward.y * sin,
+        forward.x * sin + forward.y * cos,
+      );
+      const candidate = playerPos.add(dir.scale(dist));
+      // Clamp to pitch
+      const cx = Math.max(1, Math.min(PITCH_WIDTH - 1, candidate.x));
+      const cy = Math.max(1, Math.min(PITCH_HEIGHT - 1, candidate.y));
+      points.push(new Vec2(cx, cy));
+    }
+  }
+  return points;
+}
+
+/**
+ * Score a single CSP based on seam detection, defender proximity,
+ * teammate avoidance, forward progress, and passing lane clearance.
+ * Uses FULL (not vision-filtered) opponent list for ground-truth evaluation.
+ */
+function scoreCSP(
+  csp: Vec2,
+  player: PlayerState,
+  opponents: readonly PlayerState[],
+  teammates: readonly PlayerState[],
+  carrier: PlayerState | undefined,
+): number {
+  let score = 0;
+  const {
+    cspSeamMaxDefenderDist, cspSeamMidpointThreshold, cspSeamBonus,
+    cspDefenderSafeDistance, cspDefenderPenaltyWeight,
+    cspTeammateAvoidRadius, cspTeammateAvoidWeight,
+    cspForwardProgressWeight, cspPassingLaneWeight,
+  } = TUNING;
+
+  // 1. Seam detection — bonus if point lies between two defenders
+  let nearestDist1 = Infinity, nearestDist2 = Infinity;
+  let nearest1: PlayerState | null = null, nearest2: PlayerState | null = null;
+  for (const opp of opponents) {
+    const d = csp.distanceTo(opp.position);
+    if (d < nearestDist1) {
+      nearestDist2 = nearestDist1; nearest2 = nearest1;
+      nearestDist1 = d; nearest1 = opp;
+    } else if (d < nearestDist2) {
+      nearestDist2 = d; nearest2 = opp;
+    }
+  }
+  if (nearest1 && nearest2 && nearestDist1 < cspSeamMaxDefenderDist && nearestDist2 < cspSeamMaxDefenderDist) {
+    const midpoint = nearest1.position.add(nearest2.position).scale(0.5);
+    const distToMid = csp.distanceTo(midpoint);
+    if (distToMid < cspSeamMidpointThreshold) {
+      score += cspSeamBonus;
+    }
+  }
+
+  // 2. Defender proximity penalty
+  if (nearestDist1 < cspDefenderSafeDistance) {
+    score -= (1 - nearestDist1 / cspDefenderSafeDistance) * cspDefenderPenaltyWeight;
+  }
+
+  // 3. Teammate avoidance — penalty for nearby teammates
+  for (const tm of teammates) {
+    if (tm.id === player.id) continue;
+    const d = csp.distanceTo(tm.position);
+    if (d < cspTeammateAvoidRadius) {
+      score -= (1 - d / cspTeammateAvoidRadius) * cspTeammateAvoidWeight;
+    }
+    // Also check projected position (velocity extrapolation ~1s)
+    if (tm.velocity.length() > 0.1) {
+      const projPos = tm.position.add(tm.velocity); // 1s projection
+      const pd = csp.distanceTo(projPos);
+      if (pd < cspTeammateAvoidRadius) {
+        score -= (1 - pd / cspTeammateAvoidRadius) * cspTeammateAvoidWeight * 0.5;
+      }
+    }
+  }
+
+  // 4. Forward progress bonus
+  const goalX = player.teamId === 'home' ? PITCH_WIDTH : 0;
+  const currentDist = Math.abs(player.position.x - goalX);
+  const cspDist = Math.abs(csp.x - goalX);
+  const forwardGain = currentDist - cspDist; // positive = closer to goal
+  score += forwardGain * cspForwardProgressWeight;
+
+  // 5. Passing lane clearance from carrier
+  if (carrier) {
+    const laneScore = passLaneClearance(carrier.position, csp, opponents);
+    score += laneScore * cspPassingLaneWeight;
+  }
+
+  return score;
+}
+
+/**
+ * Select the best CSP for a player's off-ball run.
+ * Generates candidates, scores each, and returns the highest-scoring point.
+ */
+function selectBestCSP(
+  player: PlayerState,
+  opponents: readonly PlayerState[],
+  teammates: readonly PlayerState[],
+  carrier: PlayerState | undefined,
+): Vec2 {
+  const candidates = generateCSPs(player.position, player.teamId);
+  let bestScore = -Infinity;
+  let best = candidates[0]!;
+  for (const csp of candidates) {
+    const s = scoreCSP(csp, player, opponents, teammates, carrier);
+    if (s > bestScore) {
+      bestScore = s;
+      best = csp;
+    }
+  }
+  return best;
 }

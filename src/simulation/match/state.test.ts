@@ -175,7 +175,7 @@ describe('createInitialSnapshot', () => {
       velocity: Vec2.zero(),
       attributes: {
         pace: 0.7, strength: 0.7, stamina: 0.7, dribbling: 0.7,
-        passing: 0.7, shooting: 0.7, tackling: 0.7, aerial: 0.7, positioning: 0.7,
+        passing: 0.7, shooting: 0.7, tackling: 0.7, aerial: 0.7, positioning: 0.7, vision: 0.7,
       },
       personality: {
         directness: 0.5, risk_appetite: 0.5, composure: 0.5, creativity: 0.5,
@@ -257,7 +257,7 @@ describe('applyGoal', () => {
       velocity: Vec2.zero(),
       attributes: {
         pace: 0.7, strength: 0.7, stamina: 0.7, dribbling: 0.7,
-        passing: 0.7, shooting: 0.7, tackling: 0.7, aerial: 0.7, positioning: 0.7,
+        passing: 0.7, shooting: 0.7, tackling: 0.7, aerial: 0.7, positioning: 0.7, vision: 0.7,
       },
       personality: {
         directness: 0.5, risk_appetite: 0.5, composure: 0.5, creativity: 0.5,

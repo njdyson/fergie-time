@@ -2,6 +2,7 @@ import { Vec2 } from '../simulation/math/vec2.ts';
 import type { FormationId, Role, Duty, PlayerState } from '../simulation/types.ts';
 import { FORMATION_TEMPLATES, autoAssignRole } from '../simulation/tactical/formation.ts';
 import type { TacticalConfig } from '../simulation/engine.ts';
+import { SNAP_BANDS, BAND_LABELS, GK_FIXED_X, nearestBandIndex, snapToNearestBand, computeFormationString, snapPositions } from './snapGrid.ts';
 
 // ============================================================
 // Pitch dimensions (matches simulation constants)
@@ -11,21 +12,15 @@ const PITCH_W = 105;
 const PITCH_H = 68;
 
 // Rendering constants
-const PITCH_PADDING = 24; // canvas pixels of padding around pitch
+const PITCH_PADDING = 20; // canvas pixels of padding around pitch (must match CanvasRenderer)
 const PLAYER_RADIUS = 14; // canvas pixels — larger than match view for easy clicking
 const SHIRT_FONT = 'bold 11px sans-serif';
 const ROLE_FONT = '9px monospace';
-
-// Zone boundaries (from home team perspective, in metres)
-const DEF_ZONE_X = 33; // defensive/midfield boundary
-const ATT_ZONE_X = 55; // midfield/attacking boundary
 
 // Colors
 const PLAYER_COLOR = '#3366cc';
 const PLAYER_GK_COLOR = '#66cc99';
 const PLAYER_SELECTED_COLOR = '#60a5fa';
-const GUIDE_COLOR = 'rgba(255, 255, 255, 0.12)';
-const GUIDE_LABEL_COLOR = 'rgba(255, 255, 255, 0.28)';
 
 // ============================================================
 // Duty type — can reference from types but import directly
@@ -34,13 +29,15 @@ const GUIDE_LABEL_COLOR = 'rgba(255, 255, 255, 0.28)';
 const DUTY_VALUES: readonly Duty[] = ['DEFEND', 'SUPPORT', 'ATTACK'];
 
 // ============================================================
-// DutyPopup state
+// Dual phase state
 // ============================================================
 
-interface DutyPopup {
-  playerIndex: number;
-  canvasX: number;
-  canvasY: number;
+export type TacticsPhase = 'inPossession' | 'outOfPossession';
+
+interface PhaseState {
+  positions: Vec2[];
+  roles: Role[];
+  duties: Duty[];
 }
 
 // ============================================================
@@ -48,14 +45,17 @@ interface DutyPopup {
 // ============================================================
 
 /**
- * TacticsBoard renders a top-down pitch diagram with 11 draggable player dots.
+ * TacticsBoard renders a portrait-oriented pitch diagram with 11 draggable player dots.
+ * Own goal at bottom, opponent goal at top.
  *
  * Features:
- * - 5 formation preset buttons (via setFormation)
- * - Zone guide lines (DEF / MID / ATT) with faint labels
+ * - Snap-grid drag-and-drop: players snap vertically to horizontal depth bands,
+ *   free horizontal positioning within each band.
+ * - Quick-shape presets (via applyPresetPositions) as starting points
+ * - In-possession / out-of-possession dual formations (via setPhase)
+ * - Snap band guide lines with zone labels
+ * - Live formation string display (e.g. "4-1-2-1-1")
  * - Per-player duty picker popup (click to select Defend/Support/Attack)
- * - Drag-and-drop repositioning with autoAssignRole on drop
- * - getTacticalConfig() returns the current formation/roles/duties for the engine
  *
  * Works without DOM if constructed with a mock canvas context (unit-testable).
  */
@@ -64,34 +64,41 @@ export class TacticsBoard {
   private readonly ctx: CanvasRenderingContext2D;
 
   // Coordinate transform (pitch metres -> canvas pixels)
-  private scaleX: number = 1;
-  private scaleY: number = 1;
+  // Landscape: pitchX → canvasX, pitchY → canvasY (same as match renderer)
+  private scaleX: number = 1; // canvas X pixels per pitch X metre
+  private scaleY: number = 1; // canvas Y pixels per pitch Y metre
   private offsetX: number = 0;
   private offsetY: number = 0;
 
-  // Formation state
-  private formation: FormationId = '4-4-2';
+  // Active formation state (working copy of current phase)
   private positions: Vec2[] = [];
   private roles: Role[] = [];
   private duties: Duty[] = [];
 
+  // Dual phase storage
+  private phases: Record<TacticsPhase, PhaseState>;
+  private currentPhase: TacticsPhase = 'inPossession';
+
+  // Per-player freedom values for radius overlay (synced from TacticsOverlay)
+  private freedomValues: number[] = Array(11).fill(0.5) as number[];
+
   // Drag state
   private draggingIndex: number = -1;
   private dragStartMoved = false;
+  private highlightedBand: number = -1;
 
-  // Selection / popup state
+  // Selection state
   private selectedIndex: number = -1;
-  private dutyPopup: DutyPopup | null = null;
+
+  // Callbacks
+  private _onPlayerSelectedCb: ((index: number) => void) | null = null;
+  private _onConfigChangedCb: (() => void) | null = null;
 
   // Bench / substitution state
   private subsRemaining: number = 3;
-  // Maps pitch player index -> incoming bench player (pending substitution)
   private pendingSubsByPitchIndex: Map<number, PlayerState> = new Map();
-  // Whether a pitch player is selected for substitution (awaiting bench pick)
   private subSelectIndex: number = -1;
-  // A bench player selected to come on (awaiting pitch player pick) — set by main.ts
   private pendingBenchPlayer: PlayerState | null = null;
-  // Optional callback invoked after a substitution is queued (pitch player index)
   _onSubstitutionQueued: ((pitchIndex: number) => void) | undefined = undefined;
 
   // ──────────────────────────────────────────────────────────
@@ -104,8 +111,19 @@ export class TacticsBoard {
     if (!ctx) throw new Error('TacticsBoard: cannot get 2D context from canvas');
     this.ctx = ctx;
 
-    this.formation = initialFormation;
-    this._loadFormation(initialFormation);
+    this._loadFormationTemplate(initialFormation);
+
+    // Initialize both phases with the same formation
+    const makePhase = (): PhaseState => ({
+      positions: this.positions.map(p => new Vec2(p.x, p.y)),
+      roles: [...this.roles],
+      duties: [...this.duties],
+    });
+    this.phases = {
+      inPossession: makePhase(),
+      outOfPossession: makePhase(),
+    };
+
     this._recalcTransform();
     this._bindEvents();
     this.render();
@@ -115,118 +133,144 @@ export class TacticsBoard {
   // Public API
   // ──────────────────────────────────────────────────────────
 
-  /** Set formation preset — resets all positions and roles, preserves duties */
-  setFormation(formationId: FormationId): void {
-    this.formation = formationId;
-    this._loadFormation(formationId);
-    this.dutyPopup = null;
+  /** Apply a preset formation shape — snaps positions to bands, preserves duties */
+  applyPresetPositions(formationId: FormationId): void {
+    this._loadFormationTemplate(formationId);
     this.selectedIndex = -1;
+    this._saveCurrentPhase();
+    this.render();
+    this._onConfigChangedCb?.();
+  }
+
+  /** Register callback for player selection (short click) */
+  onPlayerSelected(cb: (index: number) => void): void {
+    this._onPlayerSelectedCb = cb;
+  }
+
+  /** Register callback for config changes (drag complete, duty change, etc.) */
+  onConfigChanged(cb: () => void): void {
+    this._onConfigChangedCb = cb;
+  }
+
+  /** Resize the canvas buffer and re-render */
+  resizeCanvas(width: number, height: number): void {
+    this.canvas.width = width;
+    this.canvas.height = height;
+    this._recalcTransform();
     this.render();
   }
 
-  /** Get current formation preset */
-  getFormation(): FormationId {
-    return this.formation;
+  /** Update duties from external source (e.g. TacticsOverlay) for visual rendering */
+  setDuties(duties: Duty[]): void {
+    this.duties = [...duties];
+    this.render();
+  }
+
+  /** Get the auto-computed formation string (e.g. "4-1-2-1-1") */
+  getFormationString(): string {
+    return computeFormationString(this.positions);
+  }
+
+  /** Get formation string for a specific phase */
+  getFormationStringForPhase(phase: TacticsPhase): string {
+    return computeFormationString(this.phases[phase].positions);
   }
 
   /** Set duty for a specific player */
   setPlayerDuty(playerIndex: number, duty: Duty): void {
     if (playerIndex < 0 || playerIndex >= 11) return;
     this.duties[playerIndex] = duty;
-    this.dutyPopup = null;
     this.render();
   }
 
   /**
-   * Returns the current tactical config suitable for passing to SimulationEngine.
-   * Formation is returned as the FormationId if positions match the template,
-   * otherwise as a Vec2[] (custom dragged positions).
+   * Returns the in-possession tactical config.
+   * Saves current working state first to ensure latest edits are captured.
    */
   getTacticalConfig(): TacticalConfig {
-    // Check if current positions match the template (within tolerance)
-    const template = FORMATION_TEMPLATES[this.formation];
-    const isCustom = this.positions.some((pos, i) => {
-      const base = template.basePositions[i]!;
-      const dx = pos.x - base.x;
-      const dy = pos.y - base.y;
-      return Math.sqrt(dx * dx + dy * dy) > 0.5;
-    });
+    this._saveCurrentPhase();
+    return this._buildConfig(this.phases.inPossession);
+  }
 
-    return {
-      formation: isCustom ? [...this.positions] : this.formation,
-      roles: [...this.roles],
-      duties: [...this.duties],
-    };
+  /**
+   * Returns the out-of-possession tactical config.
+   * Saves current working state first to ensure latest edits are captured.
+   */
+  getOutOfPossessionConfig(): TacticalConfig {
+    this._saveCurrentPhase();
+    return this._buildConfig(this.phases.outOfPossession);
+  }
+
+  /** Get the currently active editing phase */
+  getCurrentPhase(): TacticsPhase {
+    return this.currentPhase;
+  }
+
+  /** Update per-player freedom values for radius overlay */
+  setFreedomValues(values: number[]): void {
+    this.freedomValues = values.slice(0, 11);
+    this.render();
+  }
+
+
+  /**
+   * Switch between in-possession and out-of-possession editing.
+   * Saves current state and loads the target phase.
+   */
+  setPhase(phase: TacticsPhase): void {
+    if (phase === this.currentPhase) return;
+    this._saveCurrentPhase();
+    this.currentPhase = phase;
+    this._loadPhase(phase);
+    this.selectedIndex = -1;
+    this.render();
   }
 
   /**
    * Set how many substitutions are still available.
-   * Called by main.ts when the halftime tactics board is shown.
    */
   setSubsRemaining(count: number): void {
     this.subsRemaining = count;
     this.render();
   }
 
-  /**
-   * Set a bench player as "pending to come on" — the next pitch player click will queue them.
-   * Pass null to cancel the pending bench selection.
-   * Called by main.ts when a bench player button is clicked.
-   */
   setPendingBenchPlayer(player: PlayerState | null): void {
     this.pendingBenchPlayer = player;
     this.subSelectIndex = -1;
-    this.dutyPopup = null;
     this.render();
   }
 
-  /**
-   * Get the currently pending bench player (null = none selected).
-   */
   getPendingBenchPlayer(): PlayerState | null {
     return this.pendingBenchPlayer;
   }
 
-  /**
-   * Cancel a pending substitution (undo) — removes the queued sub for a pitch index.
-   */
+  /** Queue a substitution: replace pitch player at index with bench player */
+  queueSubstitution(pitchIndex: number, benchPlayer: PlayerState): void {
+    if (this.pendingSubsByPitchIndex.has(pitchIndex)) return;
+    this.pendingSubsByPitchIndex.set(pitchIndex, benchPlayer);
+  }
+
   cancelSubstitution(pitchIndex: number): void {
     this.pendingSubsByPitchIndex.delete(pitchIndex);
     this.render();
   }
 
-  /**
-   * Returns the pending substitutions as { outId, inPlayer } pairs.
-   * Called by main.ts at "Start 2nd Half" to apply subs to the engine.
-   * outId uses the current player's id at that pitch index position.
-   */
   getSubstitutions(): Array<{ outId: string; inPlayer: PlayerState }> {
     const result: Array<{ outId: string; inPlayer: PlayerState }> = [];
     for (const [pitchIndex, inPlayer] of this.pendingSubsByPitchIndex) {
-      // outId: home team players are indexed 0..10 as home-0..home-10
       result.push({ outId: `home-${pitchIndex}`, inPlayer });
     }
     return result;
   }
 
-  /**
-   * Returns the set of pitch player indices that have pending subs.
-   * Used by main.ts to know which bench players are "used".
-   */
   getSubbedOutIndices(): Set<number> {
     return new Set(this.pendingSubsByPitchIndex.keys());
   }
 
-  /**
-   * Returns which pitch player index is currently selected for substitution, or -1.
-   */
   getSubSelectIndex(): number {
     return this.subSelectIndex;
   }
 
-  /**
-   * Reset substitution state (called when a new match starts or returning to tactics from match).
-   */
   resetSubstitutions(): void {
     this.pendingSubsByPitchIndex = new Map();
     this.subSelectIndex = -1;
@@ -234,61 +278,129 @@ export class TacticsBoard {
     this.pendingBenchPlayer = null;
   }
 
-  /** Show the tactics board canvas */
   show(): void {
     this.canvas.style.display = 'block';
   }
 
-  /** Hide the tactics board canvas */
   hide(): void {
     this.canvas.style.display = 'none';
   }
 
-  /** Render the current state to canvas */
   render(): void {
     this._recalcTransform();
     this._draw();
   }
 
   // ──────────────────────────────────────────────────────────
+  // Phase state accessors (for save/load tactics)
+  // ──────────────────────────────────────────────────────────
+
+  /** Get positions for a specific phase (saves working state first) */
+  getPhasePositions(phase: TacticsPhase): Vec2[] {
+    this._saveCurrentPhase();
+    return this.phases[phase].positions.map(p => new Vec2(p.x, p.y));
+  }
+
+  /** Get roles for a specific phase */
+  getPhaseRoles(phase: TacticsPhase): Role[] {
+    this._saveCurrentPhase();
+    return [...this.phases[phase].roles];
+  }
+
+  /** Get duties for a specific phase */
+  getPhaseDuties(phase: TacticsPhase): Duty[] {
+    this._saveCurrentPhase();
+    return [...this.phases[phase].duties];
+  }
+
+  /** Load full state for a specific phase (used by tactic loader) */
+  loadPhaseState(phase: TacticsPhase, positions: Vec2[], roles: Role[], duties: Duty[]): void {
+    this.phases[phase] = {
+      positions: positions.map(p => new Vec2(p.x, p.y)),
+      roles: [...roles],
+      duties: [...duties],
+    };
+    // If this is the active editing phase, also update working copy
+    if (phase === this.currentPhase) {
+      this._loadPhase(phase);
+      this.selectedIndex = -1;
+      this.render();
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────
+  // Phase state management
+  // ──────────────────────────────────────────────────────────
+
+  private _saveCurrentPhase(): void {
+    this.phases[this.currentPhase] = {
+      positions: this.positions.map(p => new Vec2(p.x, p.y)),
+      roles: [...this.roles],
+      duties: [...this.duties],
+    };
+  }
+
+  private _loadPhase(phase: TacticsPhase): void {
+    const state = this.phases[phase];
+    this.positions = state.positions.map(p => new Vec2(p.x, p.y));
+    this.roles = [...state.roles];
+    this.duties = [...state.duties];
+  }
+
+  private _buildConfig(state: PhaseState): TacticalConfig {
+    return {
+      formation: state.positions.map(p => new Vec2(p.x, p.y)),
+      roles: [...state.roles],
+      duties: [...state.duties],
+    };
+  }
+
+  // ──────────────────────────────────────────────────────────
   // Formation loading
   // ──────────────────────────────────────────────────────────
 
-  private _loadFormation(formationId: FormationId): void {
+  private _loadFormationTemplate(formationId: FormationId): void {
     const template = FORMATION_TEMPLATES[formationId];
-    // Deep copy positions
-    this.positions = template.basePositions.map(p => new Vec2(p.x, p.y));
+    this.positions = snapPositions(
+      template.basePositions.map(p => new Vec2(p.x, p.y)),
+    );
     this.roles = template.roles.map(r => r as Role);
-    // Only initialise duties on first load; preserve on formation change
     if (this.duties.length !== 11) {
       this.duties = Array(11).fill('SUPPORT') as Duty[];
     }
   }
 
   // ──────────────────────────────────────────────────────────
-  // Coordinate transform
+  // Coordinate transform (landscape orientation)
+  //
+  // Landscape mapping (same as match renderer):
+  //   pitchX (0..105, goal-to-goal) → canvasX (left..right)
+  //   pitchY (0..68, side-to-side) → canvasY (top..bottom)
+  //
+  // Own goal (pitchX=0) is at the LEFT of the canvas.
+  // Opponent goal (pitchX=105) is at the RIGHT.
   // ──────────────────────────────────────────────────────────
 
   private _recalcTransform(): void {
     const w = this.canvas.width;
     const h = this.canvas.height;
-    const pitchW = w - PITCH_PADDING * 2;
-    const pitchH = h - PITCH_PADDING * 2;
-    this.scaleX = pitchW / PITCH_W;
-    this.scaleY = pitchH / PITCH_H;
+    const drawW = w - PITCH_PADDING * 2;
+    const drawH = h - PITCH_PADDING * 2;
+    this.scaleX = drawW / PITCH_W; // canvas X per pitch X
+    this.scaleY = drawH / PITCH_H; // canvas Y per pitch Y
     this.offsetX = PITCH_PADDING;
     this.offsetY = PITCH_PADDING;
   }
 
-  /** Convert pitch metres to canvas pixels */
-  private _p2c(x: number, y: number): { x: number; y: number } {
+  /** Convert pitch metres to canvas pixels (landscape) */
+  private _p2c(pitchX: number, pitchY: number): { x: number; y: number } {
     return {
-      x: Math.floor(this.offsetX + x * this.scaleX),
-      y: Math.floor(this.offsetY + y * this.scaleY),
+      x: Math.floor(this.offsetX + pitchX * this.scaleX),
+      y: Math.floor(this.offsetY + pitchY * this.scaleY),
     };
   }
 
-  /** Convert canvas pixels to pitch metres */
+  /** Convert canvas pixels to pitch metres (landscape) */
   private _c2p(cx: number, cy: number): Vec2 {
     return new Vec2(
       (cx - this.offsetX) / this.scaleX,
@@ -312,81 +424,156 @@ export class TacticsBoard {
     ctx.fillStyle = '#1a2f1a';
     ctx.fillRect(0, 0, w, h);
 
-    // 3. Green pitch area
-    const tl = this._p2c(0, 0);
-    const br = this._p2c(PITCH_W, PITCH_H);
+    // 3. Green pitch area — use corners to get correct portrait bounds
+    const bl = this._p2c(0, 0);     // bottom-left (own goal, left side)
+    const tr = this._p2c(PITCH_W, PITCH_H); // top-right (opp goal, right side)
+    const pitchLeft = Math.min(bl.x, tr.x);
+    const pitchTop = Math.min(bl.y, tr.y);
+    const pitchRight = Math.max(bl.x, tr.x);
+    const pitchBottom = Math.max(bl.y, tr.y);
+
     ctx.fillStyle = '#2d8a4e';
-    ctx.fillRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+    ctx.fillRect(pitchLeft, pitchTop, pitchRight - pitchLeft, pitchBottom - pitchTop);
 
     // 4. Pitch outline
     ctx.strokeStyle = 'rgba(255,255,255,0.6)';
     ctx.lineWidth = 1.5;
-    ctx.strokeRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+    ctx.strokeRect(pitchLeft, pitchTop, pitchRight - pitchLeft, pitchBottom - pitchTop);
 
-    // 5. Halfway line
-    const halfX = this._p2c(PITCH_W / 2, 0);
-    const halfXB = this._p2c(PITCH_W / 2, PITCH_H);
+    // 5. Halfway line (horizontal in portrait)
+    const halfL = this._p2c(PITCH_W / 2, 0);
+    const halfR = this._p2c(PITCH_W / 2, PITCH_H);
     ctx.beginPath();
-    ctx.moveTo(halfX.x, halfX.y);
-    ctx.lineTo(halfXB.x, halfXB.y);
+    ctx.moveTo(halfL.x, halfL.y);
+    ctx.lineTo(halfR.x, halfR.y);
     ctx.strokeStyle = 'rgba(255,255,255,0.3)';
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    // 6. Zone guide lines (DEF and ATT boundaries from home perspective)
-    this._drawZoneGuideLine(DEF_ZONE_X, 'DEF');
-    this._drawZoneGuideLine(ATT_ZONE_X, 'ATT');
+    // 6. Snap band guide lines
+    for (let b = 0; b < SNAP_BANDS.length; b++) {
+      this._drawSnapBand(b, b === this.highlightedBand);
+    }
 
-    // 7. Penalty areas (faint)
+    // 7. Penalty areas
     this._drawPenaltyAreas();
 
-    // 8. Players
+    // 8. Phase label (subtle indicator of which phase is being edited)
+    ctx.save();
+    ctx.font = 'bold 10px monospace';
+    ctx.fillStyle = this.currentPhase === 'inPossession'
+      ? 'rgba(96, 165, 250, 0.5)'
+      : 'rgba(251, 146, 60, 0.5)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(
+      this.currentPhase === 'inPossession' ? 'IN POSSESSION' : 'OUT OF POSSESSION',
+      w / 2,
+      this.offsetY + 6,
+    );
+    ctx.restore();
+
+    // 8.1. Formation string display
+    ctx.save();
+    ctx.font = 'bold 12px monospace';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(computeFormationString(this.positions), w / 2, this.offsetY + 20);
+    ctx.restore();
+
+    // 8.5. Ghost phase positions — show the OTHER phase's positions as faint ghosts
+    if (this.pendingBenchPlayer === null) {
+      const otherPhase: TacticsPhase = this.currentPhase === 'inPossession' ? 'outOfPossession' : 'inPossession';
+      const otherState = this.phases[otherPhase];
+      if (otherState) {
+        const ghostFill = this.currentPhase === 'inPossession'
+          ? 'rgba(251, 146, 60, 0.15)'   // orange ghosts when editing blue phase
+          : 'rgba(96, 165, 250, 0.15)';  // blue ghosts when editing orange phase
+        const lineColor = this.currentPhase === 'inPossession'
+          ? 'rgba(251, 146, 60, 0.10)'
+          : 'rgba(96, 165, 250, 0.10)';
+
+        for (let i = 0; i < 11; i++) {
+          const ghostPos = otherState.positions[i];
+          if (!ghostPos) continue;
+          const currentPos = this.positions[i]!;
+          const gc = this._p2c(ghostPos.x, ghostPos.y);
+          const cc = this._p2c(currentPos.x, currentPos.y);
+
+          // Only draw if positions differ noticeably (>3m)
+          const dx = ghostPos.x - currentPos.x;
+          const dy = ghostPos.y - currentPos.y;
+          if (Math.sqrt(dx * dx + dy * dy) < 3) continue;
+
+          ctx.save();
+          // Dashed connecting line
+          ctx.setLineDash([3, 5]);
+          ctx.strokeStyle = lineColor;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(gc.x, gc.y);
+          ctx.lineTo(cc.x, cc.y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Ghost circle (smaller, non-interactive)
+          ctx.beginPath();
+          ctx.arc(gc.x, gc.y, 10, 0, Math.PI * 2);
+          ctx.fillStyle = ghostFill;
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+    }
+
+    // 9. Players
     for (let i = 0; i < 11; i++) {
       this._drawPlayer(i);
     }
 
-    // 9. Pending bench pick overlay — prompt user to click a player
+    // 10. Pending bench pick overlay
     if (this.pendingBenchPlayer !== null) {
-      const ctx2 = this.ctx;
-      ctx2.save();
-      ctx2.fillStyle = 'rgba(251, 146, 60, 0.12)';
-      ctx2.fillRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
-      ctx2.font = 'bold 12px monospace';
-      ctx2.fillStyle = 'rgba(251, 146, 60, 0.9)';
-      ctx2.textAlign = 'center';
-      ctx2.textBaseline = 'top';
+      ctx.save();
+      ctx.fillStyle = 'rgba(251, 146, 60, 0.12)';
+      ctx.fillRect(pitchLeft, pitchTop, pitchRight - pitchLeft, pitchBottom - pitchTop);
+      ctx.font = 'bold 12px monospace';
+      ctx.fillStyle = 'rgba(251, 146, 60, 0.9)';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
       const inName = this.pendingBenchPlayer.name ?? this.pendingBenchPlayer.id;
-      ctx2.fillText(`Click player to sub off for ${inName}`, w / 2, tl.y + 4);
-      ctx2.restore();
-    }
-
-    // 10. Duty popup (on top)
-    if (this.dutyPopup !== null) {
-      this._drawDutyPopup(this.dutyPopup);
+      ctx.fillText(`Click player to sub off for ${inName}`, w / 2, pitchBottom - 4);
+      ctx.restore();
     }
   }
 
-  private _drawZoneGuideLine(pitchX: number, label: string): void {
+  private _drawSnapBand(bandIndex: number, highlighted: boolean): void {
     const ctx = this.ctx;
+    const pitchX = SNAP_BANDS[bandIndex]!;
+    const label = BAND_LABELS[bandIndex]!;
     const top = this._p2c(pitchX, 0);
-    const bot = this._p2c(pitchX, PITCH_H);
+    const bottom = this._p2c(pitchX, PITCH_H);
 
     ctx.save();
-    ctx.setLineDash([6, 6]);
-    ctx.strokeStyle = GUIDE_COLOR;
-    ctx.lineWidth = 1.5;
+    ctx.setLineDash(highlighted ? [8, 4] : [4, 8]);
+    ctx.strokeStyle = highlighted
+      ? 'rgba(96, 165, 250, 0.45)'
+      : 'rgba(255, 255, 255, 0.08)';
+    ctx.lineWidth = highlighted ? 2 : 1;
     ctx.beginPath();
     ctx.moveTo(top.x, top.y);
-    ctx.lineTo(bot.x, bot.y);
+    ctx.lineTo(bottom.x, bottom.y);
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Label at top
-    ctx.font = 'bold 10px monospace';
-    ctx.fillStyle = GUIDE_LABEL_COLOR;
+    // Label at top of vertical line
+    ctx.font = 'bold 9px monospace';
+    ctx.fillStyle = highlighted
+      ? 'rgba(96, 165, 250, 0.7)'
+      : 'rgba(255, 255, 255, 0.2)';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
-    ctx.fillText(label, top.x, top.y - 2);
+    ctx.fillText(label, top.x, top.y - 4);
     ctx.restore();
   }
 
@@ -395,15 +582,19 @@ export class TacticsBoard {
     ctx.strokeStyle = 'rgba(255,255,255,0.18)';
     ctx.lineWidth = 1;
 
-    // Left penalty area (home side)
-    const lTL = this._p2c(0, (PITCH_H - 40.32) / 2);
-    const lBR = this._p2c(16.5, (PITCH_H + 40.32) / 2);
-    ctx.strokeRect(lTL.x, lTL.y, lBR.x - lTL.x, lBR.y - lTL.y);
+    // Home penalty area (bottom — own goal)
+    const hTL = this._p2c(0, (PITCH_H - 40.32) / 2);
+    const hBR = this._p2c(16.5, (PITCH_H + 40.32) / 2);
+    const hx = Math.min(hTL.x, hBR.x);
+    const hy = Math.min(hTL.y, hBR.y);
+    ctx.strokeRect(hx, hy, Math.abs(hBR.x - hTL.x), Math.abs(hBR.y - hTL.y));
 
-    // Right penalty area (away side)
-    const rTL = this._p2c(PITCH_W - 16.5, (PITCH_H - 40.32) / 2);
-    const rBR = this._p2c(PITCH_W, (PITCH_H + 40.32) / 2);
-    ctx.strokeRect(rTL.x, rTL.y, rBR.x - rTL.x, rBR.y - rTL.y);
+    // Away penalty area (top — opponent goal)
+    const aTL = this._p2c(PITCH_W - 16.5, (PITCH_H - 40.32) / 2);
+    const aBR = this._p2c(PITCH_W, (PITCH_H + 40.32) / 2);
+    const ax = Math.min(aTL.x, aBR.x);
+    const ay = Math.min(aTL.y, aBR.y);
+    ctx.strokeRect(ax, ay, Math.abs(aBR.x - aTL.x), Math.abs(aBR.y - aTL.y));
   }
 
   private _drawPlayer(i: number): void {
@@ -418,12 +609,33 @@ export class TacticsBoard {
     const isSubSelectTarget = this.subSelectIndex === i;
     const inPlayer = this.pendingSubsByPitchIndex.get(i);
 
+    // Freedom radius overlay (drawn behind player circle)
+    if (!isSubbedOut) {
+      const freedom = this.freedomValues[i] ?? 0.5;
+      const freedomRadiusM = 3 + freedom * 19; // 3m (hold) → 22m (roam)
+      const freedomRadiusPx = Math.max(0, freedomRadiusM * Math.min(this.scaleX, this.scaleY));
+      const phaseR = this.currentPhase === 'inPossession' ? 96 : 251;
+      const phaseG = this.currentPhase === 'inPossession' ? 165 : 146;
+      const phaseB = this.currentPhase === 'inPossession' ? 250 : 60;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, freedomRadiusPx, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${phaseR}, ${phaseG}, ${phaseB}, 0.06)`;
+      ctx.fill();
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = `rgba(${phaseR}, ${phaseG}, ${phaseB}, 0.2)`;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
     ctx.save();
     if (isSubbedOut) {
       ctx.globalAlpha = 0.38;
     }
 
-    // Highlight ring for selected player (duty selection)
     if (isSelected && !isSubbedOut) {
       ctx.beginPath();
       ctx.arc(c.x, c.y, PLAYER_RADIUS + 5, 0, Math.PI * 2);
@@ -432,7 +644,6 @@ export class TacticsBoard {
       ctx.stroke();
     }
 
-    // Orange ring for player selected for substitution
     if (isSubSelectTarget) {
       ctx.beginPath();
       ctx.arc(c.x, c.y, PLAYER_RADIUS + 5, 0, Math.PI * 2);
@@ -441,7 +652,6 @@ export class TacticsBoard {
       ctx.stroke();
     }
 
-    // Player dot
     ctx.beginPath();
     ctx.arc(c.x, c.y, PLAYER_RADIUS, 0, Math.PI * 2);
     ctx.fillStyle = isGK ? PLAYER_GK_COLOR : (isSubbedOut ? '#475569' : PLAYER_COLOR);
@@ -450,27 +660,25 @@ export class TacticsBoard {
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    // Shirt number
     ctx.font = SHIRT_FONT;
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(String(i + 1), c.x, c.y + 1);
 
-    // Role label below dot (show incoming player name if subbed)
+    // Role label below the dot
     ctx.font = ROLE_FONT;
     ctx.fillStyle = isSubbedOut ? 'rgba(251, 146, 60, 0.9)' : 'rgba(255, 255, 255, 0.8)';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     if (isSubbedOut && inPlayer) {
-      ctx.fillText((inPlayer.name ?? inPlayer.id).split(' ').pop() ?? role, c.x, c.y + PLAYER_RADIUS + 3);
+      ctx.fillText((inPlayer.name ?? inPlayer.id).split(' ').pop() ?? role, c.x, c.y + PLAYER_RADIUS + 2);
     } else {
-      ctx.fillText(role, c.x, c.y + PLAYER_RADIUS + 3);
+      ctx.fillText(role, c.x, c.y + PLAYER_RADIUS + 2);
     }
 
     ctx.restore();
 
-    // Duty indicator (only for non-subbed-out players)
     if (!isSubbedOut) {
       this._drawDutyIndicator(c.x, c.y, duty);
     }
@@ -479,20 +687,20 @@ export class TacticsBoard {
   private _drawDutyIndicator(cx: number, cy: number, duty: Duty): void {
     const ctx = this.ctx;
     if (duty === 'ATTACK') {
-      // Small upward arrow (triangle above player)
-      const ax = cx;
-      const ay = cy - PLAYER_RADIUS - 8;
+      // Small rightward arrow (toward opponent goal = toward right of canvas)
+      const ax = cx + PLAYER_RADIUS + 8;
+      const ay = cy;
       ctx.save();
       ctx.fillStyle = '#fde68a';
       ctx.beginPath();
-      ctx.moveTo(ax, ay - 5);
-      ctx.lineTo(ax - 4, ay + 1);
-      ctx.lineTo(ax + 4, ay + 1);
+      ctx.moveTo(ax + 5, ay);
+      ctx.lineTo(ax - 1, ay - 4);
+      ctx.lineTo(ax - 1, ay + 4);
       ctx.closePath();
       ctx.fill();
       ctx.restore();
     } else if (duty === 'DEFEND') {
-      // Small shield (downward triangle below player) — draw to left of role label
+      // Small shield dot to the left of player (toward own goal)
       const sx = cx - PLAYER_RADIUS - 4;
       const sy = cy;
       ctx.save();
@@ -502,80 +710,8 @@ export class TacticsBoard {
       ctx.fill();
       ctx.restore();
     }
-    // SUPPORT: no indicator
   }
 
-  private _drawDutyPopup(popup: DutyPopup): void {
-    const ctx = this.ctx;
-    const btnW = 64;
-    const btnH = 24;
-    const gap = 4;
-    const totalW = btnW * 3 + gap * 2;
-    const totalH = btnH;
-    const padding = 8;
-    const boxW = totalW + padding * 2;
-    const boxH = totalH + padding * 2;
-
-    // Position popup near the player dot, clamped to canvas
-    let px = popup.canvasX - boxW / 2;
-    let py = popup.canvasY - PLAYER_RADIUS - boxH - 8;
-    px = Math.max(4, Math.min(this.canvas.width - boxW - 4, px));
-    py = Math.max(4, Math.min(this.canvas.height - boxH - 4, py));
-
-    // Background
-    ctx.save();
-    ctx.fillStyle = 'rgba(10, 15, 30, 0.95)';
-    ctx.strokeStyle = '#334155';
-    ctx.lineWidth = 1;
-    this._roundRect(ctx, px, py, boxW, boxH, 6);
-    ctx.fill();
-    ctx.stroke();
-
-    // Buttons
-    const duties: { duty: Duty; label: string; color: string }[] = [
-      { duty: 'DEFEND', label: 'Defend', color: '#93c5fd' },
-      { duty: 'SUPPORT', label: 'Support', color: '#6ee7b7' },
-      { duty: 'ATTACK', label: 'Attack', color: '#fde68a' },
-    ];
-
-    const currentDuty = this.duties[popup.playerIndex] ?? 'SUPPORT';
-
-    for (let i = 0; i < 3; i++) {
-      const item = duties[i]!;
-      const bx = px + padding + i * (btnW + gap);
-      const by = py + padding;
-      const isActive = item.duty === currentDuty;
-
-      ctx.fillStyle = isActive ? 'rgba(30, 64, 175, 0.9)' : 'rgba(30, 41, 59, 0.9)';
-      ctx.strokeStyle = isActive ? '#3b82f6' : '#475569';
-      ctx.lineWidth = 1;
-      this._roundRect(ctx, bx, by, btnW, btnH, 4);
-      ctx.fill();
-      ctx.stroke();
-
-      ctx.fillStyle = item.color;
-      ctx.font = 'bold 10px monospace';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(item.label, bx + btnW / 2, by + btnH / 2);
-    }
-
-    ctx.restore();
-  }
-
-  private _roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-    ctx.lineTo(x + r, y + h);
-    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-    ctx.lineTo(x, y + r);
-    ctx.quadraticCurveTo(x, y, x + r, y);
-    ctx.closePath();
-  }
 
   // ──────────────────────────────────────────────────────────
   // Hit testing
@@ -592,35 +728,6 @@ export class TacticsBoard {
     return -1;
   }
 
-  /** Hit test duty popup buttons. Returns the Duty clicked, or null. */
-  private _hitTestDutyPopup(canvasX: number, canvasY: number): Duty | null {
-    if (!this.dutyPopup) return null;
-
-    const popup = this.dutyPopup;
-    const btnW = 64;
-    const btnH = 24;
-    const gap = 4;
-    const totalW = btnW * 3 + gap * 2;
-    const padding = 8;
-    const boxW = totalW + padding * 2;
-    const boxH = btnH + padding * 2;
-
-    let px = popup.canvasX - boxW / 2;
-    let py = popup.canvasY - PLAYER_RADIUS - boxH - 8;
-    px = Math.max(4, Math.min(this.canvas.width - boxW - 4, px));
-    py = Math.max(4, Math.min(this.canvas.height - boxH - 4, py));
-
-    const duties: Duty[] = ['DEFEND', 'SUPPORT', 'ATTACK'];
-    for (let i = 0; i < 3; i++) {
-      const bx = px + padding + i * (btnW + gap);
-      const by = py + padding;
-      if (canvasX >= bx && canvasX <= bx + btnW && canvasY >= by && canvasY <= by + btnH) {
-        return duties[i]!;
-      }
-    }
-
-    return null;
-  }
 
   // ──────────────────────────────────────────────────────────
   // Event handling
@@ -637,7 +744,6 @@ export class TacticsBoard {
       clientX = (e as MouseEvent).clientX;
       clientY = (e as MouseEvent).clientY;
     }
-    // Scale for device pixel ratio / canvas size vs display size
     const scaleX = this.canvas.width / rect.width;
     const scaleY = this.canvas.height / rect.height;
     return {
@@ -656,23 +762,25 @@ export class TacticsBoard {
 
     canvas.addEventListener('mousemove', (e: MouseEvent) => {
       if (this.draggingIndex >= 0) {
+        canvas.classList.add('active-drag');
         const { x, y } = this._getCanvasPos(e);
         this._onPointerMove(x, y);
       }
     });
 
     canvas.addEventListener('mouseup', (e: MouseEvent) => {
+      canvas.classList.remove('active-drag');
       const { x, y } = this._getCanvasPos(e);
       this._onPointerUp(x, y);
     });
 
     canvas.addEventListener('mouseleave', () => {
+      canvas.classList.remove('active-drag');
       if (this.draggingIndex >= 0) {
         this._finalizeDrag();
       }
     });
 
-    // Touch events
     canvas.addEventListener('touchstart', (e: TouchEvent) => {
       e.preventDefault();
       const { x, y } = this._getCanvasPos(e);
@@ -700,7 +808,6 @@ export class TacticsBoard {
   }
 
   private _onPointerDown(canvasX: number, canvasY: number): void {
-    // If a bench player is pending, clicking a pitch player queues the substitution
     if (this.pendingBenchPlayer !== null) {
       const idx = this._hitTestPlayer(canvasX, canvasY);
       if (idx >= 0 && !this.pendingSubsByPitchIndex.has(idx) && this.subsRemaining > 0) {
@@ -708,26 +815,10 @@ export class TacticsBoard {
         this.subSelectIndex = -1;
         this.pendingBenchPlayer = null;
         this.render();
-        // Notify main.ts that a substitution was queued (via callback if registered)
         this._onSubstitutionQueued?.(idx);
         return;
       }
-      // Clicked on empty or already-subbed player — cancel bench selection
       this.pendingBenchPlayer = null;
-      this.render();
-      return;
-    }
-
-    // If duty popup is open, check for button clicks
-    if (this.dutyPopup !== null) {
-      const duty = this._hitTestDutyPopup(canvasX, canvasY);
-      if (duty !== null) {
-        this.setPlayerDuty(this.dutyPopup.playerIndex, duty);
-        return;
-      }
-      // Clicked outside popup — close it
-      this.dutyPopup = null;
-      this.selectedIndex = -1;
       this.render();
       return;
     }
@@ -737,8 +828,8 @@ export class TacticsBoard {
       this.draggingIndex = idx;
       this.dragStartMoved = false;
     } else {
-      // Clicked on empty pitch — deselect
       this.selectedIndex = -1;
+      this._onPlayerSelectedCb?.(-1);
       this.render();
     }
   }
@@ -747,11 +838,19 @@ export class TacticsBoard {
     if (this.draggingIndex < 0) return;
     this.dragStartMoved = true;
 
-    // Convert to pitch coordinates, clamped to pitch
     const pitchPos = this._c2p(canvasX, canvasY);
-    const clampedX = Math.max(1, Math.min(PITCH_W - 1, pitchPos.x));
     const clampedY = Math.max(1, Math.min(PITCH_H - 1, pitchPos.y));
-    this.positions[this.draggingIndex] = new Vec2(clampedX, clampedY);
+
+    if (this.draggingIndex === 0) {
+      // GK: fixed at GK_FIXED_X, only allow horizontal (y) movement
+      this.positions[0] = new Vec2(GK_FIXED_X, clampedY);
+      this.highlightedBand = -1;
+    } else {
+      // Outfield: free during drag, highlight nearest band
+      const clampedX = Math.max(SNAP_BANDS[0]! - 5, Math.min(SNAP_BANDS[SNAP_BANDS.length - 1]! + 5, pitchPos.x));
+      this.positions[this.draggingIndex] = new Vec2(clampedX, clampedY);
+      this.highlightedBand = nearestBandIndex(clampedX);
+    }
 
     this.render();
   }
@@ -760,21 +859,14 @@ export class TacticsBoard {
     if (this.draggingIndex < 0) return;
 
     if (!this.dragStartMoved) {
-      // This was a click (no drag movement) — open duty popup
+      // Short click — select player and notify
       this.selectedIndex = this.draggingIndex;
-      const pos = this.positions[this.draggingIndex]!;
-      const c = this._p2c(pos.x, pos.y);
-      this.dutyPopup = {
-        playerIndex: this.draggingIndex,
-        canvasX: c.x,
-        canvasY: c.y,
-      };
       this.draggingIndex = -1;
+      this._onPlayerSelectedCb?.(this.selectedIndex);
       this.render();
       return;
     }
 
-    // Drag ended — update role based on new position
     this._finalizeDrag();
   }
 
@@ -782,9 +874,18 @@ export class TacticsBoard {
     if (this.draggingIndex < 0) return;
     const idx = this.draggingIndex;
     this.draggingIndex = -1;
-    // Auto-assign role based on final position (home team perspective)
+    this.highlightedBand = -1;
+
+    if (idx > 0) {
+      // Snap outfield player to nearest band
+      const pos = this.positions[idx]!;
+      this.positions[idx] = new Vec2(snapToNearestBand(pos.x), pos.y);
+    }
+
     this.roles[idx] = autoAssignRole(this.positions[idx]!, 'home');
+    this._saveCurrentPhase();
     this.render();
+    this._onConfigChangedCb?.();
   }
 }
 

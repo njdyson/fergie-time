@@ -1,5 +1,5 @@
 import { Vec2 } from '../math/vec2.ts';
-import type { TeamId, FormationId, Role } from '../types.ts';
+import type { TeamId, FormationId, Role, TeamControls } from '../types.ts';
 import { PITCH_WIDTH, PITCH_HEIGHT } from '../match/state.ts';
 
 // ============================================================
@@ -39,19 +39,19 @@ export const FORMATION_TEMPLATES: Record<FormationId, FormationTemplate> = {
   '4-4-2': {
     basePositions: [
       new Vec2(5, MID_Y),                     // GK
-      // DEF (4)
-      new Vec2(25, MID_Y - 21),               // LB
+      // DEF (4) — fullbacks push wide to touchline area
+      new Vec2(25, MID_Y - 28),               // LB
       new Vec2(25, MID_Y - 7),                // CB
       new Vec2(25, MID_Y + 7),                // CB
-      new Vec2(25, MID_Y + 21),               // RB
-      // MID (4)
-      new Vec2(45, MID_Y - 20),               // LW (wide mid)
+      new Vec2(25, MID_Y + 28),               // RB
+      // MID (4) — wide mids hug the wings
+      new Vec2(45, MID_Y - 27),               // LW (wide mid)
       new Vec2(45, MID_Y - 6.67),             // CM
       new Vec2(45, MID_Y + 6.67),             // CM
-      new Vec2(45, MID_Y + 20),               // RW (wide mid)
+      new Vec2(45, MID_Y + 27),               // RW (wide mid)
       // FWD (2)
-      new Vec2(65, MID_Y - 6),                // ST
-      new Vec2(65, MID_Y + 6),                // ST
+      new Vec2(65, MID_Y - 8),                // ST
+      new Vec2(65, MID_Y + 8),                // ST
     ],
     roles: ['GK', 'LB', 'CB', 'CB', 'RB', 'LW', 'CM', 'CM', 'RW', 'ST', 'ST'],
   },
@@ -60,18 +60,18 @@ export const FORMATION_TEMPLATES: Record<FormationId, FormationTemplate> = {
     basePositions: [
       new Vec2(5, MID_Y),                     // GK
       // DEF (4)
-      new Vec2(25, MID_Y - 21),               // LB
+      new Vec2(25, MID_Y - 28),               // LB
       new Vec2(25, MID_Y - 7),                // CB
       new Vec2(25, MID_Y + 7),                // CB
-      new Vec2(25, MID_Y + 21),               // RB
-      // MID (3) — compact central trio
-      new Vec2(45, MID_Y - 10),               // CM (left)
+      new Vec2(25, MID_Y + 28),               // RB
+      // MID (3) — central trio with clear spacing
+      new Vec2(45, MID_Y - 14),               // CM (left)
       new Vec2(45, MID_Y),                    // CM (center)
-      new Vec2(45, MID_Y + 10),               // CM (right)
-      // FWD (3) — wide attack
-      new Vec2(65, MID_Y - 18),               // LW
+      new Vec2(45, MID_Y + 14),               // CM (right)
+      // FWD (3) — wide wingers stretch the pitch
+      new Vec2(65, MID_Y - 26),               // LW
       new Vec2(65, MID_Y),                    // ST
-      new Vec2(65, MID_Y + 18),               // RW
+      new Vec2(65, MID_Y + 26),               // RW
     ],
     roles: ['GK', 'LB', 'CB', 'CB', 'RB', 'CM', 'CM', 'CM', 'LW', 'ST', 'RW'],
   },
@@ -80,16 +80,16 @@ export const FORMATION_TEMPLATES: Record<FormationId, FormationTemplate> = {
     basePositions: [
       new Vec2(5, MID_Y),                     // GK
       // DEF (4)
-      new Vec2(25, MID_Y - 21),               // LB
+      new Vec2(25, MID_Y - 28),               // LB
       new Vec2(25, MID_Y - 7),                // CB
       new Vec2(25, MID_Y + 7),                // CB
-      new Vec2(25, MID_Y + 21),               // RB
+      new Vec2(25, MID_Y + 28),               // RB
       // MID (5) — wide midfield, x=42 to pack the middle
-      new Vec2(42, MID_Y - 24),               // LM
+      new Vec2(42, MID_Y - 30),               // LM
       new Vec2(42, MID_Y - 12),               // CM
       new Vec2(42, MID_Y),                    // CM (center)
       new Vec2(42, MID_Y + 12),               // CM
-      new Vec2(42, MID_Y + 24),               // RM
+      new Vec2(42, MID_Y + 30),               // RM
       // FWD (1) — lone striker
       new Vec2(65, MID_Y),                    // ST
     ],
@@ -100,18 +100,18 @@ export const FORMATION_TEMPLATES: Record<FormationId, FormationTemplate> = {
     basePositions: [
       new Vec2(5, MID_Y),                     // GK
       // DEF (3) — flatter back three, spread wider
-      new Vec2(22, MID_Y - 17),               // CB (left)
+      new Vec2(22, MID_Y - 20),               // CB (left)
       new Vec2(22, MID_Y),                    // CB (center)
-      new Vec2(22, MID_Y + 17),               // CB (right)
-      // MID (5) — wide midfield with WBs
-      new Vec2(42, MID_Y - 26),               // LWB (wide)
+      new Vec2(22, MID_Y + 20),               // CB (right)
+      // MID (5) — wing-backs push to touchline
+      new Vec2(42, MID_Y - 30),               // LWB (wide)
       new Vec2(42, MID_Y - 10),               // CM
       new Vec2(42, MID_Y),                    // CM (center)
       new Vec2(42, MID_Y + 10),               // CM
-      new Vec2(42, MID_Y + 26),               // RWB (wide)
+      new Vec2(42, MID_Y + 30),               // RWB (wide)
       // FWD (2)
-      new Vec2(65, MID_Y - 7),                // ST
-      new Vec2(65, MID_Y + 7),                // ST
+      new Vec2(65, MID_Y - 8),                // ST
+      new Vec2(65, MID_Y + 8),                // ST
     ],
     roles: ['GK', 'CB', 'CB', 'CB', 'LB', 'CDM', 'CM', 'CM', 'RB', 'ST', 'ST'],
   },
@@ -120,17 +120,17 @@ export const FORMATION_TEMPLATES: Record<FormationId, FormationTemplate> = {
     basePositions: [
       new Vec2(5, MID_Y),                     // GK
       // DEF (4)
-      new Vec2(25, MID_Y - 21),               // LB
+      new Vec2(25, MID_Y - 28),               // LB
       new Vec2(25, MID_Y - 7),                // CB
       new Vec2(25, MID_Y + 7),                // CB
-      new Vec2(25, MID_Y + 21),               // RB
+      new Vec2(25, MID_Y + 28),               // RB
       // CDM (2)
       new Vec2(37, MID_Y - 7),                // CDM (left)
       new Vec2(37, MID_Y + 7),                // CDM (right)
-      // CAM (3) — attacking midfield trio
-      new Vec2(52, MID_Y - 16),               // CAM (left)
+      // CAM (3) — attacking midfield trio stretched wider
+      new Vec2(52, MID_Y - 22),               // CAM (left)
       new Vec2(52, MID_Y),                    // CAM (center)
-      new Vec2(52, MID_Y + 16),               // CAM (right)
+      new Vec2(52, MID_Y + 22),               // CAM (right)
       // FWD (1)
       new Vec2(65, MID_Y),                    // ST
     ],
@@ -161,14 +161,19 @@ export const ROLES_442: readonly string[] = FORMATION_TEMPLATES['4-4-2'].roles;
  * Returns 11 anchor positions (GK + 10 outfield) for the given team.
  *
  * Influences:
+ * - TeamControls: lineHeight, compactness, width adjust base anchor positions
  * - Ball position: pulls all anchors toward ball x-position by factor 0.15
  * - Possession: in possession → outfield anchors push forward 10m; defending → pull back 5m
+ * - Rest defence: pins N deepest outfield anchors behind ball line when in possession
  * - All positions clamped to pitch boundaries
  *
  * @param formation - FormationId string or Vec2[] custom base positions
  * @param teamId - 'home' or 'away'
  * @param ballPosition - Current ball position in metres
  * @param isInPossession - Whether this team has the ball
+ * @param teamControls - Optional team-level structure controls (V1 overhaul)
+ * @param neutral - If true, skip ball influence, possession shift, and rest defence.
+ *                  Used by the overlay to show the clean formation shape.
  * @returns Array of 11 Vec2 anchor positions
  */
 export function computeFormationAnchors(
@@ -176,6 +181,8 @@ export function computeFormationAnchors(
   teamId: TeamId,
   ballPosition: Vec2,
   isInPossession: boolean,
+  teamControls?: TeamControls,
+  neutral?: boolean,
 ): Vec2[] {
   // Step 1: Resolve base positions
   let basePositions: readonly Vec2[];
@@ -195,24 +202,89 @@ export function computeFormationAnchors(
     anchors.push(new Vec2(x, base.y));
   }
 
-  // Step 3: Apply ball influence
-  // Shift all anchors toward ball x-position by factor 0.15
-  const ballX = ballPosition.x;
-  for (let i = 0; i < 11; i++) {
-    const a = anchors[i]!;
-    const newX = a.x + (ballX - a.x) * 0.15;
-    anchors[i] = new Vec2(newX, a.y);
+  // Step 2.5: Apply team controls to outfield anchors (indices 1-10)
+  if (teamControls) {
+    const midY = PITCH_HEIGHT / 2;
+
+    // lineHeight: 0..1 maps to -15m..+15m shift (0=deep block, 1=high line)
+    // Applied from home perspective, inverted for away
+    const lineShift = (teamControls.lineHeight - 0.5) * 30; // -15..+15
+    const lineDir = teamId === 'home' ? 1 : -1;
+
+    // compactness: 0..1 → 1.3..0.7 compression factor toward centroid
+    // 0 = stretched (1.3x spread), 0.5 = normal (1.0x, no change), 1 = compact (0.7x)
+    const compressFactor = 1.0 + (0.5 - teamControls.compactness) * 0.6; // 1.3..0.7
+
+    // width: 0..1 → 0.7..1.3 horizontal spread factor from pitch center
+    const widthFactor = 0.7 + teamControls.width * 0.6; // 0.7..1.3
+
+    // Compute centroid X of outfield anchors for compactness compression
+    let centroidX = 0;
+    for (let i = 1; i < 11; i++) centroidX += anchors[i]!.x;
+    centroidX /= 10;
+
+    for (let i = 1; i < 11; i++) {
+      const a = anchors[i]!;
+      // Line height shift
+      let x = a.x + lineShift * lineDir;
+      // Compactness: compress x toward centroid
+      x = centroidX + (x - centroidX) * compressFactor;
+      // Width: scale y from pitch center
+      const y = midY + (a.y - midY) * widthFactor;
+      anchors[i] = new Vec2(x, y);
+    }
   }
 
-  // Step 4: Apply possession influence to outfield players (indices 1-10)
-  // In possession: push forward by 10m (toward opponent goal)
-  // Defending: pull back by 5m (toward own goal)
-  const pushDirection = teamId === 'home' ? 1 : -1; // home pushes right (+x), away pushes left (-x)
-  const possessionShift = isInPossession ? 10 * pushDirection : -5 * pushDirection;
+  if (!neutral) {
+    // Step 3: Apply ball influence
+    // Shift all anchors toward ball x-position by factor 0.15
+    const ballX = ballPosition.x;
+    for (let i = 0; i < 11; i++) {
+      const a = anchors[i]!;
+      const newX = a.x + (ballX - a.x) * 0.15;
+      anchors[i] = new Vec2(newX, a.y);
+    }
 
-  for (let i = 1; i < 11; i++) {
-    const a = anchors[i]!;
-    anchors[i] = new Vec2(a.x + possessionShift, a.y);
+    // Step 4: Apply possession influence to outfield players (indices 1-10)
+    // In possession: push forward by 10m (toward opponent goal)
+    // Defending: pull back by 5m (toward own goal)
+    const pushDirection = teamId === 'home' ? 1 : -1; // home pushes right (+x), away pushes left (-x)
+    const possessionShift = isInPossession ? 10 * pushDirection : -5 * pushDirection;
+
+    for (let i = 1; i < 11; i++) {
+      const a = anchors[i]!;
+      anchors[i] = new Vec2(a.x + possessionShift, a.y);
+    }
+
+    // Step 4.5: Rest defence — pin N deepest outfield anchors behind ball line when in possession
+    if (teamControls && isInPossession) {
+      const restCount = teamControls.restDefence;
+      // Sort outfield indices by depth (closest to own goal = "deepest")
+      // Home: own goal at x=0, so smaller x = deeper. Away: own goal at x=105, so larger x = deeper.
+      const outfieldIndices = Array.from({ length: 10 }, (_, i) => i + 1);
+      outfieldIndices.sort((a, b) => {
+        const ax = anchors[a]!.x;
+        const bx = anchors[b]!.x;
+        return teamId === 'home' ? ax - bx : bx - ax; // ascending depth
+      });
+
+      // Clamp the N deepest anchors behind the ball x line
+      for (let k = 0; k < restCount && k < outfieldIndices.length; k++) {
+        const idx = outfieldIndices[k]!;
+        const a = anchors[idx]!;
+        if (teamId === 'home') {
+          // Keep behind ball: anchor.x must be <= ballX
+          if (a.x > ballX) {
+            anchors[idx] = new Vec2(ballX - 2, a.y); // 2m buffer behind ball line
+          }
+        } else {
+          // Away: behind ball means anchor.x >= ballX
+          if (a.x < ballX) {
+            anchors[idx] = new Vec2(ballX + 2, a.y);
+          }
+        }
+      }
+    }
   }
 
   // Step 5: Clamp all positions to pitch boundaries

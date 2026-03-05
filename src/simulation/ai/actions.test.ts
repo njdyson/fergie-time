@@ -22,6 +22,7 @@ function makeCtx(overrides: Partial<AgentContext> = {}): AgentContext {
         tackling: 0.6,
         aerial: 0.6,
         positioning: 0.6,
+        vision: 0.7,
       },
       personality: {
         directness: 0.5,
@@ -71,10 +72,10 @@ describe('ACTIONS', () => {
     }
   });
 
-  it('should have 3-5 consideration functions per action', () => {
+  it('should have 3-6 consideration functions per action', () => {
     for (const action of ACTIONS) {
       expect(action.considerations.length).toBeGreaterThanOrEqual(3);
-      expect(action.considerations.length).toBeLessThanOrEqual(5);
+      expect(action.considerations.length).toBeLessThanOrEqual(6);
     }
   });
 

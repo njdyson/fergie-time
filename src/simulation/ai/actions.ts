@@ -49,6 +49,14 @@ const shootConsiderations: readonly ConsiderationFn[] = [
     // GK on line (~0m): 0.5 (neutral). GK 15m+ out: 1.0 (should shoot)
     return Math.min(1, 0.5 + gkDistFromGoal / 30);
   },
+  // Goal angle: penalize shots from acute angles (near the byline / corner flag).
+  // dx/distance → 0 on the byline (impossible angle), → 1 head-on.
+  (ctx) => {
+    const goalX = ctx.self.teamId === 'home' ? 105 : 0;
+    const dx = Math.abs(ctx.self.position.x - goalX);
+    const ratio = dx / Math.max(ctx.distanceToOpponentGoal, 0.1);
+    return Math.min(1, ratio * 2);
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -126,6 +134,15 @@ const pressConsiderations: readonly ConsiderationFn[] = [
     }
     return Math.pow(TUNING.pressRankDecay, closerCount);
   },
+  // GK containment: heavily penalise GK pressing far from their penalty area.
+  // GK should stay near goal unless ball is very close (sweeper-keeper scenario).
+  (ctx) => {
+    if (ctx.self.role !== 'GK') return 1.0;
+    const goalX = ctx.self.teamId === 'home' ? 0 : 105;
+    const ballDistFromGoal = Math.abs(ctx.ball.position.x - goalX);
+    if (ballDistFromGoal <= 16.5) return 1.0; // inside penalty area depth — OK to press
+    return Math.max(0, 1 - (ballDistFromGoal - 16.5) / 6); // decay to 0 by ~22.5m
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -136,6 +153,14 @@ const makeRunConsiderations: readonly ConsiderationFn[] = [
   (ctx) => ctx.isInPossessionTeam ? 1 : 0.1,
   (ctx) => linear(ctx.distanceToOpponentGoal / 105, 0.5, 0.3),
   (ctx) => ctx.self.attributes.pace,
+  // Role boost: attacking roles (ST, LW, RW) strongly favour runs; defenders don't
+  (ctx) => {
+    const role = ctx.self.role;
+    if (role === 'ST') return 1.0;
+    if (role === 'LW' || role === 'RW') return 0.9;
+    if (role === 'CM' || role === 'LM' || role === 'RM' || role === 'CAM') return 0.6;
+    return 0.2; // CB, LB, RB, GK — rarely make forward runs
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────

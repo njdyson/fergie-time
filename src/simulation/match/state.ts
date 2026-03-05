@@ -1,6 +1,7 @@
 import { Vec2 } from '../math/vec2.ts';
 import { MatchPhase } from '../types.ts';
-import type { BallState, PlayerState, SimSnapshot, TeamId, MatchStats } from '../types.ts';
+import type { BallState, PlayerState, SimSnapshot, TeamId } from '../types.ts';
+import { createEmptyStats } from './stats.ts';
 
 // Pitch dimensions (metres) — FIFA standard
 export const PITCH_WIDTH = 105;
@@ -123,12 +124,7 @@ export function createInitialSnapshot(
     carrierId: null,
   };
 
-  const stats: MatchStats = {
-    possession: [50, 50],
-    shots: [0, 0],
-    passes: [0, 0],
-    tackles: [0, 0],
-  };
+  const stats = { ...createEmptyStats(), possession: [50, 50] as readonly [number, number] };
 
   return {
     tick: 0,

@@ -1,7 +1,8 @@
-import type { AgentContext, ActionIntent, PersonalityVector, PersonalityWeightMatrix, ActionType } from '../types.ts';
+import type { AgentContext, ActionIntent, PersonalityVector, PersonalityWeightMatrix, ActionType, PlayerTacticalMultipliers } from '../types.ts';
 import { gaussianNoise } from '../math/random.ts';
 import { dotProduct } from './personality.ts';
 import { TUNING } from '../tuning.ts';
+import { getTacticalMultiplierBonus } from '../tactical/multipliers.ts';
 import type { Action } from './actions.ts';
 
 /**
@@ -57,6 +58,9 @@ export function evaluateAction(
  * @param dutyModifier - Optional function that returns an additive bonus for each action type.
  *                       Used to apply role/duty weight modifiers from the tactical system.
  *                       If omitted, no duty bonus is applied (backward-compatible).
+ * @param tacticalMultipliers - Optional per-player tactical instruction multipliers (V1 overhaul).
+ *                              Adds bonuses based on risk, directness, press, holdUp, dribble settings.
+ *                              decisionWindow affects hysteresis (tighter = less sticky decisions).
  */
 export function selectAction(
   actions: readonly Action[],
@@ -66,19 +70,29 @@ export function selectAction(
   rng: () => number,
   previousAction?: ActionType,
   dutyModifier?: (actionType: ActionType) => number,
+  tacticalMultipliers?: PlayerTacticalMultipliers,
 ): ActionIntent {
   let bestAction = actions[0]!;
   let bestScore = -Infinity;
 
+  // Decision window affects hysteresis: quick (1.0) = 0x hysteresis, patient (0.0) = full hysteresis
+  const hysteresisScale = tacticalMultipliers
+    ? 1 - tacticalMultipliers.decisionWindow
+    : 1;
+
   for (const action of actions) {
     let score = evaluateAction(action, ctx, personality, weights, rng);
     // Hysteresis: bonus for continuing the current action — reads TUNING live
+    // Scaled by decision window: quicker decisions = less action stickiness
     if (previousAction !== undefined && action.id === previousAction) {
-      score += TUNING.hysteresisBonus;
+      score += TUNING.hysteresisBonus * hysteresisScale;
     }
     // Pass bias: flat bonus to encourage passing over dribbling/shielding
+    // Kill pass bias inside 15m — carrier should shoot, not pass into the goal
     if (action.id === 'PASS_FORWARD' || action.id === 'PASS_SAFE') {
-      score += TUNING.passBias;
+      const goalDist = ctx.distanceToOpponentGoal;
+      const passBiasScale = goalDist < 15 ? 0 : goalDist < 25 ? (goalDist - 15) / 10 : 1;
+      score += TUNING.passBias * passBiasScale;
     }
     // Goal urgency: proximity-scaled bonus for attacking actions near opponent goal
     if (action.id === 'SHOOT' || action.id === 'DRIBBLE') {
@@ -87,6 +101,10 @@ export function selectAction(
     // Duty modifier: role/duty specific bonus from tactical configuration
     if (dutyModifier) {
       score += dutyModifier(action.id);
+    }
+    // Tactical multiplier bonus: per-player instruction overrides (V1 overhaul)
+    if (tacticalMultipliers) {
+      score += getTacticalMultiplierBonus(action.id, tacticalMultipliers);
     }
     if (score > bestScore) {
       bestScore = score;

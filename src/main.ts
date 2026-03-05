@@ -3,13 +3,19 @@ import { CanvasRenderer } from './renderer/canvas.ts';
 import { DebugOverlay } from './renderer/debug.ts';
 import { startGameLoop, stopGameLoop, getIsPaused, setPaused, setSpeedMultiplier } from './loop/gameLoop.ts';
 import { MatchPhase } from './simulation/types.ts';
-import type { FormationId } from './simulation/types.ts';
+import type { FormationId, TacticsPhase } from './simulation/types.ts';
 import { auditScoreRanges } from './simulation/ai/decisionLog.ts';
 import { TUNING } from './simulation/tuning.ts';
 import type { TuningConfig } from './simulation/tuning.ts';
 import type { SimSnapshot } from './simulation/types.ts';
 import { generateCommentary } from './simulation/match/commentary.ts';
 import { TacticsBoard } from './ui/tacticsBoard.ts';
+import { TacticsOverlay } from './ui/tacticsOverlay.ts';
+import { computeFormationAnchors } from './simulation/tactical/formation.ts';
+import { showAttributeTooltip, scheduleHideTooltip } from './ui/tooltip.ts';
+import { show as showFullTimeOverlay } from './ui/fullTimeOverlay.ts';
+import { TacticSelector } from './ui/panels/tacticSelector.ts';
+import { listTactics, saveTactic, loadTactic, deleteTactic, buildSavedTactic, applySavedTactic } from './ui/tacticStore.ts';
 
 // ============================================================
 // Canvas setup
@@ -30,104 +36,60 @@ const debugSidebar = document.getElementById('debug-sidebar');
 const tuningPanel = document.getElementById('tuning-panel');
 
 // ============================================================
-// Tactics board setup
+// Tactics board (visible canvas — shown when paused)
 // ============================================================
 
-const tacticsBoardCanvasRaw = document.getElementById('tactics-canvas');
-if (!(tacticsBoardCanvasRaw instanceof HTMLCanvasElement)) {
+const tacticsCanvasRaw = document.getElementById('tactics-canvas');
+if (!(tacticsCanvasRaw instanceof HTMLCanvasElement)) {
   throw new Error('Could not find #tactics-canvas element');
 }
-const tacticsBoardCanvas: HTMLCanvasElement = tacticsBoardCanvasRaw;
+const tacticsCanvasEl: HTMLCanvasElement = tacticsCanvasRaw;
+const tacticsBoard = new TacticsBoard(tacticsCanvasEl, '4-4-2');
 
-// Size the tactics canvas to match available space
-function sizeTacticsCanvas(): void {
-  const availW = window.innerWidth;
-  const availH = window.innerHeight;
-  // Leave room for formation buttons + kickoff button row (~48px) + gaps
-  const ctrlHeight = 48 + 16;
-  const maxH = availH - ctrlHeight;
-  const aspectRatio = 105 / 68;
-  let cw = availW - 8;
-  let ch = Math.floor(cw / aspectRatio);
-  if (ch > maxH) {
-    ch = maxH;
-    cw = Math.floor(ch * aspectRatio);
+/** Resize canvas to fit current container (call after layout changes) */
+function syncCanvasSize(): void {
+  renderer.resize();
+  if (tacticsCanvasEl.style.display !== 'none') {
+    tacticsCanvasEl.width = canvasEl.width;
+    tacticsCanvasEl.height = canvasEl.height;
+    tacticsBoard.resizeCanvas(canvasEl.width, canvasEl.height);
   }
-  tacticsBoardCanvas.width = cw;
-  tacticsBoardCanvas.height = ch;
 }
 
-sizeTacticsCanvas();
-window.addEventListener('resize', () => {
-  sizeTacticsCanvas();
-  tacticsBoard.render();
-});
-
-const tacticsBoard = new TacticsBoard(tacticsBoardCanvas, '4-4-2');
-
-// ============================================================
-// View state
-// ============================================================
-
-type View = 'tactics' | 'match';
-let currentView: View = 'tactics';
-
-const tacticsScreen = document.getElementById('tactics-screen');
-const pitchArea = document.getElementById('pitch-area');
-const matchControls = document.getElementById('controls');
-
-function showTacticsView(): void {
-  currentView = 'tactics';
-  if (tacticsScreen) tacticsScreen.style.display = 'flex';
-  if (pitchArea) pitchArea.style.display = 'none';
-  if (matchControls) matchControls.style.display = 'none';
-  // Close debug panels when returning to tactics
-  _setDebugPanels(false);
+/** Show the tactics board canvas overlaying the match canvas */
+function showTacticsCanvas(): void {
+  tacticsCanvasEl.style.display = 'block';
+  // Resize immediately + after panel transition (200ms)
+  requestAnimationFrame(syncCanvasSize);
+  setTimeout(syncCanvasSize, 220);
 }
 
-function showMatchView(): void {
-  currentView = 'match';
-  if (tacticsScreen) tacticsScreen.style.display = 'none';
-  if (pitchArea) pitchArea.style.display = '';
-  if (matchControls) matchControls.style.display = 'flex';
+/** Hide the tactics board canvas */
+function hideTacticsCanvas(): void {
+  tacticsCanvasEl.style.display = 'none';
+  requestAnimationFrame(syncCanvasSize);
+  setTimeout(syncCanvasSize, 220);
 }
-
-// ============================================================
-// Formation preset buttons
-// ============================================================
-
-const formationBtns = document.querySelectorAll<HTMLButtonElement>('.formation-btn');
-
-function setActiveFormationBtn(formationId: string): void {
-  formationBtns.forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.formation === formationId);
-  });
-}
-
-formationBtns.forEach(btn => {
-  btn.addEventListener('click', () => {
-    const f = btn.dataset.formation as FormationId | undefined;
-    if (f) {
-      tacticsBoard.setFormation(f);
-      setActiveFormationBtn(f);
-    }
-  });
-});
 
 // ============================================================
 // Button references
 // ============================================================
 
-const btnTacticsKickoff = document.getElementById('btn-tactics-kickoff') as HTMLButtonElement | null;
-const btnTacticsSecondHalf = document.getElementById('btn-tactics-second-half') as HTMLButtonElement | null;
 const btnKickoff = document.getElementById('btn-kickoff') as HTMLButtonElement | null;
+const btnSecondHalf = document.getElementById('btn-second-half') as HTMLButtonElement | null;
 const btnPause   = document.getElementById('btn-pause')   as HTMLButtonElement | null;
 const btnReset   = document.getElementById('btn-reset')   as HTMLButtonElement | null;
-const speedSlider = document.getElementById('speed-slider') as HTMLInputElement | null;
-const speedLabel  = document.getElementById('speed-label')  as HTMLElement | null;
+const speedSliderEl = document.getElementById('speed-slider') as HTMLInputElement | null;
+const speedValueEl = document.getElementById('speed-value') as HTMLElement | null;
 const benchPanel = document.getElementById('bench-panel') as HTMLElement | null;
 const benchPlayersEl = document.getElementById('bench-players') as HTMLElement | null;
 const benchSubCounter = document.getElementById('bench-sub-counter') as HTMLElement | null;
+
+// Scoreboard + stats DOM refs
+const sbScoreEl = document.getElementById('sb-score') as HTMLElement | null;
+const sbTimeEl = document.getElementById('sb-time') as HTMLElement | null;
+const sbScorersEl = document.getElementById('sb-scorers') as HTMLElement | null;
+const liveStatsEl = document.getElementById('live-stats') as HTMLElement | null;
 
 // ============================================================
 // Renderer (created once, reused across resets)
@@ -138,6 +100,275 @@ const renderer = new CanvasRenderer(canvasEl);
 renderer.showDebug = false;
 renderer.showStats = false;
 renderer.showHeatmap = false;
+
+/** Update the HTML scoreboard from the current snapshot */
+function updateScoreboard(snap: SimSnapshot): void {
+  const [h, a] = snap.score;
+  if (sbScoreEl) sbScoreEl.textContent = `${h} - ${a}`;
+
+  // Time label
+  const matchMinute = Math.min(90, Math.floor(snap.tick / 60));
+  const phaseLabels: Record<string, string> = {
+    KICKOFF: 'Kickoff',
+    FIRST_HALF: `${matchMinute}'`,
+    HALFTIME: 'HT',
+    SECOND_HALF: `${matchMinute}'`,
+    FULL_TIME: 'FT',
+  };
+  if (sbTimeEl) sbTimeEl.textContent = phaseLabels[snap.matchPhase] ?? snap.matchPhase;
+
+  // Goal scorers
+  if (sbScorersEl) {
+    const goals = snap.events.filter(e => e.type === 'goal');
+    if (goals.length === 0) {
+      sbScorersEl.innerHTML = '';
+    } else {
+      sbScorersEl.innerHTML = goals.map(g => {
+        const min = Math.min(90, Math.floor(g.tick / 60));
+        const player = snap.players.find(p => p.id === g.playerId);
+        const name = player?.name ?? g.playerId ?? '?';
+        const side = g.teamId === 'home' ? '' : ' (A)';
+        return `<div class="sb-scorer-row"><span class="scorer-min">${min}'</span> ${name}${side}</div>`;
+      }).join('');
+    }
+  }
+}
+
+/** Update the live stats panel from the current snapshot */
+function updateLiveStats(snap: SimSnapshot): void {
+  if (!liveStatsEl) return;
+  const s = snap.stats;
+
+  function statRow(label: string, home: number | string, away: number | string): string {
+    return `<div class="stat-row"><span class="stat-val">${home}</span><span class="stat-label">${label}</span><span class="stat-val">${away}</span></div>`;
+  }
+
+  const homePoss = s.possession[0].toFixed(0);
+  const awayPoss = s.possession[1].toFixed(0);
+
+  liveStatsEl.innerHTML =
+    `<div class="poss-block">` +
+      `<div class="poss-header"><span class="stat-val">${homePoss}%</span><span class="poss-label">Possession</span><span class="stat-val">${awayPoss}%</span></div>` +
+      `<div class="poss-bar"><div class="poss-bar-fill" style="width:${s.possession[0]}%"></div></div>` +
+    `</div>` +
+    `<div class="stat-heading">Stats</div>` +
+    statRow('Shots', s.shots[0], s.shots[1]) +
+    statRow('On Target', s.shotsOnTarget[0], s.shotsOnTarget[1]) +
+    statRow('Passes', s.passes[0], s.passes[1]) +
+    statRow('Completed', s.passesCompleted[0], s.passesCompleted[1]) +
+    statRow('Tackles', s.tackles[0], s.tackles[1]) +
+    statRow('Corners', s.corners?.[0] ?? 0, s.corners?.[1] ?? 0) +
+    statRow('Throw-ins', s.throwIns?.[0] ?? 0, s.throwIns?.[1] ?? 0) +
+    statRow('Goal Kicks', s.goalKicks?.[0] ?? 0, s.goalKicks?.[1] ?? 0);
+}
+
+// ============================================================
+// Tactics overlay (V1 overhaul — in-match editing)
+// ============================================================
+
+const phaseBarEl = document.getElementById('phase-bar')!;
+const leftPanelEl = document.getElementById('tactics-overlay-left')!;
+const rightPanelEl = document.getElementById('right-panel')!;
+
+const tacticsOverlay = new TacticsOverlay(phaseBarEl, leftPanelEl, rightPanelEl, canvasEl);
+
+// ── Tactic save/load selector ──
+const tacticSelectorEl = document.getElementById('tactic-selector')!;
+const tacticSelector = new TacticSelector(tacticSelectorEl);
+tacticSelector.refresh(listTactics());
+
+/** Push current board+overlay configs to engine after a tactic load */
+function pushAllTacticsToEngine(): void {
+  if (!engine) return;
+  const baseInPoss = tacticsBoard.getTacticalConfig();
+  const baseOop = tacticsBoard.getOutOfPossessionConfig();
+  const inPoss = tacticsOverlay.getInPossConfig(baseInPoss);
+  const oop = tacticsOverlay.getOutOfPossConfig(baseOop);
+  engine.setHomeTactics(inPoss);
+  engine.setHomeTacticsOOP(oop);
+  engine.setHomeTacticsDefTrans(tacticsOverlay.getDefTransConfig(baseOop));
+  engine.setHomeTacticsAttTrans(tacticsOverlay.getAttTransConfig(baseInPoss));
+  tacticsOverlay.updatePlayers(engine.getCurrentSnapshot().players);
+  // Sync duties + freedom values to board and renderer
+  const activePhase = tacticsOverlay.getCurrentPhase() as 'inPossession' | 'outOfPossession';
+  const activeBase = activePhase === 'inPossession' ? baseInPoss : baseOop;
+  const activeConfig = tacticsOverlay.getActivePhaseConfig(activeBase);
+  tacticsBoard.setDuties(activeConfig.duties);
+  const mults = tacticsOverlay.getActivePhaseMultipliers();
+  renderer.freedomValues = mults.map(m => m.freedom);
+  tacticsBoard.setFreedomValues(mults.map(m => m.freedom));
+}
+
+tacticSelector.onSave((name) => {
+  const tactic = buildSavedTactic(name, tacticsBoard, tacticsOverlay);
+  saveTactic(tactic);
+  tacticSelector.refresh(listTactics(), name);
+});
+
+tacticSelector.onLoad((name) => {
+  const tactic = loadTactic(name);
+  if (!tactic) return;
+  applySavedTactic(tactic, tacticsBoard, tacticsOverlay);
+  // Sync board phase display to current overlay phase
+  const phase = tacticsOverlay.getCurrentPhase() as 'inPossession' | 'outOfPossession';
+  tacticsBoard.setPhase(phase);
+  tacticsBoard.render();
+  pushAllTacticsToEngine();
+});
+
+tacticSelector.onDelete((name) => {
+  deleteTactic(name);
+  tacticSelector.refresh(listTactics());
+});
+
+// When overlay controls change, push updated config to engine.
+// Always push the ACTIVE phase's config through setHomeTactics() so
+// the canvas displays the correct anchors for whichever tab is selected.
+// Both in-poss and OOP configs are stored, but the one being edited
+// gets its anchors rendered on the snapshot.
+tacticsOverlay.onChanged(() => {
+  if (!engine) return;
+  const baseInPoss = tacticsBoard.getTacticalConfig();
+  const baseOop = tacticsBoard.getOutOfPossessionConfig();
+  const oopConfig = tacticsOverlay.getOutOfPossConfig(baseOop);
+  // Store OOP config (in-poss is restored at unpause)
+  engine.setHomeTacticsOOP(oopConfig);
+  // Push transition configs so per-player multipliers take effect
+  engine.setHomeTacticsDefTrans(tacticsOverlay.getDefTransConfig(baseOop));
+  engine.setHomeTacticsAttTrans(tacticsOverlay.getAttTransConfig(baseInPoss));
+  // Push the active phase's config to the snapshot for anchor display
+  const activeConfig = tacticsOverlay.getActivePhaseConfig(
+    tacticsOverlay.getCurrentPhase() === 'inPossession' ? baseInPoss : baseOop,
+  );
+  engine.setHomeTactics(activeConfig);
+  // Refresh player refs so click hit-test uses updated anchor positions
+  tacticsOverlay.updatePlayers(engine.getCurrentSnapshot().players);
+  // Sync freedom values to renderer and TacticsBoard for radius overlay
+  const mults = tacticsOverlay.getActivePhaseMultipliers();
+  renderer.freedomValues = mults.map(m => m.freedom);
+  tacticsBoard.setFreedomValues(mults.map(m => m.freedom));
+  // Sync duties to TacticsBoard for visual rendering
+  tacticsBoard.setDuties(activeConfig.duties);
+});
+
+// When phase tab switches (In Poss / Out of Poss), update displayed anchors
+tacticsOverlay.onPhaseChanged(() => {
+  if (!engine) return;
+  const phase = tacticsOverlay.getCurrentPhase() as 'inPossession' | 'outOfPossession';
+  tacticsBoard.setPhase(phase);
+
+  const base = phase === 'inPossession'
+    ? tacticsBoard.getTacticalConfig()
+    : tacticsBoard.getOutOfPossessionConfig();
+  const activeConfig = tacticsOverlay.getActivePhaseConfig(base);
+  engine.setHomeTactics(activeConfig);
+  tacticsOverlay.updatePlayers(engine.getCurrentSnapshot().players);
+
+  const mults = tacticsOverlay.getActivePhaseMultipliers();
+  renderer.freedomValues = mults.map(m => m.freedom);
+  tacticsBoard.setFreedomValues(mults.map(m => m.freedom));
+  tacticsBoard.setDuties(activeConfig.duties);
+});
+
+// When a quick-shape preset is clicked, apply it to the tactics board + engine
+tacticsOverlay.onQuickShape((formationId) => {
+  const f = formationId as FormationId;
+  tacticsBoard.applyPresetPositions(f);
+  if (engine) {
+    const baseInPoss = tacticsBoard.getTacticalConfig();
+    const baseOop = tacticsBoard.getOutOfPossessionConfig();
+    const inPoss = tacticsOverlay.getInPossConfig(baseInPoss);
+    const oop = tacticsOverlay.getOutOfPossConfig(baseOop);
+    engine.setHomeTactics(inPoss);
+    engine.setHomeTacticsOOP(oop);
+    tacticsOverlay.loadFromConfig(inPoss, oop);
+    tacticsOverlay.updatePlayers(engine.getCurrentSnapshot().players);
+  }
+});
+
+// Wire TacticsBoard player selection → overlay player panel + renderer highlight
+tacticsBoard.onPlayerSelected((index) => {
+  tacticsOverlay.selectPlayer(index);
+  renderer.selectedHomePlayerIndex = index;
+  syncTransitionAnchors();
+});
+
+// Wire TacticsBoard config changes (drag complete) → push to engine
+tacticsBoard.onConfigChanged(() => {
+  if (!engine) return;
+  const baseInPoss = tacticsBoard.getTacticalConfig();
+  const baseOop = tacticsBoard.getOutOfPossessionConfig();
+  const inPoss = tacticsOverlay.getInPossConfig(baseInPoss);
+  const oop = tacticsOverlay.getOutOfPossConfig(baseOop);
+  engine.setHomeTactics(inPoss);
+  engine.setHomeTacticsOOP(oop);
+  engine.setHomeTacticsDefTrans(tacticsOverlay.getDefTransConfig(baseOop));
+  engine.setHomeTacticsAttTrans(tacticsOverlay.getAttTransConfig(baseInPoss));
+  tacticsOverlay.updatePlayers(engine.getCurrentSnapshot().players);
+});
+
+// Wire TacticsBoard substitution completion → update bench UI
+tacticsBoard._onSubstitutionQueued = () => {
+  updateBenchPanel();
+};
+
+// Wire overlay player selection (from player panel clicks) → renderer highlight
+tacticsOverlay.onPlayerSelected((index) => {
+  renderer.selectedHomePlayerIndex = index;
+  // Refresh transition anchors if in transition edit mode
+  syncTransitionAnchors();
+});
+
+// When the player panel sub-phase changes, update transition visualization
+tacticsOverlay.onPlayerSubPhaseChanged((phase) => {
+  if (!engine) return;
+  const baseInPoss = tacticsBoard.getTacticalConfig();
+  const baseOop = tacticsBoard.getOutOfPossessionConfig();
+
+  if (phase === 'defensiveTransition') {
+    // Def trans: player was in-poss → push in-poss config so main circle shows "from" position
+    renderer.editingTransitionPhase = phase;
+    engine.setHomeTactics(tacticsOverlay.getInPossConfig(baseInPoss));
+    tacticsOverlay.updatePlayers(engine.getCurrentSnapshot().players);
+    syncTransitionAnchors();
+  } else if (phase === 'attackingTransition') {
+    // Att trans: player was OOP → push OOP config so main circle shows "from" position
+    renderer.editingTransitionPhase = phase;
+    engine.setHomeTactics(tacticsOverlay.getOutOfPossConfig(baseOop));
+    tacticsOverlay.updatePlayers(engine.getCurrentSnapshot().players);
+    syncTransitionAnchors();
+  } else {
+    // Back to base phase — restore the current global phase's config
+    renderer.editingTransitionPhase = null;
+    const globalPhase = tacticsOverlay.getCurrentPhase();
+    const base = globalPhase === 'inPossession' ? baseInPoss : baseOop;
+    engine.setHomeTactics(tacticsOverlay.getActivePhaseConfig(base));
+    tacticsOverlay.updatePlayers(engine.getCurrentSnapshot().players);
+  }
+});
+
+/** Compute and push both in-poss and OOP anchor positions to the renderer */
+function syncTransitionAnchors(): void {
+  if (!engine) return;
+  const snap = engine.getCurrentSnapshot();
+  const baseInPoss = tacticsBoard.getTacticalConfig();
+  const baseOop = tacticsBoard.getOutOfPossessionConfig();
+  const inPossConfig = tacticsOverlay.getInPossConfig(baseInPoss);
+  const oopConfig = tacticsOverlay.getOutOfPossConfig(baseOop);
+  renderer.inPossAnchors = computeFormationAnchors(
+    inPossConfig.formation, 'home', snap.ball.position, true, inPossConfig.teamControls,
+  );
+  renderer.oopAnchors = computeFormationAnchors(
+    oopConfig.formation, 'home', snap.ball.position, false, oopConfig.teamControls,
+  );
+}
+
+// Wire substitution handling — when a bench player is pending and a
+// pitch player is clicked, the overlay fires this callback
+tacticsOverlay.onSubstitutionQueued((pitchIndex, benchPlayer) => {
+  tacticsBoard.queueSubstitution(pitchIndex, benchPlayer);
+  updateBenchPanel();
+});
 
 // ============================================================
 // Match lifecycle
@@ -169,8 +400,9 @@ function startMatch(): void {
   tacticsBoard.resetSubstitutions();
   hideBenchPanel();
 
-  // Get tactical config from tactics board
-  const tacticalConfig = tacticsBoard.getTacticalConfig();
+  // Get tactical configs from tactics board (in-possession + out-of-possession)
+  const inPossConfig = tacticsBoard.getTacticalConfig();
+  const oopConfig = tacticsBoard.getOutOfPossessionConfig();
 
   // Build engine and debug overlay (now with bench players)
   const { home, away, homeBench, awayBench } = createMatchRosters();
@@ -181,7 +413,8 @@ function startMatch(): void {
     awayRoster: away,
     homeBench,
     awayBench,
-    homeTacticalConfig: tacticalConfig,
+    homeTacticalConfig: inPossConfig,
+    homeTacticalConfigOOP: oopConfig,
   });
   debugOverlay = new DebugOverlay(debugCanvasEl, engine.decisionLog);
 
@@ -189,6 +422,12 @@ function startMatch(): void {
   const originalDraw = renderer.draw.bind(renderer);
   renderer.draw = (prev: SimSnapshot, curr: SimSnapshot, alpha: number): void => {
     originalDraw(prev, curr, alpha);
+    updateScoreboard(curr);
+    updateLiveStats(curr);
+    // Update squad list + possession highlight during live play
+    if (!getIsPaused()) {
+      tacticsOverlay.updateLiveSquad(curr.players, curr.ball.carrierId);
+    }
     if (renderer.showDebug) {
       // Draw panels on the sidebar canvas
       debugOverlay.drawPanels(curr);
@@ -216,6 +455,12 @@ function startMatch(): void {
     if (snap.matchPhase === MatchPhase.FULL_TIME && !fullTimeLogged) {
       fullTimeLogged = true;
       logFullTime(snap);
+      // Show player stats overlay
+      const canvasWrapper = document.getElementById('canvas-wrapper');
+      if (canvasWrapper) {
+        const playerStats = engine.gameLog.getPlayerStats();
+        showFullTimeOverlay(canvasWrapper, snap.score, snap.players, playerStats);
+      }
     }
   }, 500);
 
@@ -226,6 +471,7 @@ function startMatch(): void {
   startGameLoop(engine, renderer, true);
   updatePauseButton();
   if (btnKickoff) btnKickoff.style.display = '';
+  if (btnSecondHalf) btnSecondHalf.style.display = 'none';
 }
 
 // ============================================================
@@ -233,28 +479,19 @@ function startMatch(): void {
 // ============================================================
 
 function handleHalftime(): void {
-  // Pause the match
+  // Pause the match and show tactics overlay
   setPaused(true);
   updatePauseButton();
 
-  // Switch to tactics view (tactics board for halftime changes)
-  showTacticsView();
-
   // Show "Start 2nd Half" button instead of "Kick Off"
-  if (btnTacticsKickoff) btnTacticsKickoff.style.display = 'none';
-  if (btnTacticsSecondHalf) btnTacticsSecondHalf.style.display = '';
+  if (btnKickoff) btnKickoff.style.display = 'none';
+  if (btnSecondHalf) btnSecondHalf.style.display = '';
 
-  // Show bench panel with current bench (from engine, in case subs were made — but at halftime, none yet)
+  // Show bench panel with current bench
   const benchFromEngine = engine.getBench('home');
   showBenchPanel(benchFromEngine, engine.getSubstitutionCount('home'));
 
-  // Wire sub queued callback so bench buttons update
-  tacticsBoard._onSubstitutionQueued = (_pitchIndex) => {
-    updateBenchPanel();
-    tacticsBoard.render();
-  };
-
-  console.log('[Fergie Time] Halftime — tactics board shown. Make changes and click "Start 2nd Half".');
+  console.log('[Fergie Time] Halftime — make changes and click "Start 2nd Half".');
 }
 
 function showBenchPanel(bench: import('./simulation/types.ts').PlayerState[], subsUsed: number): void {
@@ -262,43 +499,55 @@ function showBenchPanel(bench: import('./simulation/types.ts').PlayerState[], su
 
   // Update remaining subs
   const subsRemaining = 3 - subsUsed;
-  tacticsBoard.setSubsRemaining(subsRemaining);
 
-  // Build bench player buttons
+  // Build bench player rows (matching squad-row style)
   benchPlayersEl.innerHTML = '';
 
-  for (const player of bench) {
+  for (let bi = 0; bi < bench.length; bi++) {
+    const player = bench[bi]!;
     const btn = document.createElement('button');
     btn.className = 'bench-player-btn';
     btn.dataset.playerId = player.id;
     btn.disabled = subsRemaining <= 0;
 
-    const roleEl = document.createElement('span');
-    roleEl.className = 'bench-player-role';
-    roleEl.textContent = String(player.role);
+    const numEl = document.createElement('span');
+    numEl.className = 'bench-player-number';
+    numEl.textContent = String(12 + bi);
 
     const nameEl = document.createElement('span');
     nameEl.className = 'bench-player-name';
     nameEl.textContent = player.name ?? player.id;
 
-    const paceEl = document.createElement('span');
-    paceEl.className = 'bench-player-pace';
-    paceEl.textContent = `${Math.round(player.attributes.pace * 99)}`;
-    paceEl.title = 'Pace';
+    const roleEl = document.createElement('span');
+    roleEl.className = 'bench-player-role';
+    roleEl.textContent = String(player.role);
 
-    btn.appendChild(roleEl);
+    btn.appendChild(numEl);
     btn.appendChild(nameEl);
-    btn.appendChild(paceEl);
+    btn.appendChild(roleEl);
+
+    // Attribute tooltip on hover
+    btn.addEventListener('mouseenter', () => {
+      showAttributeTooltip(player.name ?? player.id, {
+        attributes: player.attributes,
+        personality: player.personality,
+      }, btn);
+    });
+    btn.addEventListener('mouseleave', () => {
+      scheduleHideTooltip();
+    });
 
     btn.addEventListener('click', () => {
-      if (tacticsBoard.getPendingBenchPlayer()?.id === player.id) {
+      if (tacticsOverlay.getPendingBenchPlayer()?.id === player.id) {
         // Deselect if clicking same bench player
+        tacticsOverlay.setPendingBenchPlayer(null);
         tacticsBoard.setPendingBenchPlayer(null);
         btn.classList.remove('selected');
       } else {
         // Deselect all, select this one
         benchPlayersEl.querySelectorAll('.bench-player-btn').forEach(b => b.classList.remove('selected'));
         btn.classList.add('selected');
+        tacticsOverlay.setPendingBenchPlayer(player);
         tacticsBoard.setPendingBenchPlayer(player);
       }
     });
@@ -313,7 +562,7 @@ function showBenchPanel(bench: import('./simulation/types.ts').PlayerState[], su
 function updateBenchPanel(): void {
   if (!benchPlayersEl || !benchSubCounter) return;
 
-  // Count pending subs made via the tactics board
+  // Count pending subs made via the overlay
   const subbedOutIndices = tacticsBoard.getSubbedOutIndices();
   const subsUsed = subbedOutIndices.size;
   const subsRemaining = 3 - engine.getSubstitutionCount('home') - subsUsed;
@@ -336,7 +585,8 @@ function updateBenchPanel(): void {
     }
   });
 
-  tacticsBoard.setSubsRemaining(subsRemaining);
+  // Clear pending bench player selection
+  tacticsOverlay.setPendingBenchPlayer(null);
 }
 
 function updateBenchSubCounter(subsUsed: number): void {
@@ -346,10 +596,8 @@ function updateBenchSubCounter(subsUsed: number): void {
 
 function hideBenchPanel(): void {
   if (benchPanel) benchPanel.style.display = 'none';
-  if (btnTacticsKickoff) btnTacticsKickoff.style.display = '';
-  if (btnTacticsSecondHalf) btnTacticsSecondHalf.style.display = 'none';
-  // Clear sub callback using void 0 (satisfies exactOptionalPropertyTypes)
-  tacticsBoard._onSubstitutionQueued = void 0;
+  if (btnSecondHalf) btnSecondHalf.style.display = 'none';
+  tacticsOverlay.setPendingBenchPlayer(null);
 }
 
 function logFullTime(snap: SimSnapshot): void {
@@ -447,7 +695,6 @@ let debugPanelsOpen = false;
 function _setDebugPanels(open: boolean): void {
   debugPanelsOpen = open;
   renderer.showDebug = open;
-  renderer.showStats = open;
   renderer.showHeatmap = open;
   debugSidebar?.classList.toggle('open', open);
   tuningPanel?.classList.toggle('open', open);
@@ -461,10 +708,36 @@ function toggleDebugPanels(): void {
 // Button wiring
 // ============================================================
 
+// Speed slider: 5 discrete stops → actual multiplier values
+const SPEED_STEPS = [0.25, 0.5, 1, 2, 4];
+const SPEED_LABELS = ['0.25x', '0.5x', '1x', '2x', '4x'];
+
 function setSpeed(value: number): void {
   setSpeedMultiplier(value);
-  if (speedSlider) speedSlider.value = String(value);
-  if (speedLabel) speedLabel.textContent = value < 1 ? `${value}x` : `${value.toFixed(1)}x`;
+  // Sync slider position
+  const idx = SPEED_STEPS.indexOf(value);
+  if (idx >= 0 && speedSliderEl) speedSliderEl.value = String(idx);
+  if (speedValueEl) speedValueEl.textContent = SPEED_LABELS[idx >= 0 ? idx : 2] ?? '1x';
+}
+
+/** Detect the current tactical phase for the home team from engine state. */
+function detectTacticalPhase(): TacticsPhase {
+  if (!engine) return 'inPossession';
+  const snap = engine.getCurrentSnapshot();
+  const transState = engine.getTransitionState();
+
+  // Check transition state first (overrides possession)
+  if (transState.team !== null && transState.ticksRemaining > 0) {
+    if (transState.team === 'home') return 'defensiveTransition';
+    return 'attackingTransition';
+  }
+
+  // Normal possession: who has the ball?
+  if (snap.ball.carrierId) {
+    const carrier = snap.players.find(p => p.id === snap.ball.carrierId);
+    if (carrier?.teamId === 'away') return 'outOfPossession';
+  }
+  return 'inPossession';
 }
 
 function updatePauseButton(): void {
@@ -472,6 +745,84 @@ function updatePauseButton(): void {
   const paused = getIsPaused();
   btnPause.textContent = paused ? 'Resume' : 'Pause';
   btnPause.classList.toggle('active', paused);
+
+  // Show/hide tactics overlay on pause
+  if (paused && engine) {
+    // Hide live stats, show tactics
+    if (liveStatsEl) liveStatsEl.style.display = 'none';
+    const snap = engine.getCurrentSnapshot();
+
+    // Auto-detect the current tactical phase
+    const detectedPhase = detectTacticalPhase();
+
+    // Show the tactics canvas overlay
+    showTacticsCanvas();
+
+    tacticsOverlay.open(snap.players, detectedPhase);
+    tacticSelector.show();
+    // Sync tactics board to the auto-detected base phase
+    const activePhase = tacticsOverlay.getCurrentPhase() as 'inPossession' | 'outOfPossession';
+    tacticsBoard.setPhase(activePhase);
+    // Load current config into overlay, then push merged config back to engine
+    // so overlay's teamControls defaults are applied to the snapshot
+    const baseInPoss = tacticsBoard.getTacticalConfig();
+    const baseOop = tacticsBoard.getOutOfPossessionConfig();
+    tacticsOverlay.loadFromConfig(baseInPoss, baseOop);
+    // Sync duties from overlay to TacticsBoard for visual rendering
+    const activeConfig = tacticsOverlay.getActivePhaseConfig(
+      activePhase === 'inPossession' ? baseInPoss : baseOop,
+    );
+    tacticsBoard.setDuties(activeConfig.duties);
+    // Store both configs, display the active phase's anchors
+    engine.setHomeTacticsOOP(tacticsOverlay.getOutOfPossConfig(baseOop));
+    engine.setHomeTacticsDefTrans(tacticsOverlay.getDefTransConfig(baseOop));
+    engine.setHomeTacticsAttTrans(tacticsOverlay.getAttTransConfig(baseInPoss));
+    const activeBase = tacticsOverlay.getCurrentPhase() === 'inPossession' ? baseInPoss : baseOop;
+    engine.setHomeTactics(tacticsOverlay.getActivePhaseConfig(activeBase));
+    // Refresh player refs so click hit-test uses engine's computed anchor positions
+    tacticsOverlay.updatePlayers(engine.getCurrentSnapshot().players);
+    renderer.showAnchors = true;
+    // Sync freedom values to renderer and TacticsBoard for radius overlay
+    const activeMults = tacticsOverlay.getActivePhaseMultipliers();
+    renderer.freedomValues = activeMults.map(m => m.freedom);
+    tacticsBoard.setFreedomValues(activeMults.map(m => m.freedom));
+
+    // Show bench panel (available during any pause, not just halftime)
+    const benchFromEngine = engine.getBench('home');
+    showBenchPanel(benchFromEngine, engine.getSubstitutionCount('home'));
+  } else {
+    // Unpausing — apply any pending substitutions
+    if (engine) {
+      const pendingSubs = tacticsBoard.getSubstitutions();
+      for (const sub of pendingSubs) {
+        const applied = engine.substitutePlayer('home', sub.outId, sub.inPlayer);
+        if (applied) {
+          console.log(`[Fergie Time] Sub: ${sub.outId} -> ${sub.inPlayer.name ?? sub.inPlayer.id}`);
+        }
+      }
+      if (pendingSubs.length > 0) {
+        tacticsBoard.resetSubstitutions();
+      }
+    }
+    hideBenchPanel();
+    hideTacticsCanvas();
+    // Show live stats again
+    if (liveStatsEl) liveStatsEl.style.display = '';
+    // Restore real in-poss config to snapshot before resuming
+    // (during editing, setHomeTactics may hold OOP anchors for display)
+    if (engine) {
+      const baseInPoss = tacticsBoard.getTacticalConfig();
+      const baseOop = tacticsBoard.getOutOfPossessionConfig();
+      engine.setHomeTactics(tacticsOverlay.getInPossConfig(baseInPoss));
+      engine.setHomeTacticsOOP(tacticsOverlay.getOutOfPossConfig(baseOop));
+      engine.setHomeTacticsDefTrans(tacticsOverlay.getDefTransConfig(baseOop));
+      engine.setHomeTacticsAttTrans(tacticsOverlay.getAttTransConfig(baseInPoss));
+    }
+    tacticsOverlay.close();
+    tacticSelector.hide();
+    renderer.showAnchors = false;
+    renderer.editingTransitionPhase = null;
+  }
 }
 
 function kickoff(): void {
@@ -480,18 +831,14 @@ function kickoff(): void {
   if (btnKickoff) btnKickoff.style.display = 'none';
 }
 
-// Tactics screen "Kick Off" button → read config, start match, switch to match view
-btnTacticsKickoff?.addEventListener('click', () => {
-  showMatchView();
-  startMatch();
-  console.log('[Fergie Time] Kick off — formation:', tacticsBoard.getFormation());
-});
+// Match "Kick Off" button
+btnKickoff?.addEventListener('click', () => kickoff());
 
 // "Start 2nd Half" button — apply halftime changes and resume
-btnTacticsSecondHalf?.addEventListener('click', () => {
-  // Apply tactical config changes
-  const newConfig = tacticsBoard.getTacticalConfig();
-  engine.setHomeTactics(newConfig);
+btnSecondHalf?.addEventListener('click', () => {
+  // Apply tactical config changes (both in-possession and out-of-possession)
+  engine.setHomeTactics(tacticsBoard.getTacticalConfig());
+  engine.setHomeTacticsOOP(tacticsBoard.getOutOfPossessionConfig());
 
   // Apply pending substitutions
   const pendingSubs = tacticsBoard.getSubstitutions();
@@ -509,37 +856,36 @@ btnTacticsSecondHalf?.addEventListener('click', () => {
   // Release the engine's halftime latch so ticks advance to SECOND_HALF
   engine.startSecondHalf();
 
-  // Switch to match view and unpause
-  showMatchView();
+  // Unpause
   setPaused(false);
   updatePauseButton();
+  if (btnKickoff) btnKickoff.style.display = 'none';
   halftimeHandled = true; // ensure we don't retrigger
 
-  console.log('[Fergie Time] 2nd half started — formation:', tacticsBoard.getFormation(), `(${pendingSubs.length} sub(s) applied)`);
+  console.log('[Fergie Time] 2nd half started — formation:', tacticsBoard.getFormationString(), `(${pendingSubs.length} sub(s) applied)`);
 });
-
-// Match controls kick off button (for Space bar / direct click after match has started paused)
-btnKickoff?.addEventListener('click', () => kickoff());
 
 btnPause?.addEventListener('click', () => {
   setPaused(!getIsPaused());
   updatePauseButton();
 });
 
-// Reset returns to tactics board
+// Reset restarts the match
 btnReset?.addEventListener('click', () => {
   stopGameLoop();
   if (halfTimePoll !== null) { clearInterval(halfTimePoll); halfTimePoll = null; }
   setSpeed(1);
   hideBenchPanel();
   tacticsBoard.resetSubstitutions();
-  showTacticsView();
-  console.log('[Fergie Time] Reset — returning to tactics board.');
+  _setDebugPanels(false);
+  startMatch();
+  console.log('[Fergie Time] Reset — new match started.');
 });
 
 // Speed slider
-speedSlider?.addEventListener('input', () => {
-  const val = parseFloat(speedSlider.value);
+speedSliderEl?.addEventListener('input', () => {
+  const idx = parseInt(speedSliderEl.value, 10);
+  const val = SPEED_STEPS[idx] ?? 1;
   setSpeed(val);
 });
 
@@ -681,49 +1027,55 @@ btnResetSettings?.addEventListener('click', () => {
 });
 
 // ============================================================
+// Window resize — keep tactics canvas in sync
+// ============================================================
+
+window.addEventListener('resize', () => {
+  if (getIsPaused() && tacticsCanvasEl.style.display !== 'none') {
+    // Re-sync tactics canvas size with resized match canvas
+    tacticsCanvasEl.width = canvasEl.width;
+    tacticsCanvasEl.height = canvasEl.height;
+    tacticsBoard.resizeCanvas(canvasEl.width, canvasEl.height);
+  }
+});
+
+// ============================================================
 // Keyboard shortcuts
 // ============================================================
 
 document.addEventListener('keydown', (e) => {
   if (e.key === ' ') {
-    if (currentView === 'tactics') {
-      // Space on tactics board = kick off (only if not at halftime)
-      if (btnTacticsSecondHalf?.style.display !== 'none') {
-        // At halftime — Space triggers "Start 2nd Half"
-        btnTacticsSecondHalf?.click();
-      } else {
-        showMatchView();
-        startMatch();
-      }
-    } else if (getIsPaused() && btnKickoff?.style.display !== 'none') {
+    if (getIsPaused() && btnKickoff?.style.display !== 'none') {
       kickoff();
+    } else if (getIsPaused() && btnSecondHalf?.style.display !== 'none') {
+      btnSecondHalf?.click();
     } else {
       setPaused(!getIsPaused());
       updatePauseButton();
     }
     e.preventDefault();
-  } else if (e.key === 'p' || e.key === 'P') {
-    if (currentView === 'match') updatePauseButton();
   } else if (e.key === '1') {
     setSpeed(1);
   } else if (e.key === '2') {
     setSpeed(2);
   } else if (e.key === '3') {
     setSpeed(4);
+  } else if (e.key === '4') {
+    setSpeed(0.5);
+  } else if (e.key === '5') {
+    setSpeed(0.25);
   } else if (e.key === 'd' || e.key === 'D') {
-    // D toggles ALL debug panels (Debug sidebar, Stats overlay, Tuning panel)
-    if (currentView === 'match') {
-      toggleDebugPanels();
-    }
+    toggleDebugPanels();
+  } else if (e.key === 'g' || e.key === 'G') {
+    renderer.showGhosts = !renderer.showGhosts;
   }
 });
 
 // ============================================================
-// Initial view: tactics board
+// Auto-start match
 // ============================================================
 
-showTacticsView();
+startMatch();
 
-console.log('[Fergie Time] Ready — tactics board loaded.');
-console.log('  Select a formation and click "Kick Off" (or press Space) to start the match.');
-console.log('  During match: D = toggle debug/stats/tuning panels, 1/2/3 = speed, P = pause, R = reset.');
+console.log('[Fergie Time] Match started — click "Kick Off" or press Space to begin.');
+console.log('  Hover scoreboard for controls. D = debug panels, 1/2/3 = speed.');
