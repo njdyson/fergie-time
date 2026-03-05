@@ -3,7 +3,7 @@ phase: 3
 slug: management-shell
 status: draft
 nyquist_compliant: false
-wave_0_complete: false
+wave_0_complete: true
 created: 2026-03-05
 ---
 
@@ -70,7 +70,7 @@ created: 2026-03-05
 
 | Behavior | Requirement | Why Manual | Test Instructions |
 |----------|-------------|------------|-------------------|
-| Squad screen visually shows player attributes and personality traits | SQD-01 | UI rendering, canvas layout not unit-testable | Open squad panel, verify all 25 players show name, position, age, fitness, key attribute |
+| Squad screen shows age, height, position, attribute bars (no personality traits shown) | SQD-01 | UI rendering, canvas layout not unit-testable | Open squad panel, verify all 25 players show name, position, age, fitness, 10 attribute bars — confirm personality traits are NOT displayed |
 | Fixture list readable in UI | SQD-03 | HTML/canvas rendering | Navigate to fixtures screen, confirm upcoming/past matchdays visible with home/away teams |
 | League table renders in correct order | SQD-04 | Canvas rendering | After simulating matches, verify table rows sorted by pts, then GD, then GF |
 | Season end champion declaration overlay | SQD-05 | Visual overlay | Play to season end, verify champion name displayed on full-time overlay |
