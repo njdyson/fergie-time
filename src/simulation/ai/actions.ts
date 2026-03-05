@@ -80,6 +80,44 @@ const passSafeConsiderations: readonly ConsiderationFn[] = [
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PASS_THROUGH — play ball into space ahead of a running teammate
+// ─────────────────────────────────────────────────────────────────────────────
+const passThroughConsiderations: readonly ConsiderationFn[] = [
+  (ctx) => agentHasBall(ctx) ? 1 : 0,
+  // Vision attribute: need to see the run
+  (ctx) => ctx.self.attributes.vision,
+  // Passing attribute
+  (ctx) => ctx.self.attributes.passing * 0.8 + 0.2,
+  // Requires a teammate running toward goal (velocity > 3 m/s forward component)
+  (ctx) => {
+    const goalX = ctx.self.teamId === 'home' ? 105 : 0;
+    const forwardSign = ctx.self.teamId === 'home' ? 1 : -1;
+    let bestRunner = 0;
+    for (const tm of ctx.teammates) {
+      const forwardVel = tm.velocity.x * forwardSign;
+      if (forwardVel < 3) continue;
+      // Runner must be more advanced than passer
+      const tmAdvance = Math.abs(tm.position.x - goalX);
+      const selfAdvance = Math.abs(ctx.self.position.x - goalX);
+      if (tmAdvance > selfAdvance) continue; // runner is behind us (closer to own goal)
+      // Check space ahead: nearest opponent to runner in run direction
+      let spaceAhead = 30; // assume space unless we find a defender
+      for (const opp of ctx.opponents) {
+        const oppDist = tm.position.distanceTo(opp.position);
+        const oppAhead = (opp.position.x - tm.position.x) * forwardSign;
+        if (oppAhead > 0 && oppDist < spaceAhead) {
+          spaceAhead = oppDist;
+        }
+      }
+      // Score: need at least 5m space ahead, more space = better
+      const spaceScore = spaceAhead > 5 ? Math.min(1, (spaceAhead - 5) / 15) : 0;
+      bestRunner = Math.max(bestRunner, spaceScore);
+    }
+    return bestRunner;
+  },
+];
+
+// ─────────────────────────────────────────────────────────────────────────────
 // DRIBBLE — take on the defender with the ball
 // ─────────────────────────────────────────────────────────────────────────────
 const dribbleConsiderations: readonly ConsiderationFn[] = [
@@ -170,6 +208,7 @@ export const ACTIONS: readonly Action[] = [
   { id: ActionType.SHOOT, considerations: shootConsiderations },
   { id: ActionType.PASS_FORWARD, considerations: passForwardConsiderations },
   { id: ActionType.PASS_SAFE, considerations: passSafeConsiderations },
+  { id: ActionType.PASS_THROUGH, considerations: passThroughConsiderations },
   { id: ActionType.DRIBBLE, considerations: dribbleConsiderations },
   { id: ActionType.HOLD_SHIELD, considerations: holdShieldConsiderations },
   { id: ActionType.MOVE_TO_POSITION, considerations: moveToPositionConsiderations },

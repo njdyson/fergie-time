@@ -335,6 +335,7 @@ export class DebugOverlay {
       case 'MOVE_TO_POSITION': return 'MoveToPos';
       case 'PASS_FORWARD':     return 'PassFwd';
       case 'PASS_SAFE':        return 'PassSafe';
+      case 'PASS_THROUGH':     return 'Through';
       case 'HOLD_SHIELD':      return 'Shield';
       case 'MAKE_RUN':         return 'MakeRun';
       default:                 return action.charAt(0) + action.slice(1).toLowerCase();

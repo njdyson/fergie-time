@@ -157,6 +157,7 @@ export class DecisionLog {
 const ALL_ACTIONS: ActionType[] = [
   AT.PASS_FORWARD,
   AT.PASS_SAFE,
+  AT.PASS_THROUGH,
   AT.DRIBBLE,
   AT.SHOOT,
   AT.HOLD_SHIELD,
@@ -181,6 +182,7 @@ export function auditScoreRanges(entries: readonly AgentDecisionEntry[]): ScoreA
   const counts: Record<ActionType, number> = {
     [AT.PASS_FORWARD]: 0,
     [AT.PASS_SAFE]: 0,
+    [AT.PASS_THROUGH]: 0,
     [AT.DRIBBLE]: 0,
     [AT.SHOOT]: 0,
     [AT.HOLD_SHIELD]: 0,

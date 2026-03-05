@@ -48,6 +48,10 @@ export function getTacticalMultiplierBonus(
       bonus -= dir * SCALE * 0.7;     // high directness discourages recycling
       bonus -= drib * SCALE * 0.5;    // high dribble reduces passing preference
       break;
+    case 'PASS_THROUGH':
+      bonus += risk * SCALE;            // risk drives through-ball willingness
+      bonus += dir * SCALE;             // directness is the main lever
+      break;
     case 'DRIBBLE':
       bonus += risk * SCALE * 0.5;    // risk contributes to dribble willingness
       bonus += drib * SCALE;           // main dribble lever

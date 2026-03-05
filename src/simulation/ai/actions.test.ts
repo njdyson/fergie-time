@@ -56,13 +56,14 @@ function makeCtx(overrides: Partial<AgentContext> = {}): AgentContext {
     isInPossessionTeam: true,
     nearestDefenderDistance: 15,
     nearestTeammateDistance: 10,
+    offsideLineX: 80,
     ...overrides,
   };
 }
 
 describe('ACTIONS', () => {
-  it('should define exactly 8 actions', () => {
-    expect(ACTIONS.length).toBe(8);
+  it('should define exactly 9 actions', () => {
+    expect(ACTIONS.length).toBe(9);
   });
 
   it('should have an entry for every ActionType', () => {

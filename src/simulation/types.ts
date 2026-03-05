@@ -23,12 +23,13 @@ export const MatchPhase = {
 } as const;
 export type MatchPhase = (typeof MatchPhase)[keyof typeof MatchPhase];
 
-// Action types for utility AI (ENG-03) — 8 distinct action values
+// Action types for utility AI (ENG-03) — 9 distinct action values
 // The "7 actions" requirement (ENG-03) is behavioral, not structural — agent evaluates all and selects best.
 // Decision: keep PASS_FORWARD and PASS_SAFE as separate action types for more granular AI decisions.
 export const ActionType = {
   PASS_FORWARD: 'PASS_FORWARD',
   PASS_SAFE: 'PASS_SAFE',
+  PASS_THROUGH: 'PASS_THROUGH',
   DRIBBLE: 'DRIBBLE',
   SHOOT: 'SHOOT',
   HOLD_SHIELD: 'HOLD_SHIELD',
@@ -195,7 +196,7 @@ export interface PlayerState {
 // Match events
 export interface MatchEvent {
   readonly tick: number;
-  readonly type: 'goal' | 'shot' | 'pass' | 'tackle' | 'foul' | 'save' | 'kickoff' | 'halftime' | 'fulltime' | 'throw_in' | 'corner' | 'goal_kick';
+  readonly type: 'goal' | 'shot' | 'pass' | 'tackle' | 'foul' | 'save' | 'kickoff' | 'halftime' | 'fulltime' | 'throw_in' | 'corner' | 'goal_kick' | 'offside';
   readonly playerId?: string;
   readonly teamId?: TeamId;
   readonly position?: Vec2;
@@ -229,6 +230,7 @@ export interface AgentContext {
   readonly isInPossessionTeam: boolean;
   readonly nearestDefenderDistance: number;
   readonly nearestTeammateDistance: number;
+  readonly offsideLineX: number;             // x-coord of offside line for opposing team
 }
 
 // Action intent — produced by agent, consumed by engine integration step

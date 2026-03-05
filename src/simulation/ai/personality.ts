@@ -34,6 +34,12 @@ export const PERSONALITY_WEIGHTS: PersonalityWeightMatrix = {
     composure: 0.09,
     work_rate: 0.03,
   },
+  [ActionType.PASS_THROUGH]: {
+    directness: 0.12,
+    risk_appetite: 0.09,
+    creativity: 0.06,
+    composure: 0.03,
+  },
   [ActionType.DRIBBLE]: {
     flair: 0.15,
     risk_appetite: 0.09,

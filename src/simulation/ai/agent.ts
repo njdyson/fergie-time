@@ -89,7 +89,7 @@ export function selectAction(
     }
     // Pass bias: flat bonus to encourage passing over dribbling/shielding
     // Kill pass bias inside 15m — carrier should shoot, not pass into the goal
-    if (action.id === 'PASS_FORWARD' || action.id === 'PASS_SAFE') {
+    if (action.id === 'PASS_FORWARD' || action.id === 'PASS_SAFE' || action.id === 'PASS_THROUGH') {
       const goalDist = ctx.distanceToOpponentGoal;
       const passBiasScale = goalDist < 15 ? 0 : goalDist < 25 ? (goalDist - 15) / 10 : 1;
       score += TUNING.passBias * passBiasScale;

@@ -299,6 +299,55 @@ export function computeFormationAnchors(
 }
 
 // ============================================================
+// computeDefensiveLine — offside line for a defending team
+// ============================================================
+
+/**
+ * Compute the offside line x-coordinate for a defending team.
+ * Returns the x of the second-deepest outfield defender (excluding GK),
+ * which defines where attackers become offside.
+ *
+ * "Deep" means closest to own goal:
+ *   - Home: own goal at x=0, so smaller x = deeper → offside line = 2nd smallest x
+ *   - Away: own goal at x=PITCH_WIDTH, so larger x = deeper → offside line = 2nd largest x
+ *
+ * Also accounts for ball position: offside line can't be behind the ball
+ * (you can't be offside in your own half or behind the ball).
+ *
+ * @param players - All players on the pitch
+ * @param defendingTeamId - The team whose defensive line we compute
+ * @param ballX - Current ball x-position
+ * @returns x-coordinate of the offside line
+ */
+export function computeDefensiveLine(
+  players: readonly { readonly teamId: TeamId; readonly role: string; readonly position: { readonly x: number } }[],
+  defendingTeamId: TeamId,
+  ballX: number,
+): number {
+  // Collect defending team's outfield players
+  const defenders = players.filter(p => p.teamId === defendingTeamId && p.role !== 'GK');
+  if (defenders.length < 2) {
+    // Fallback: halfway line
+    return PITCH_WIDTH / 2;
+  }
+
+  if (defendingTeamId === 'home') {
+    // Home defends left (goal at x=0). Offside line = 2nd smallest x among outfield.
+    // Sort ascending by x, take index [1] (second deepest).
+    const sorted = defenders.map(p => p.position.x).sort((a, b) => a - b);
+    const lineX = sorted[1]!;
+    // Can't be offside behind the ball (closer to own goal than ball)
+    return Math.min(lineX, ballX);
+  } else {
+    // Away defends right (goal at x=PITCH_WIDTH). Offside line = 2nd largest x.
+    const sorted = defenders.map(p => p.position.x).sort((a, b) => b - a);
+    const lineX = sorted[1]!;
+    // Can't be offside behind the ball
+    return Math.max(lineX, ballX);
+  }
+}
+
+// ============================================================
 // autoAssignRole
 // ============================================================
 

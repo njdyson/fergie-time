@@ -104,6 +104,7 @@ function makeCtx(overrides: Partial<AgentContext> = {}): AgentContext {
     isInPossessionTeam: true,
     nearestDefenderDistance: 15,
     nearestTeammateDistance: 10,
+    offsideLineX: 80,
     ...overrides,
   };
 }
@@ -249,6 +250,7 @@ describe('selectAction', () => {
       isInPossessionTeam: true,
       nearestDefenderDistance: 12,  // decent space to dribble
       nearestTeammateDistance: 20,  // far teammates — passing less reliable
+      offsideLineX: 80,
     };
     const N = 300;
     const results: string[] = [];

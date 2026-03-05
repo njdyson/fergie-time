@@ -105,9 +105,12 @@ export const ROLE_DUTY_WEIGHTS: Record<
       MOVE_TO_POSITION: 0.06,
       MAKE_RUN: -0.03,
     },
-    SUPPORT: {},
+    SUPPORT: {
+      PASS_THROUGH: 0.03,
+    },
     ATTACK: {
       PASS_FORWARD: 0.06,
+      PASS_THROUGH: 0.06,
       DRIBBLE: 0.04,
       MAKE_RUN: 0.05,
     },
@@ -121,10 +124,12 @@ export const ROLE_DUTY_WEIGHTS: Record<
     },
     SUPPORT: {
       PASS_FORWARD: 0.03,
+      PASS_THROUGH: 0.04,
       DRIBBLE: 0.02,
     },
     ATTACK: {
       PASS_FORWARD: 0.10,
+      PASS_THROUGH: 0.08,
       DRIBBLE: 0.08,
       SHOOT: 0.07,
       MAKE_RUN: 0.06,
