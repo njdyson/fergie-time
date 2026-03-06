@@ -88,6 +88,12 @@ export async function getNames(count: number, rng: () => number): Promise<Player
       }
     }
 
+    // Shuffle so nationalities are evenly distributed across teams
+    for (let i = names.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [names[i], names[j]] = [names[j]!, names[i]!];
+    }
+
     return names;
   } catch {
     // Fallback to procedural generation — assign random nationalities
