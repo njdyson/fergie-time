@@ -22,10 +22,6 @@ function surname(name: string): string {
   return parts[parts.length - 1] ?? name;
 }
 
-function team(teamId: string): string {
-  return teamId === 'home' ? 'Home' : 'Away';
-}
-
 function shotZone(dist: number): string {
   if (dist <= 5.5) return 'from close range';
   if (dist <= 16.5) return 'from inside the box';
@@ -75,17 +71,16 @@ export function generateCommentary(
       const targetId = entry.data?.targetPlayerId as string;
       const pLabel = entryLabel(entry.playerId!, entry.playerRole!, players);
       const tLabel = targetId ? resolvePlayer(targetId, players) : '?';
-      const t = team(entry.teamId);
       const len = passDesc(dist);
 
       let text: string;
       if (len === 'long') {
-        text = `${t} ${pLabel} plays a long ball to ${tLabel} (${dist}m)`;
+        text = `${pLabel} plays a long ball to ${tLabel} (${dist}m)`;
       } else if (len === 'short') {
-        text = `${t} ${pLabel} ${passType === 'safe' ? 'lays it off' : 'plays it'} to ${tLabel}`;
+        text = `${pLabel} ${passType === 'safe' ? 'lays it off' : 'plays it'} to ${tLabel}`;
       } else {
         const dir = passType === 'forward' ? 'forward' : 'back';
-        text = `${t} ${pLabel} passes ${dir} to ${tLabel} (${dist}m)`;
+        text = `${pLabel} passes ${dir} to ${tLabel} (${dist}m)`;
       }
       return { tick: entry.tick, matchMinute: min, text, type: 'pass' };
     }
@@ -93,18 +88,16 @@ export function generateCommentary(
     case 'shot': {
       const dist = (entry.data?.distanceToGoal as number) ?? 0;
       const pLabel = entryLabel(entry.playerId!, entry.playerRole!, players);
-      const t = team(entry.teamId);
       const zone = shotZone(dist);
-      return { tick: entry.tick, matchMinute: min, text: `${t} ${pLabel} shoots ${zone}!`, type: 'shot' };
+      return { tick: entry.tick, matchMinute: min, text: `${pLabel} shoots ${zone}!`, type: 'shot' };
     }
 
     case 'goal': {
       const score = entry.data?.score as [number, number];
       const pLabel = entryLabel(entry.playerId!, entry.playerRole!, players);
-      const t = team(entry.teamId);
       return {
         tick: entry.tick, matchMinute: min,
-        text: `GOAL! ${t} ${pLabel} scores! (${score[0]}-${score[1]})`,
+        text: `GOAL! ${pLabel} scores! (${score[0]}-${score[1]})`,
         type: 'goal',
       };
     }
@@ -112,96 +105,87 @@ export function generateCommentary(
     case 'tackle': {
       if (!(entry.data?.success as boolean)) return null;
       const pLabel = entryLabel(entry.playerId!, entry.playerRole!, players);
-      const t = team(entry.teamId);
       const targetId = entry.data?.targetPlayerId as string;
       const tgtDesc = targetId ? ` from ${resolvePlayer(targetId, players)}` : '';
       return {
         tick: entry.tick, matchMinute: min,
-        text: `${t} ${pLabel} wins the ball${tgtDesc}`,
+        text: `${pLabel} wins the ball${tgtDesc}`,
         type: 'tackle',
       };
     }
 
     case 'throw_in': {
-      const t = team(entry.teamId);
       const pLabel = entry.playerId ? resolvePlayer(entry.playerId, players) : '';
       return {
         tick: entry.tick, matchMinute: min,
-        text: `Throw-in ${t}${pLabel ? ` — ${pLabel} to take` : ''}`,
+        text: `Throw-in${pLabel ? ` — ${pLabel} to take` : ''}`,
         type: 'setpiece',
       };
     }
 
     case 'corner': {
-      const t = team(entry.teamId);
       const pLabel = entry.playerId ? resolvePlayer(entry.playerId, players) : '';
       return {
         tick: entry.tick, matchMinute: min,
-        text: `Corner kick ${t}${pLabel ? ` — ${pLabel} to take` : ''}`,
+        text: `Corner${pLabel ? ` — ${pLabel} to take` : ''}`,
         type: 'setpiece',
       };
     }
 
     case 'goal_kick': {
-      const t = team(entry.teamId);
       return {
         tick: entry.tick, matchMinute: min,
-        text: `Goal kick ${t}`,
+        text: `Goal kick`,
         type: 'setpiece',
       };
     }
 
     case 'free_kick': {
-      const t = team(entry.teamId);
       const pLabel = entry.playerId ? resolvePlayer(entry.playerId, players) : '';
       return {
         tick: entry.tick, matchMinute: min,
-        text: `Free kick ${t}${pLabel ? ` - ${pLabel} standing over it` : ''}.`,
+        text: `Free kick${pLabel ? ` — ${pLabel} standing over it` : ''}.`,
         type: 'setpiece',
       };
     }
 
     case 'foul': {
-      const awardedTeam = team(entry.teamId);
       const fouler = entryLabel(entry.playerId!, entry.playerRole!, players);
       const victimId = entry.data?.victimPlayerId as string | undefined;
       const victim = victimId ? resolvePlayer(victimId, players) : 'the attacker';
       return {
         tick: entry.tick, matchMinute: min,
-        text: `Foul by ${fouler} on ${victim}. Free kick to ${awardedTeam}.`,
+        text: `Foul by ${fouler} on ${victim}.`,
         type: 'setpiece',
       };
     }
 
     case 'yellow_card': {
       const pLabel = entryLabel(entry.playerId!, entry.playerRole!, players);
-      const t = team(entry.teamId);
       return {
         tick: entry.tick, matchMinute: min,
-        text: `Yellow card for ${t} ${pLabel}.`,
+        text: `Yellow card for ${pLabel}.`,
         type: 'setpiece',
       };
     }
 
     case 'red_card': {
       const pLabel = entryLabel(entry.playerId!, entry.playerRole!, players);
-      const t = team(entry.teamId);
       const secondYellow = Boolean(entry.data?.secondYellow);
       return {
         tick: entry.tick, matchMinute: min,
         text: secondYellow
-          ? `Second yellow for ${t} ${pLabel} and the referee sends them off.`
-          : `Red card for ${t} ${pLabel} and they are off.`,
+          ? `Second yellow for ${pLabel} — off they go!`
+          : `Straight red for ${pLabel}!`,
         type: 'setpiece',
       };
     }
 
     case 'offside': {
       const pLabel = entryLabel(entry.playerId!, entry.playerRole!, players);
-      const t = team(entry.teamId);
       return {
         tick: entry.tick, matchMinute: min,
-        text: `The referee blows for offside against ${t} ${pLabel}.`,
+        text: `Offside against ${pLabel}.`,
         type: 'setpiece',
       };
     }

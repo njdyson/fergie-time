@@ -19,7 +19,7 @@ describe('generateCommentary', () => {
 
     const line = generateCommentary(entry, players);
     expect(line).not.toBeNull();
-    expect(line?.text).toContain('referee blows for offside');
+    expect(line?.text).toContain('Offside against');
     expect(line?.type).toBe('setpiece');
   });
 
@@ -39,7 +39,7 @@ describe('generateCommentary', () => {
 
     const line = generateCommentary(entry, players);
     expect(line).not.toBeNull();
-    expect(line?.text).toContain('Free kick to Home');
+    expect(line?.text).toContain('Foul by');
     expect(line?.type).toBe('setpiece');
   });
 
