@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in-progress
-stopped_at: "Completed 03-04-PLAN.md"
-last_updated: "2026-03-06T07:44:28Z"
-last_activity: "2026-03-06 — Plan 03-04 complete: Screen router with nav tabs, season init, fullTimeOverlay Continue button."
+stopped_at: "Completed 03-05-PLAN.md"
+last_updated: "2026-03-06T07:49:54Z"
+last_activity: "2026-03-06 — Plan 03-05 complete: Season loop wired with fatigueMap, AI batch sim, and season lifecycle."
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 19
-  completed_plans: 17
-  percent: 89
+  completed_plans: 18
+  percent: 95
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-02)
 ## Current Position
 
 Phase: 3 of 4 (Management Shell) — IN PROGRESS
-Plan: 4 of 6 in current phase — COMPLETE (4/6)
-Status: Phase 3 plan 04 complete — Screen router, nav tabs, season init, fullTimeOverlay Continue button
-Last activity: 2026-03-06 — Plan 03-04 complete: Screen state machine with nav tabs routing 5 views, SeasonState at startup, and fullTimeOverlay Continue button.
+Plan: 5 of 6 in current phase — COMPLETE (5/6)
+Status: Phase 3 plan 05 complete — Season loop wired: squad->match->AI sims->fatigue->Hub
+Last activity: 2026-03-06 — Plan 03-05 complete: Full matchday flow with fatigueMap, AI batch sim, and season lifecycle.
 
-Progress: [████████░░] 89%
+Progress: [█████████░] 95%
 
 ## Performance Metrics
 
@@ -45,7 +45,7 @@ Progress: [████████░░] 89%
 |-------|-------|-------|----------|
 | 1. Engine Core | 10 | ~64 min | ~6.4 min |
 | 2. Tactical Layer | 2 | ~21 min | ~10.5 min |
-| 3. Management Shell | 4 | ~15 min | ~3.8 min |
+| 3. Management Shell | 5 | ~18 min | ~3.6 min |
 
 **Recent Trend:**
 - Last 5 plans: 01-06 (7 min), 01-07 (3 min), 01-08 (8 min), 01-09 (7 min), 01-10 (20 min incl. checkpoint)
@@ -108,6 +108,9 @@ Recent decisions affecting current work:
 - [Phase 03-04]: App starts on Hub screen — no auto-match-start on load; match requires explicit Squad selection + Kick Off
 - [Phase 03-04]: SquadScreen wrapped in inner container div — Kick Off button appended as sibling so it survives innerHTML re-renders
 - [Phase 03-04]: fullTimeOverlay Continue button replaces click-anywhere-to-close — backward compatible via optional onContinue callback
+- [Phase 03-05]: Extracted initMatchWithConfig() helper from startMatch() — reusable engine setup for both legacy and season paths
+- [Phase 03-05]: currentMatchPlayerSide module-level variable tracks home/away for post-match fatigue capture
+- [Phase 03-05]: Continue button shows "Simulating..." with 50ms setTimeout — allows UI repaint before synchronous AI batch
 
 ### Pending Todos
 
@@ -121,6 +124,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-06T07:44:28Z
-Stopped at: Completed 03-04-PLAN.md
-Resume file: .planning/phases/03-management-shell/03-04-SUMMARY.md
+Last session: 2026-03-06T07:49:54Z
+Stopped at: Completed 03-05-PLAN.md
+Resume file: .planning/phases/03-management-shell/03-05-SUMMARY.md
