@@ -16,6 +16,12 @@ import { showAttributeTooltip, scheduleHideTooltip } from './ui/tooltip.ts';
 import { show as showFullTimeOverlay } from './ui/fullTimeOverlay.ts';
 import { TacticSelector } from './ui/panels/tacticSelector.ts';
 import { listTactics, saveTactic, loadTactic, deleteTactic, buildSavedTactic, applySavedTactic } from './ui/tacticStore.ts';
+import { HubScreen } from './ui/screens/hubScreen.ts';
+import { FixturesScreen } from './ui/screens/fixturesScreen.ts';
+import { TableScreen } from './ui/screens/tableScreen.ts';
+import { SquadScreen } from './ui/screens/squadScreen.ts';
+import { createSeason, validateSquadSelection, isSeasonComplete, getChampion, startNewSeason } from './season/season.ts';
+import type { SeasonState } from './season/season.ts';
 
 // ============================================================
 // Canvas setup
@@ -70,6 +76,105 @@ function hideTacticsCanvas(): void {
   requestAnimationFrame(syncCanvasSize);
   setTimeout(syncCanvasSize, 220);
 }
+
+// ============================================================
+// Screen routing + Season state
+// ============================================================
+
+const ScreenId = { HUB: 'HUB', SQUAD: 'SQUAD', FIXTURES: 'FIXTURES', TABLE: 'TABLE', MATCH: 'MATCH' } as const;
+type ScreenId = (typeof ScreenId)[keyof typeof ScreenId];
+let currentScreen: ScreenId = ScreenId.HUB;
+
+const hubScreenEl = document.getElementById('hub-screen')!;
+const squadScreenEl = document.getElementById('squad-screen')!;
+const fixturesScreenEl = document.getElementById('fixtures-screen')!;
+const tableScreenEl = document.getElementById('table-screen')!;
+
+const hubScreenView = new HubScreen(hubScreenEl);
+// SquadScreen is created below with an inner container (see squad kickoff button section)
+const fixturesScreenView = new FixturesScreen(fixturesScreenEl);
+const tableScreenView = new TableScreen(tableScreenEl);
+
+// Season state initialization
+const initialRosters = createMatchRosters();
+const playerSquad = [...initialRosters.home, ...initialRosters.homeBench];
+let seasonState: SeasonState = createSeason('player-team', 'Fergie United', playerSquad, 'season-1');
+
+function updateCurrentScreen(): void {
+  const playerTeam = seasonState.teams.find(t => t.isPlayerTeam)!;
+  if (currentScreen === ScreenId.HUB) {
+    hubScreenView.update(seasonState, playerTeam.name);
+    // Show champion banner if season is complete
+    if (isSeasonComplete(seasonState)) {
+      const champion = getChampion(seasonState);
+      const championBanner = document.createElement('div');
+      championBanner.style.cssText = 'max-width:600px; margin:24px auto 0; background:#1e3a5f; border:2px solid #60a5fa; border-radius:8px; padding:20px; text-align:center;';
+      championBanner.innerHTML = `
+        <div style="color:#fbbf24; font-size:28px; font-weight:bold; margin-bottom:8px;">CHAMPION</div>
+        <div style="color:#e2e8f0; font-size:22px; margin-bottom:16px;">${champion.teamName}</div>
+        <button id="btn-new-season" style="padding:10px 32px; background:#60a5fa; color:#0f172a; border:none; border-radius:4px; font:bold 13px/1 monospace; cursor:pointer; text-transform:uppercase; letter-spacing:0.05em;">New Season</button>
+      `;
+      hubScreenEl.appendChild(championBanner);
+      document.getElementById('btn-new-season')?.addEventListener('click', () => {
+        seasonState = startNewSeason(seasonState, playerTeam.squad);
+        showScreen(ScreenId.HUB);
+      });
+    }
+  }
+  if (currentScreen === ScreenId.SQUAD) squadScreenViewInner.update(playerTeam.squad, seasonState.fatigueMap);
+  if (currentScreen === ScreenId.FIXTURES) fixturesScreenView.update(seasonState, seasonState.playerTeamId);
+  if (currentScreen === ScreenId.TABLE) tableScreenView.update(seasonState, seasonState.playerTeamId);
+}
+
+function showScreen(screen: ScreenId): void {
+  const map: Record<string, string> = {
+    HUB: 'hub-screen', SQUAD: 'squad-screen',
+    FIXTURES: 'fixtures-screen', TABLE: 'table-screen', MATCH: 'pitch-area',
+  };
+  for (const [key, id] of Object.entries(map)) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = key === screen ? (key === 'MATCH' || key === 'SQUAD' ? 'flex' : 'block') : 'none';
+  }
+  const navEl = document.getElementById('nav-tabs');
+  if (navEl) navEl.style.display = screen === ScreenId.MATCH ? 'none' : 'flex';
+  // Mark active nav tab
+  document.querySelectorAll('.nav-tab').forEach(btn => {
+    btn.classList.toggle('active', (btn as HTMLElement).dataset.screen === screen);
+  });
+  currentScreen = screen;
+  updateCurrentScreen();
+}
+
+// Nav tab click handlers
+document.getElementById('nav-hub')?.addEventListener('click', () => showScreen(ScreenId.HUB));
+document.getElementById('nav-squad')?.addEventListener('click', () => showScreen(ScreenId.SQUAD));
+document.getElementById('nav-fixtures')?.addEventListener('click', () => showScreen(ScreenId.FIXTURES));
+document.getElementById('nav-table')?.addEventListener('click', () => showScreen(ScreenId.TABLE));
+
+// Squad screen Kick Off button — wrap squadScreenEl contents so button survives re-render
+// The SquadScreen sets innerHTML on squadScreenEl, so we use an inner container
+const squadInnerEl = document.createElement('div');
+squadInnerEl.style.cssText = 'flex:1;';
+squadScreenEl.style.display = 'none'; // currently hidden, showScreen manages this
+squadScreenEl.style.flexDirection = 'column';
+
+const squadKickoffBtn = document.createElement('button');
+squadKickoffBtn.id = 'squad-kickoff-btn';
+squadKickoffBtn.textContent = 'Kick Off';
+squadKickoffBtn.style.cssText = 'display:block; margin:16px auto; padding:10px 32px; background:#166534; color:#bbf7d0; border:2px solid #22c55e; border-radius:6px; font:bold 16px/1 monospace; cursor:pointer; text-transform:uppercase; flex-shrink:0;';
+
+// Reassign SquadScreen to use inner container
+const squadScreenViewInner = new SquadScreen(squadInnerEl);
+squadScreenEl.appendChild(squadInnerEl);
+squadScreenEl.appendChild(squadKickoffBtn);
+
+// Validate on selection change and enable/disable kick off button
+squadScreenViewInner.onSelectionChange(selection => {
+  const result = validateSquadSelection(selection);
+  squadKickoffBtn.disabled = !result.valid;
+  squadKickoffBtn.style.opacity = result.valid ? '1' : '0.4';
+  squadKickoffBtn.style.cursor = result.valid ? 'pointer' : 'not-allowed';
+});
 
 // ============================================================
 // Button references
@@ -459,7 +564,10 @@ function startMatch(): void {
       const canvasWrapper = document.getElementById('canvas-wrapper');
       if (canvasWrapper) {
         const playerStats = engine.gameLog.getPlayerStats();
-        showFullTimeOverlay(canvasWrapper, snap.score, snap.players, playerStats);
+        showFullTimeOverlay(canvasWrapper, snap.score, snap.players, playerStats, () => {
+          // Navigate back to Hub after full time
+          showScreen(ScreenId.HUB);
+        });
       }
     }
   }, 500);
@@ -1072,10 +1180,24 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ============================================================
-// Auto-start match
+// Squad Kick Off — start match from squad screen
 // ============================================================
 
-startMatch();
+squadKickoffBtn.addEventListener('click', () => {
+  const selection = squadScreenViewInner.getSelection();
+  const valid = validateSquadSelection(selection);
+  if (!valid.valid) return;
 
-console.log('[Fergie Time] Match started — click "Kick Off" or press Space to begin.');
-console.log('  Hover scoreboard for controls. D = debug panels, 1/2/3 = speed.');
+  // Start the match and switch to match view
+  showScreen(ScreenId.MATCH);
+  startMatch();
+});
+
+// ============================================================
+// Start on Hub screen
+// ============================================================
+
+showScreen(ScreenId.HUB);
+
+console.log('[Fergie Time] Season started — navigate to Squad to select your team and Kick Off.');
+console.log('  Use nav tabs to switch between Hub, Squad, Fixtures, and Table.');
