@@ -162,6 +162,7 @@ const ALL_ACTIONS: ActionType[] = [
   AT.SHOOT,
   AT.HOLD_SHIELD,
   AT.MOVE_TO_POSITION,
+  AT.OFFER_SUPPORT,
   AT.PRESS,
   AT.MAKE_RUN,
 ];
@@ -187,6 +188,7 @@ export function auditScoreRanges(entries: readonly AgentDecisionEntry[]): ScoreA
     [AT.SHOOT]: 0,
     [AT.HOLD_SHIELD]: 0,
     [AT.MOVE_TO_POSITION]: 0,
+    [AT.OFFER_SUPPORT]: 0,
     [AT.PRESS]: 0,
     [AT.MAKE_RUN]: 0,
   };

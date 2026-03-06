@@ -63,7 +63,7 @@ function makeCtx(overrides: Partial<AgentContext> = {}): AgentContext {
 
 describe('ACTIONS', () => {
   it('should define exactly 9 actions', () => {
-    expect(ACTIONS.length).toBe(9);
+    expect(ACTIONS.length).toBe(10);
   });
 
   it('should have an entry for every ActionType', () => {
@@ -328,5 +328,36 @@ describe('MAKE_RUN action', () => {
     const action = makeRunAction();
     const product = action.considerations.reduce((acc, c) => acc * c(runCtx), 1);
     expect(product).toBeGreaterThan(0);
+  });
+});
+
+describe('OFFER_SUPPORT action', () => {
+  const supportAction = () => ACTIONS.find(a => a.id === ActionType.OFFER_SUPPORT)!;
+
+  it('scores higher for an off-ball player in the possession team than out of possession', () => {
+    const inPossCtx = makeCtx({
+      isInPossessionTeam: true,
+      ball: {
+        position: new Vec2(55, 34),
+        velocity: Vec2.zero(),
+        z: 0,
+        vz: 0,
+        carrierId: 'teammate-1',
+      },
+    });
+    const outPossCtx = makeCtx({
+      isInPossessionTeam: false,
+      ball: {
+        position: new Vec2(55, 34),
+        velocity: Vec2.zero(),
+        z: 0,
+        vz: 0,
+        carrierId: 'opponent-1',
+      },
+    });
+    const action = supportAction();
+    const inPossScore = action.considerations.reduce((acc, c) => acc * c(inPossCtx), 1);
+    const outPossScore = action.considerations.reduce((acc, c) => acc * c(outPossCtx), 1);
+    expect(inPossScore).toBeGreaterThan(outPossScore);
   });
 });

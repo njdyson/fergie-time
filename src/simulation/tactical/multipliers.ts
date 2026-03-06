@@ -70,6 +70,10 @@ export function getTacticalMultiplierBonus(
       // freedom boosts off-ball runs: roaming players seek space
       bonus += (multipliers.freedom - 0.5) * 0.15;
       break;
+    case 'OFFER_SUPPORT':
+      bonus += (multipliers.freedom - 0.5) * 0.20;
+      bonus -= risk * SCALE * 0.15;
+      break;
     case 'MOVE_TO_POSITION':
       // freedom: 0 (hold) → +0.15 bonus, 1 (roam) → -0.15 penalty
       // Low freedom = stronger positional discipline, high freedom = less pull to anchor

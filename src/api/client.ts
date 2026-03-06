@@ -34,6 +34,10 @@ export async function login(
   return res.json();
 }
 
+export async function logout(): Promise<void> {
+  await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
+}
+
 // --- Game persistence ---
 
 export async function saveGame(gameState: string, version: number): Promise<void> {

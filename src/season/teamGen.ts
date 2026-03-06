@@ -6,6 +6,7 @@ import type { PlayerState, PlayerAttributes, PersonalityVector, Role, TeamId } f
 import { Duty } from '../simulation/types.ts';
 import { Vec2 } from '../simulation/math/vec2.ts';
 import { generatePlayerName } from './nameGen.ts';
+import type { PlayerName } from './nameService.ts';
 
 export const TeamTier = {
   STRONG: 'strong',
@@ -15,9 +16,9 @@ export const TeamTier = {
 export type TeamTier = (typeof TeamTier)[keyof typeof TeamTier];
 
 export const TIER_CONFIGS = {
-  strong: { base: 0.75, spread: 0.08 },
-  mid: { base: 0.60, spread: 0.10 },
-  weak: { base: 0.45, spread: 0.10 },
+  strong: { base: 0.75, spread: 0.18 },
+  mid: { base: 0.60, spread: 0.20 },
+  weak: { base: 0.45, spread: 0.20 },
 } as const;
 
 function clamp(v: number, min: number, max: number): number {
@@ -28,18 +29,33 @@ function generateAttribute(base: number, spread: number, rng: () => number): num
   return clamp(base + (rng() - 0.5) * 2 * spread, 0, 1);
 }
 
-function generateAttributes(base: number, spread: number, rng: () => number): PlayerAttributes {
+// Role-based attribute boosts — makes players feel distinct by position
+const ROLE_BOOSTS: Partial<Record<Role, Partial<Record<keyof PlayerAttributes, number>>>> = {
+  GK:  { positioning: 0.15, aerial: 0.10 },
+  CB:  { tackling: 0.12, strength: 0.10, aerial: 0.10 },
+  LB:  { pace: 0.10, stamina: 0.08 },
+  RB:  { pace: 0.10, stamina: 0.08 },
+  CDM: { tackling: 0.10, positioning: 0.10, passing: 0.05 },
+  CM:  { passing: 0.10, stamina: 0.08, vision: 0.08 },
+  CAM: { vision: 0.12, passing: 0.10, dribbling: 0.08 },
+  LW:  { pace: 0.12, dribbling: 0.10 },
+  RW:  { pace: 0.12, dribbling: 0.10 },
+  ST:  { shooting: 0.15, pace: 0.08, dribbling: 0.05 },
+};
+
+function generateAttributes(base: number, spread: number, rng: () => number, role: Role): PlayerAttributes {
+  const boosts = ROLE_BOOSTS[role] ?? {};
   return {
-    pace: generateAttribute(base, spread, rng),
-    strength: generateAttribute(base, spread, rng),
-    stamina: generateAttribute(base, spread, rng),
-    dribbling: generateAttribute(base, spread, rng),
-    passing: generateAttribute(base, spread, rng),
-    shooting: generateAttribute(base, spread, rng),
-    tackling: generateAttribute(base, spread, rng),
-    aerial: generateAttribute(base, spread, rng),
-    positioning: generateAttribute(base, spread, rng),
-    vision: generateAttribute(base, spread, rng),
+    pace: generateAttribute(base + (boosts.pace ?? 0), spread, rng),
+    strength: generateAttribute(base + (boosts.strength ?? 0), spread, rng),
+    stamina: generateAttribute(base + (boosts.stamina ?? 0), spread, rng),
+    dribbling: generateAttribute(base + (boosts.dribbling ?? 0), spread, rng),
+    passing: generateAttribute(base + (boosts.passing ?? 0), spread, rng),
+    shooting: generateAttribute(base + (boosts.shooting ?? 0), spread, rng),
+    tackling: generateAttribute(base + (boosts.tackling ?? 0), spread, rng),
+    aerial: generateAttribute(base + (boosts.aerial ?? 0), spread, rng),
+    positioning: generateAttribute(base + (boosts.positioning ?? 0), spread, rng),
+    vision: generateAttribute(base + (boosts.vision ?? 0), spread, rng),
   };
 }
 
@@ -72,31 +88,43 @@ export const ROLES_25: Role[] = [
 
 /**
  * Create an AI team squad with 25 players.
- * @param names - Optional array of player names to use instead of generated ones
+ * @param names - Optional array of player names (with nationality) to use instead of generated ones
  */
 export function createAITeam(
   tier: TeamTier,
   teamId: string,
   _teamName: string,
   rng: () => number,
-  names?: string[],
+  names?: PlayerName[] | string[],
 ): PlayerState[] {
   const config = TIER_CONFIGS[tier];
+  const defaultNats = ['GB', 'ES', 'FR', 'DE', 'BR'];
 
-  return ROLES_25.map((role, index): PlayerState => ({
-    id: `${teamId}-player-${index}`,
-    teamId: teamId as TeamId,
-    position: Vec2.zero(),
-    velocity: Vec2.zero(),
-    attributes: generateAttributes(config.base, config.spread, rng),
-    personality: generatePersonality(rng),
-    fatigue: 0,
-    role,
-    duty: Duty.SUPPORT,
-    formationAnchor: Vec2.zero(),
-    name: names?.[index] ?? generatePlayerName(rng),
-    age: Math.floor(rng() * 18) + 17,
-    height: Math.floor(rng() * 36) + 165,
-    shirtNumber: index + 1,
-  }));
+  return ROLES_25.map((role, index): PlayerState => {
+    const entry = names?.[index];
+    const playerName = entry == null
+      ? generatePlayerName(rng)
+      : typeof entry === 'string' ? entry : entry.name;
+    const nationality = entry != null && typeof entry !== 'string'
+      ? entry.nationality
+      : defaultNats[Math.floor(rng() * defaultNats.length)]!;
+
+    return {
+      id: `${teamId}-player-${index}`,
+      teamId: teamId as TeamId,
+      position: Vec2.zero(),
+      velocity: Vec2.zero(),
+      attributes: generateAttributes(config.base, config.spread, rng, role),
+      personality: generatePersonality(rng),
+      fatigue: 0,
+      role,
+      duty: Duty.SUPPORT,
+      formationAnchor: Vec2.zero(),
+      name: playerName,
+      age: Math.floor(rng() * 18) + 17,
+      height: Math.floor(rng() * 36) + 165,
+      shirtNumber: index + 1,
+      nationality,
+    };
+  });
 }

@@ -304,8 +304,8 @@ export function computeFormationAnchors(
 
 /**
  * Compute the offside line x-coordinate for a defending team.
- * Returns the x of the second-deepest outfield defender (excluding GK),
- * which defines where attackers become offside.
+ * Returns the x of the second-last opponent, which defines where attackers
+ * become offside. The goalkeeper counts as an opponent for this law check.
  *
  * "Deep" means closest to own goal:
  *   - Home: own goal at x=0, so smaller x = deeper → offside line = 2nd smallest x
@@ -320,12 +320,11 @@ export function computeFormationAnchors(
  * @returns x-coordinate of the offside line
  */
 export function computeDefensiveLine(
-  players: readonly { readonly teamId: TeamId; readonly role: string; readonly position: { readonly x: number } }[],
+  players: readonly { readonly teamId: TeamId; readonly role: string; readonly position: { readonly x: number }; readonly sentOff?: boolean }[],
   defendingTeamId: TeamId,
   ballX: number,
 ): number {
-  // Collect defending team's outfield players
-  const defenders = players.filter(p => p.teamId === defendingTeamId && p.role !== 'GK');
+  const defenders = players.filter(p => p.teamId === defendingTeamId && !p.sentOff);
   if (defenders.length < 2) {
     // Fallback: halfway line
     return PITCH_WIDTH / 2;

@@ -28,7 +28,7 @@ const NAT_WEIGHTS = [
 export async function fetchNames(count: number, natCode: string): Promise<NameEntry[]> {
   if (count <= 0) return [];
 
-  const url = `https://randomuser.me/api/?results=${count}&nat=${natCode.toLowerCase()}&inc=name,nat`;
+  const url = `https://randomuser.me/api/?results=${count}&nat=${natCode.toLowerCase()}&gender=male&inc=name,nat`;
   const response = await fetch(url);
 
   if (!response.ok) {
@@ -52,7 +52,12 @@ export async function fetchNames(count: number, natCode: string): Promise<NameEn
  * @param rng - Random number generator for fallback
  * @returns Array of "First Last" name strings
  */
-export async function getNames(count: number, rng: () => number): Promise<string[]> {
+export interface PlayerName {
+  name: string;
+  nationality: string;
+}
+
+export async function getNames(count: number, rng: () => number): Promise<PlayerName[]> {
   try {
     // Calculate per-nationality counts
     const counts: Array<{ code: string; count: number }> = [];
@@ -75,17 +80,21 @@ export async function getNames(count: number, rng: () => number): Promise<string
       counts.map(({ code, count: n }) => fetchNames(n, code)),
     );
 
-    // Flatten and map to "First Last" strings
-    const names: string[] = [];
+    // Flatten to PlayerName objects
+    const names: PlayerName[] = [];
     for (const batch of batches) {
       for (const entry of batch) {
-        names.push(`${entry.first} ${entry.last}`);
+        names.push({ name: `${entry.first} ${entry.last}`, nationality: entry.nationality });
       }
     }
 
     return names;
   } catch {
-    // Fallback to procedural generation
-    return Array.from({ length: count }, () => generatePlayerName(rng));
+    // Fallback to procedural generation — assign random nationalities
+    const natCodes = NAT_WEIGHTS.map(w => w.code);
+    return Array.from({ length: count }, () => ({
+      name: generatePlayerName(rng),
+      nationality: natCodes[Math.floor(rng() * natCodes.length)]!,
+    }));
   }
 }

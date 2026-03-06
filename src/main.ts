@@ -26,7 +26,7 @@ import { SquadScreen } from './ui/screens/squadScreen.ts';
 import { LoginScreen } from './ui/screens/loginScreen.ts';
 import { createSeason, validateSquadSelection, isSeasonComplete, getChampion, startNewSeason, recordPlayerResult, simOneAIFixture, finalizeMatchday } from './season/season.ts';
 import type { SeasonState } from './season/season.ts';
-import { saveGame, loadGame } from './api/client.ts';
+import { saveGame, loadGame, logout } from './api/client.ts';
 import { serializeState, deserializeState } from '../server/serialize.ts';
 
 // ============================================================
@@ -93,7 +93,7 @@ function hideTacticsCanvas(): void {
 // Screen routing + Season state
 // ============================================================
 
-const ScreenId = { LOGIN: 'LOGIN', HUB: 'HUB', SQUAD: 'SQUAD', FIXTURES: 'FIXTURES', TABLE: 'TABLE', MATCH: 'MATCH' } as const;
+const ScreenId = { LOGIN: 'LOGIN', HUB: 'HUB', SQUAD: 'SQUAD', FIXTURES: 'FIXTURES', TABLE: 'TABLE', TACTICS: 'TACTICS', MATCH: 'MATCH' } as const;
 type ScreenId = (typeof ScreenId)[keyof typeof ScreenId];
 let currentScreen: ScreenId = ScreenId.HUB;
 
@@ -137,19 +137,34 @@ function updateCurrentScreen(): void {
       });
     }
   }
-  if (currentScreen === ScreenId.SQUAD) squadScreenViewInner.update(playerTeam.squad, seasonState.fatigueMap);
+  if (currentScreen === ScreenId.SQUAD) {
+    squadScreenViewInner.setFormationRoles(tacticsBoard.getPhaseRoles('inPossession'), tacticsBoard.getPhaseRoles('outOfPossession'));
+    squadScreenViewInner.update(playerTeam.squad, seasonState.fatigueMap);
+  }
   if (currentScreen === ScreenId.FIXTURES) fixturesScreenView.update(seasonState, seasonState.playerTeamId);
   if (currentScreen === ScreenId.TABLE) tableScreenView.update(seasonState, seasonState.playerTeamId);
 }
 
+const tacticsScreenEl = document.getElementById('tactics-screen')!;
+const tacticsCenterEl = document.getElementById('tactics-center')!;
+const tacticsLeftContentEl = document.getElementById('tactics-left-content')!;
+const tacticsRightEl = document.getElementById('tactics-right')!;
+const canvasWrapperEl = document.getElementById('canvas-wrapper')!;
+const pitchCenterEl = document.getElementById('pitch-center')!;
+// Original parent for canvas wrapper (pitch-center inside pitch-area)
+const canvasWrapperParent = canvasWrapperEl.parentElement!;
+// Original parent for right panel (pitch-area)
+const rightPanelParent = document.getElementById('pitch-area')!;
+
 function showScreen(screen: ScreenId): void {
   const map: Record<string, string> = {
     LOGIN: 'login-screen', HUB: 'hub-screen', SQUAD: 'squad-screen',
-    FIXTURES: 'fixtures-screen', TABLE: 'table-screen', MATCH: 'pitch-area',
+    FIXTURES: 'fixtures-screen', TABLE: 'table-screen', TACTICS: 'tactics-screen', MATCH: 'pitch-area',
   };
+  const flexScreens = new Set(['MATCH', 'SQUAD', 'LOGIN', 'TACTICS']);
   for (const [key, id] of Object.entries(map)) {
     const el = document.getElementById(id);
-    if (el) el.style.display = key === screen ? (key === 'MATCH' || key === 'SQUAD' || key === 'LOGIN' ? 'flex' : 'block') : 'none';
+    if (el) el.style.display = key === screen ? (flexScreens.has(key) ? 'flex' : 'block') : 'none';
   }
   const navEl = document.getElementById('nav-tabs');
   if (navEl) navEl.style.display = (screen === ScreenId.MATCH || screen === ScreenId.LOGIN) ? 'none' : 'flex';
@@ -157,6 +172,42 @@ function showScreen(screen: ScreenId): void {
   document.querySelectorAll('.nav-tab').forEach(btn => {
     btn.classList.toggle('active', (btn as HTMLElement).dataset.screen === screen);
   });
+
+  // Handle tactics screen — reparent canvas wrapper + sidebar elements
+  if (screen === ScreenId.TACTICS) {
+    tacticsCenterEl.appendChild(canvasWrapperEl);
+    // Move the entire tactics overlay left section into the tactics screen sidebar
+    tacticsLeftContentEl.appendChild(leftPanelEl);
+    // Move right panel (player instructions) into tactics screen
+    tacticsRightEl.appendChild(rightPanelEl);
+    showTacticsCanvas();
+    // Open overlay with player team squad (first 11 as 'home' so overlay can display them)
+    const ptSquad = seasonState?.teams.find(t => t.isPlayerTeam)?.squad;
+    const tacticsPlayers = ptSquad
+      ? ptSquad.slice(0, 11).map(p => ({ ...p, teamId: 'home' as const }))
+      : [];
+    tacticsOverlay.open(tacticsPlayers, 'inPossession');
+    tacticsBoard.setPlayerNames(tacticsPlayers.map(p => p.name ?? ''));
+    tacticSelector.show();
+    tacticsBoard.render();
+    requestAnimationFrame(() => syncCanvasSize());
+    setTimeout(syncCanvasSize, 220);
+  } else if (currentScreen === ScreenId.TACTICS) {
+    // Moving away from tactics — return everything to pitch-area
+    canvasWrapperParent.insertBefore(canvasWrapperEl, canvasWrapperParent.firstChild);
+    // Return tactics overlay section to the match left panel (after live-stats)
+    const matchLeftPanel = document.getElementById('left-panel')!;
+    const liveStatsSection = matchLeftPanel.querySelector('#live-stats');
+    if (liveStatsSection) {
+      liveStatsSection.after(leftPanelEl);
+    }
+    // Return right panel to pitch-area
+    rightPanelParent.appendChild(rightPanelEl);
+    tacticsOverlay.close();
+    tacticSelector.hide();
+    hideTacticsCanvas();
+  }
+
   currentScreen = screen;
   if (screen === ScreenId.MATCH) {
     // Canvas was zero-sized while pitch-area was hidden; resize now that it's visible
@@ -170,31 +221,17 @@ document.getElementById('nav-hub')?.addEventListener('click', () => showScreen(S
 document.getElementById('nav-squad')?.addEventListener('click', () => showScreen(ScreenId.SQUAD));
 document.getElementById('nav-fixtures')?.addEventListener('click', () => showScreen(ScreenId.FIXTURES));
 document.getElementById('nav-table')?.addEventListener('click', () => showScreen(ScreenId.TABLE));
+document.getElementById('nav-tactics')?.addEventListener('click', () => showScreen(ScreenId.TACTICS));
+document.getElementById('nav-logout')?.addEventListener('click', async () => {
+  await logout();
+  window.location.reload();
+});
 
-// Squad screen Kick Off button — wrap squadScreenEl contents so button survives re-render
-// The SquadScreen sets innerHTML on squadScreenEl, so we use an inner container
-const squadInnerEl = document.createElement('div');
-squadInnerEl.style.cssText = 'flex:1;';
-squadScreenEl.style.display = 'none'; // currently hidden, showScreen manages this
+// Squad screen — no kickoff button here (moved to Hub)
+squadScreenEl.style.display = 'none';
 squadScreenEl.style.flexDirection = 'column';
 
-const squadKickoffBtn = document.createElement('button');
-squadKickoffBtn.id = 'squad-kickoff-btn';
-squadKickoffBtn.textContent = 'Kick Off';
-squadKickoffBtn.style.cssText = 'display:block; margin:16px auto; padding:10px 32px; background:#166534; color:#bbf7d0; border:2px solid #22c55e; border-radius:6px; font:bold 16px/1 \'Segoe UI\',system-ui,sans-serif; cursor:pointer; text-transform:uppercase; flex-shrink:0;';
-
-// Reassign SquadScreen to use inner container
-const squadScreenViewInner = new SquadScreen(squadInnerEl);
-squadScreenEl.appendChild(squadInnerEl);
-squadScreenEl.appendChild(squadKickoffBtn);
-
-// Validate on selection change and enable/disable kick off button
-squadScreenViewInner.onSelectionChange(selection => {
-  const result = validateSquadSelection(selection);
-  squadKickoffBtn.disabled = !result.valid;
-  squadKickoffBtn.style.opacity = result.valid ? '1' : '0.4';
-  squadKickoffBtn.style.cursor = result.valid ? 'pointer' : 'not-allowed';
-});
+const squadScreenViewInner = new SquadScreen(squadScreenEl);
 
 // ============================================================
 // Button references
@@ -537,6 +574,8 @@ function initMatchWithConfig(config: {
 
   // Reset substitution state for new match
   tacticsBoard.resetSubstitutions();
+  // Set player names on tactics board (home team starters)
+  tacticsBoard.setPlayerNames(config.homeRoster.map(p => p.name ?? ''));
   hideBenchPanel();
 
   // Get tactical configs from tactics board (in-possession + out-of-possession)
@@ -1262,6 +1301,10 @@ window.addEventListener('resize', () => {
 // ============================================================
 
 document.addEventListener('keydown', (e) => {
+  // Don't intercept keys when typing in an input field
+  const tag = (e.target as HTMLElement)?.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+
   if (e.key === ' ') {
     if (getIsPaused() && btnKickoff?.style.display !== 'none') {
       kickoff();
@@ -1389,10 +1432,10 @@ function showVidiprinter(aiFixtures: import('./season/fixtures.ts').Fixture[]): 
 }
 
 // ============================================================
-// Squad Kick Off — start match from squad screen (season path)
+// Hub Kick Off — start match from hub screen (season path)
 // ============================================================
 
-squadKickoffBtn.addEventListener('click', () => {
+function startMatchFromSquad(): void {
   const selection = squadScreenViewInner.getSelection();
   const valid = validateSquadSelection(selection);
   if (!valid.valid) return;
@@ -1440,6 +1483,14 @@ squadKickoffBtn.addEventListener('click', () => {
 
   showScreen(ScreenId.MATCH);
   initMatchWithConfig({ homeRoster, homeBench, awayRoster, awayBench, seed: matchSeed });
+}
+
+hubScreenView.onKickoff(() => {
+  // Ensure squad screen has latest data for default selection
+  const playerTeam = seasonState.teams.find(t => t.isPlayerTeam)!;
+  squadScreenViewInner.setFormationRoles(tacticsBoard.getPhaseRoles('inPossession'), tacticsBoard.getPhaseRoles('outOfPossession'));
+  squadScreenViewInner.update(playerTeam.squad, seasonState.fatigueMap);
+  startMatchFromSquad();
 });
 
 // ============================================================

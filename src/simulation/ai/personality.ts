@@ -59,6 +59,12 @@ export const PERSONALITY_WEIGHTS: PersonalityWeightMatrix = {
     work_rate: 0.15,
     anticipation: 0.09,
   },
+  [ActionType.OFFER_SUPPORT]: {
+    work_rate: 0.12,
+    anticipation: 0.09,
+    creativity: 0.05,
+    composure: 0.04,
+  },
   [ActionType.PRESS]: {
     aggression: 0.15,
     work_rate: 0.09,

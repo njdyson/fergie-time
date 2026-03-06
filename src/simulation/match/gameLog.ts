@@ -24,7 +24,7 @@ export interface PlayerLogStats {
 export interface GameLogEntry {
   readonly tick: number;
   readonly matchMinute: number;
-  readonly type: 'pass' | 'shot' | 'goal' | 'tackle' | 'possession_change' | 'kickoff' | 'halftime' | 'fulltime' | 'throw_in' | 'corner' | 'goal_kick';
+  readonly type: 'pass' | 'shot' | 'goal' | 'tackle' | 'foul' | 'yellow_card' | 'red_card' | 'offside' | 'possession_change' | 'kickoff' | 'halftime' | 'fulltime' | 'throw_in' | 'corner' | 'goal_kick' | 'free_kick';
   readonly teamId: TeamId;
   readonly playerId?: string;
   readonly playerRole?: string;
@@ -164,6 +164,73 @@ export class GameEventLog {
       tick,
       matchMinute: this.toMinute(tick),
       type: 'goal_kick',
+      teamId,
+      playerId,
+      playerRole,
+      position: { x, y },
+    });
+  }
+
+  recordFreeKick(tick: number, teamId: TeamId, playerId: string, playerRole: string,
+    x: number, y: number): void {
+    this.entries.push({
+      tick,
+      matchMinute: this.toMinute(tick),
+      type: 'free_kick',
+      teamId,
+      playerId,
+      playerRole,
+      position: { x, y },
+    });
+  }
+
+  recordFoul(tick: number, awardedTeamId: TeamId, foulerId: string, foulerRole: string,
+    victimPlayerId: string, x: number, y: number): void {
+    this.entries.push({
+      tick,
+      matchMinute: this.toMinute(tick),
+      type: 'foul',
+      teamId: awardedTeamId,
+      playerId: foulerId,
+      playerRole: foulerRole,
+      position: { x, y },
+      data: { victimPlayerId },
+    });
+  }
+
+  recordYellowCard(tick: number, teamId: TeamId, playerId: string, playerRole: string,
+    x: number, y: number): void {
+    this.entries.push({
+      tick,
+      matchMinute: this.toMinute(tick),
+      type: 'yellow_card',
+      teamId,
+      playerId,
+      playerRole,
+      position: { x, y },
+    });
+  }
+
+  recordRedCard(tick: number, teamId: TeamId, playerId: string, playerRole: string,
+    x: number, y: number, secondYellow: boolean): void {
+    this.entries.push({
+      tick,
+      matchMinute: this.toMinute(tick),
+      type: 'red_card',
+      teamId,
+      playerId,
+      playerRole,
+      position: { x, y },
+      data: { secondYellow },
+    });
+  }
+
+  recordOffside(tick: number, teamId: TeamId, playerId: string, playerRole: string,
+    x: number, y: number): void {
+    this.entries.push({
+      tick,
+      matchMinute: this.toMinute(tick),
+      type: 'offside',
       teamId,
       playerId,
       playerRole,

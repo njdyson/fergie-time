@@ -4,6 +4,7 @@
  */
 
 import type { SeasonState } from '../../season/season.ts';
+import { isSeasonComplete } from '../../season/season.ts';
 import { sortTable } from '../../season/leagueTable.ts';
 
 // Color palette (dark theme)
@@ -22,6 +23,7 @@ function ordinalSuffix(n: number): string {
 
 export class HubScreen {
   private container: HTMLElement;
+  private kickoffCallbacks: Array<() => void> = [];
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -30,6 +32,10 @@ export class HubScreen {
     this.container.style.fontFamily = "'Segoe UI', system-ui, sans-serif";
     this.container.style.padding = '24px';
     this.container.style.boxSizing = 'border-box';
+  }
+
+  onKickoff(cb: () => void): void {
+    this.kickoffCallbacks.push(cb);
   }
 
   update(state: SeasonState, playerTeamName: string): void {
@@ -90,9 +96,15 @@ export class HubScreen {
             <div style="color: ${TEXT}; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">Last Result</div>
             <div style="color: ${TEXT_BRIGHT}; font-size: 20px;">${lastText}</div>
           </div>
+
+          ${!isSeasonComplete(state) ? `<button id="hub-kickoff-btn" style="display:block; width:100%; margin-top:8px; padding:14px 32px; background:#166534; color:#bbf7d0; border:2px solid #22c55e; border-radius:8px; font:bold 16px/1 'Segoe UI',system-ui,sans-serif; cursor:pointer; text-transform:uppercase; letter-spacing:0.05em;">Kick Off</button>` : ''}
         </div>
       </div>
     `;
+
+    this.container.querySelector('#hub-kickoff-btn')?.addEventListener('click', () => {
+      for (const cb of this.kickoffCallbacks) cb();
+    });
   }
 
   getElement(): HTMLElement {

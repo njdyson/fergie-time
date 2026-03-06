@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeFormationAnchors, ROLES_442, FORMATION_TEMPLATES, autoAssignRole } from './formation.ts';
+import { computeDefensiveLine, computeFormationAnchors, ROLES_442, FORMATION_TEMPLATES, autoAssignRole } from './formation.ts';
 import { Vec2 } from '../math/vec2.ts';
 
 // Pitch constants
@@ -455,5 +455,45 @@ describe('autoAssignRole', () => {
     // indices 5-8: midfield positions
     expect(roles[9]).toBe('ST');
     expect(roles[10]).toBe('ST');
+  });
+});
+
+describe('computeDefensiveLine', () => {
+  it('ignores sent-off defenders when finding the second-last player', () => {
+    const line = computeDefensiveLine([
+      { teamId: 'away' as const, role: 'GK', position: { x: 102 } },
+      { teamId: 'away' as const, role: 'CB', position: { x: 97 } },
+      { teamId: 'away' as const, role: 'CB', position: { x: 95 }, sentOff: true },
+      { teamId: 'away' as const, role: 'RB', position: { x: 90 } },
+      { teamId: 'home' as const, role: 'ST', position: { x: 88 } },
+    ], 'away', 84);
+
+    expect(line).toBe(97);
+  });
+});
+
+describe('computeDefensiveLine', () => {
+  it('counts the goalkeeper as one of the two deepest opponents', () => {
+    const players = [
+      { teamId: 'home' as const, role: 'GK', position: { x: 5 } },
+      { teamId: 'home' as const, role: 'CB', position: { x: 12 } },
+      { teamId: 'home' as const, role: 'CB', position: { x: 16 } },
+      { teamId: 'home' as const, role: 'LB', position: { x: 18 } },
+      { teamId: 'away' as const, role: 'ST', position: { x: 70 } },
+    ];
+
+    expect(computeDefensiveLine(players, 'home', 40)).toBe(12);
+  });
+
+  it('still applies the ball as the limiting offside line', () => {
+    const players = [
+      { teamId: 'away' as const, role: 'GK', position: { x: 100 } },
+      { teamId: 'away' as const, role: 'CB', position: { x: 92 } },
+      { teamId: 'away' as const, role: 'CB', position: { x: 88 } },
+      { teamId: 'home' as const, role: 'ST', position: { x: 60 } },
+    ];
+
+    expect(computeDefensiveLine(players, 'away', 85)).toBe(92);
+    expect(computeDefensiveLine(players, 'away', 95)).toBe(95);
   });
 });

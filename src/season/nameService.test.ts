@@ -95,7 +95,8 @@ describe('getNames', () => {
 
     const rng = () => 0.5;
     const names = await getNames(1, rng);
-    expect(names[0]).toBe('Harry Kane');
+    expect(names[0]!.name).toBe('Harry Kane');
+    expect(names[0]!.nationality).toBe('GB');
   });
 
   it('falls back to generatePlayerName when fetch throws', async () => {
@@ -109,9 +110,10 @@ describe('getNames', () => {
 
     const names = await getNames(3, rng);
     expect(names).toHaveLength(3);
-    // Each name should be a "First Last" string from the fallback generator
-    for (const name of names) {
-      expect(name).toMatch(/\S+ \S+/);
+    // Each entry should have a name and nationality from the fallback generator
+    for (const entry of names) {
+      expect(entry.name).toMatch(/\S+ \S+/);
+      expect(entry.nationality).toBeTruthy();
     }
   });
 
@@ -126,8 +128,8 @@ describe('getNames', () => {
 
     const names = await getNames(5, rng);
     expect(names).toHaveLength(5);
-    for (const name of names) {
-      expect(name).toMatch(/\S+ \S+/);
+    for (const entry of names) {
+      expect(entry.name).toMatch(/\S+ \S+/);
     }
   });
 

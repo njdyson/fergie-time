@@ -196,6 +196,7 @@ export interface PlayerState {
   readonly age?: number;            // player age (17..34)
   readonly height?: number;         // player height in cm (165..200)
   readonly shirtNumber?: number;    // squad shirt number (1..25)
+  readonly nationality?: string;   // ISO country code (e.g. 'GB', 'ES')
   readonly yellowCards?: number;    // cautions shown in this match
   readonly sentOff?: boolean;       // dismissed from the match
 }

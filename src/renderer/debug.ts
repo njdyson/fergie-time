@@ -1,345 +1,266 @@
-import type { SimSnapshot, PlayerState, ActionType } from '../simulation/types.ts';
+import type { SimSnapshot, PlayerState, ActionType, TeamId, ActionIntent } from '../simulation/types.ts';
 import type { DecisionLog } from '../simulation/ai/decisionLog.ts';
+import { Vec2 } from '../simulation/math/vec2.ts';
+import { TUNING } from '../simulation/tuning.ts';
 
-// ============================================================
-// Debug overlay constants
-// ============================================================
-
-const PANEL_CONTENT_WIDTH = 248;
-const PANEL_X = 4;
-const PANEL_PADDING = 5;
-const PANEL_LINE_HEIGHT = 13;
+const PANEL_WIDTH = 300;
+const PANEL_INSET = 6;
 const PANEL_GAP = 4;
-const PANEL_BG = 'rgba(0, 0, 0, 0.75)';
-const TEXT_COLOR = '#ffffff';
-const FONT = '11px monospace';
-const FONT_SMALL = '10px monospace';
+const PLAYER_ROW_HEIGHT = 74;
+const HEADER_HEIGHT = 16;
+const ACTION_ROW_HEIGHT = 10;
+const ACTION_ROWS = 5;
+const PANEL_BG = 'rgba(5, 10, 20, 0.9)';
+const PANEL_BORDER = 'rgba(148, 163, 184, 0.18)';
+const POSSESSION_BORDER = '#facc15';
+const SELECTED_BORDER = '#22d3ee';
+const MUTED_TEXT = '#93a4bb';
+const CURRENT_TEXT = '#f8fafc';
+const FONT_HEADER = 'bold 11px monospace';
+const FONT_ROW = '10px monospace';
+const TEAM_ACCENT: Record<TeamId, string> = {
+  home: '#3b82f6',
+  away: '#ef4444',
+};
+const VISION_FILL: Record<TeamId, string> = {
+  home: 'rgba(96, 165, 250, 0.14)',
+  away: 'rgba(239, 68, 68, 0.08)',
+};
+const VISION_STROKE: Record<TeamId, string> = {
+  home: 'rgba(191, 219, 254, 0.42)',
+  away: 'rgba(248, 113, 113, 0.2)',
+};
+const ACTION_BAR_WIDTH = 58;
+const DEBUG_VISION_RADIUS_SCALE = 0.58;
+const DEBUG_VISION_ARC_SCALE = 0.72;
+const ACTION_ORDER: readonly ActionType[] = [
+  'SHOOT',
+  'PASS_THROUGH',
+  'PASS_FORWARD',
+  'PASS_SAFE',
+  'DRIBBLE',
+  'HOLD_SHIELD',
+  'OFFER_SUPPORT',
+  'MAKE_RUN',
+  'PRESS',
+  'MOVE_TO_POSITION',
+] as const;
 
-// Action bar
-const BAR_HEIGHT = 8;
-const BAR_MAX_WIDTH = 52;
-const BAR_SELECTED_BORDER = '#ffffff';
-
-// Averaging window: 75 ticks = 2.5 seconds of sim time
-const AVG_WINDOW = 75;
-
-// Highlight on pitch
-const HIGHLIGHT_RADIUS = 14;
-const HIGHLIGHT_LINE_WIDTH = 2.5;
-
-// Badge colors for each panel slot (matched on pitch + sidebar)
-const BADGE_COLORS = ['#ffff00', '#00ffaa', '#ff8844', '#55bbff', '#ff66cc', '#88ff44'];
-
-// Home/away team strip colors
-const HOME_STRIP = '#3366cc';
-const AWAY_STRIP = '#cc3333';
-
-// Coordinate mapper type used by the renderer
 type PitchToCanvas = (v: { x: number; y: number }) => { x: number; y: number };
 
-// Averaged action data for display
 interface ActionAverage {
-  action: string;
+  action: ActionType;
   avgScore: number;
   selectionPct: number;
-  isCurrent: boolean;
 }
 
-// Tracked player info (shared between drawPanels and drawHighlights)
-interface TrackedPlayer {
-  player: PlayerState;
-  dist: number;
-  index: number;
-}
-
-// ============================================================
-// DebugOverlay
-// ============================================================
-
-/**
- * Debug overlay that renders cascading panels in a fixed-position
- * sidebar (separate canvas) showing the nearest N players to the ball.
- *
- * Highlight rings with numbered badges are drawn on the main pitch
- * canvas to identify which players the panels correspond to.
- *
- * The sidebar slides in from the left, matching the tuning panel style.
- */
 export class DebugOverlay {
   private readonly debugCanvas: HTMLCanvasElement;
   private readonly decisionLog: DecisionLog;
+  private readonly teamId: TeamId;
+  private lastSnapshot: SimSnapshot | null = null;
+  private selectedPlayerId: string | null = null;
 
-  /** Players being tracked this frame — shared between drawPanels and drawHighlights */
-  private tracked: TrackedPlayer[] = [];
-
-  constructor(debugCanvas: HTMLCanvasElement, decisionLog: DecisionLog) {
+  constructor(debugCanvas: HTMLCanvasElement, decisionLog: DecisionLog, teamId: TeamId) {
     this.debugCanvas = debugCanvas;
     this.decisionLog = decisionLog;
-
-    // Size the debug canvas to the sidebar
+    this.teamId = teamId;
     this.resizeDebugCanvas();
     window.addEventListener('resize', () => this.resizeDebugCanvas());
   }
 
   private resizeDebugCanvas(): void {
-    this.debugCanvas.width = 256;
+    this.debugCanvas.width = PANEL_WIDTH;
     this.debugCanvas.height = window.innerHeight;
   }
 
-  /**
-   * Draw the debug panels on the sidebar canvas.
-   * Call this every frame when debug mode is active.
-   */
   drawPanels(snapshot: SimSnapshot): void {
     const ctx = this.debugCanvas.getContext('2d');
     if (!ctx) return;
+    this.lastSnapshot = snapshot;
 
-    // Clear the sidebar canvas
     ctx.clearRect(0, 0, this.debugCanvas.width, this.debugCanvas.height);
 
-    const ballPos = snapshot.ball.position;
+    const players = snapshot.players
+      .filter((player) => player.teamId === this.teamId)
+      .sort((a, b) => shirtNumber(a.id) - shirtNumber(b.id));
 
-    // Find nearest players to ball (both teams)
-    const withDist = snapshot.players.map(p => ({
-      player: p,
-      dist: Math.sqrt(
-        (p.position.x - ballPos.x) ** 2 +
-        (p.position.y - ballPos.y) ** 2,
-      ),
-    }));
-    withDist.sort((a, b) => a.dist - b.dist);
-
-    // How many panels fit vertically
-    const panelHeight = this.computePanelHeight();
-    const maxPanels = Math.max(1, Math.floor((this.debugCanvas.height - 8) / (panelHeight + PANEL_GAP)));
-    const count = Math.min(maxPanels, BADGE_COLORS.length, withDist.length);
-
-    // Store tracked players for drawHighlights
-    this.tracked = [];
-    for (let i = 0; i < count; i++) {
-      this.tracked.push({ ...withDist[i]!, index: i });
-    }
-
-    // Draw panels stacked vertically
-    let panelY = 4;
-    for (let i = 0; i < count; i++) {
-      const { player, dist } = withDist[i]!;
-      const averaged = this.computeAveraged(player.id);
-      const latest = this.decisionLog.getLatest(player.id);
-      this.drawPanel(ctx, panelY, i, player, dist, averaged, latest?.selected);
-      panelY += panelHeight + PANEL_GAP;
+    let y = PANEL_INSET;
+    for (const player of players) {
+      this.drawPlayerPanel(ctx, snapshot, player, y);
+      y += PLAYER_ROW_HEIGHT + PANEL_GAP;
     }
   }
 
-  /**
-   * Draw highlight rings and numbered badges on the main pitch canvas.
-   * Call this AFTER the main renderer draw() call.
-   */
-  drawHighlights(
+  drawPossessionHighlight(
+    snapshot: SimSnapshot,
     ctx: CanvasRenderingContext2D,
     pitchToCanvas: PitchToCanvas,
   ): void {
-    for (const { player, index } of this.tracked) {
-      const canvasPos = pitchToCanvas(player.position);
-      this.drawHighlight(ctx, canvasPos, index);
+    if (!snapshot.ball.carrierId) return;
+    const carrier = snapshot.players.find((player) => player.id === snapshot.ball.carrierId);
+    if (!carrier) return;
+
+    const pos = pitchToCanvas(carrier.position);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, 14, 0, Math.PI * 2);
+    ctx.strokeStyle = POSSESSION_BORDER;
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, 18, 0, Math.PI * 2);
+    ctx.strokeStyle = carrier.teamId === 'home' ? TEAM_ACCENT.home : TEAM_ACCENT.away;
+    ctx.lineWidth = 1.25;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  drawPitchVisuals(
+    snapshot: SimSnapshot,
+    ctx: CanvasRenderingContext2D,
+    pitchToCanvas: PitchToCanvas,
+    intents: readonly ActionIntent[],
+  ): void {
+    const teamPlayers = snapshot.players.filter((player) => player.teamId === this.teamId);
+    const intentsByAgent = new Map(intents.map((intent) => [intent.agentId, intent]));
+    const selectedPlayer = this.selectedPlayerId
+      ? teamPlayers.find((player) => player.id === this.selectedPlayerId)
+      : null;
+
+    ctx.save();
+    if (selectedPlayer) {
+      const intent = intentsByAgent.get(selectedPlayer.id);
+      this.drawVisionCone(ctx, pitchToCanvas, snapshot, selectedPlayer, intent);
     }
+    for (const player of teamPlayers) {
+      const intent = intentsByAgent.get(player.id);
+      if (!intent) continue;
+      this.drawIntentLine(ctx, pitchToCanvas, snapshot, player, intent);
+    }
+    ctx.restore();
   }
 
-  // ============================================================
-  // Panel height computation
-  // ============================================================
+  private drawPlayerPanel(
+    ctx: CanvasRenderingContext2D,
+    snapshot: SimSnapshot,
+    player: PlayerState,
+    y: number,
+  ): void {
+    const x = PANEL_INSET;
+    const width = this.debugCanvas.width - PANEL_INSET * 2;
+    const isCarrier = snapshot.ball.carrierId === player.id;
+    const isSelected = this.selectedPlayerId === player.id;
+    const latest = this.decisionLog.getLatest(player.id);
+    const displayActions = this.getDisplayActions(player.id, latest?.selected);
 
-  private computePanelHeight(): number {
-    // Header line + 8 action rows
-    const lines = 1 + 8;
-    return PANEL_PADDING * 2 + lines * PANEL_LINE_HEIGHT + 2;
+    ctx.save();
+    this.drawRoundedRect(ctx, x, y, width, PLAYER_ROW_HEIGHT, 5);
+    ctx.fillStyle = PANEL_BG;
+    ctx.fill();
+    ctx.strokeStyle = isSelected ? SELECTED_BORDER : (isCarrier ? POSSESSION_BORDER : PANEL_BORDER);
+    ctx.lineWidth = isSelected ? 1.8 : (isCarrier ? 1.6 : 1);
+    ctx.stroke();
+
+    ctx.fillStyle = TEAM_ACCENT[player.teamId];
+    ctx.fillRect(x, y, 4, PLAYER_ROW_HEIGHT);
+
+    const shirt = shirtNumber(player.id);
+    ctx.fillStyle = CURRENT_TEXT;
+    ctx.font = FONT_HEADER;
+    ctx.textAlign = 'left';
+    ctx.fillText(`${shirt.toString().padStart(2, '0')} ${player.role}`, x + 10, y + HEADER_HEIGHT);
+
+    if (latest?.selected) {
+      ctx.textAlign = 'right';
+      ctx.fillStyle = isSelected ? SELECTED_BORDER : (isCarrier ? POSSESSION_BORDER : MUTED_TEXT);
+      ctx.fillText(formatAction(latest.selected), x + width - 8, y + HEADER_HEIGHT);
+    }
+
+    let rowY = y + HEADER_HEIGHT + 12;
+    for (const row of displayActions) {
+      const isCurrent = row.action === latest?.selected;
+      const style = getIntentStyle(row.action);
+      ctx.textAlign = 'left';
+      ctx.font = FONT_ROW;
+      ctx.fillStyle = isCurrent ? withAdjustedAlpha(style.color, 1.15) : style.color;
+      ctx.fillText(formatAction(row.action), x + 10, rowY);
+
+      const barX = x + 92;
+      const scoreClamped = Math.max(0, Math.min(1, row.avgScore));
+      this.drawBar(ctx, barX, rowY - 7, scoreClamped, ACTION_BAR_WIDTH, isCurrent, style.color);
+
+      ctx.fillStyle = isCurrent ? CURRENT_TEXT : MUTED_TEXT;
+      ctx.fillText(row.avgScore.toFixed(2), barX + ACTION_BAR_WIDTH + 6, rowY);
+
+      ctx.textAlign = 'right';
+      ctx.fillText(`${Math.round(row.selectionPct)}%`, x + width - 8, rowY);
+      rowY += ACTION_ROW_HEIGHT;
+    }
+
+    ctx.restore();
   }
 
-  // ============================================================
-  // Averaging logic
-  // ============================================================
+  setSelectedPlayerId(playerId: string | null): void {
+    this.selectedPlayerId = playerId;
+  }
 
-  private computeAveraged(agentId: string): ActionAverage[] {
-    const entries = this.decisionLog.getRecent(agentId, AVG_WINDOW);
+  getSelectedPlayerIdAt(y: number): string | null {
+    const snapshot = this.lastSnapshot;
+    if (!snapshot) return null;
+
+    const players = snapshot.players
+      .filter((player) => player.teamId === this.teamId)
+      .sort((a, b) => shirtNumber(a.id) - shirtNumber(b.id));
+
+    const rowSpan = PLAYER_ROW_HEIGHT + PANEL_GAP;
+    const relativeY = y - PANEL_INSET;
+    if (relativeY < 0) return null;
+    const rowIndex = Math.floor(relativeY / rowSpan);
+    const rowOffset = relativeY - rowIndex * rowSpan;
+    if (rowOffset > PLAYER_ROW_HEIGHT) return null;
+    return players[rowIndex]?.id ?? null;
+  }
+
+  private getDisplayActions(agentId: string, currentAction?: ActionType): ActionAverage[] {
+    const entries = this.decisionLog.getRecent(agentId, 75);
     if (entries.length === 0) return [];
 
-    const scoreAccum = new Map<string, { total: number; count: number; selections: number }>();
+    const accum = new Map<ActionType, { total: number; count: number; selections: number }>();
+    for (const action of ACTION_ORDER) {
+      accum.set(action, { total: 0, count: 0, selections: 0 });
+    }
 
     for (const entry of entries) {
       for (const { action, score } of entry.scores) {
-        let acc = scoreAccum.get(action);
-        if (!acc) {
-          acc = { total: 0, count: 0, selections: 0 };
-          scoreAccum.set(action, acc);
-        }
-        acc.total += score;
-        acc.count += 1;
+        const bucket = accum.get(action as ActionType);
+        if (!bucket) continue;
+        bucket.total += score;
+        bucket.count += 1;
       }
-      const sel = scoreAccum.get(entry.selected);
-      if (sel) sel.selections += 1;
+      const selected = accum.get(entry.selected);
+      if (selected) selected.selections += 1;
     }
 
-    const totalEntries = entries.length;
-    const currentAction = entries[entries.length - 1]?.selected;
-    const result: ActionAverage[] = [];
-
-    for (const [action, acc] of scoreAccum) {
-      result.push({
+    const ranked = ACTION_ORDER.map((action) => {
+      const bucket = accum.get(action)!;
+      return {
         action,
-        avgScore: acc.count > 0 ? acc.total / acc.count : 0,
-        selectionPct: totalEntries > 0 ? (acc.selections / totalEntries) * 100 : 0,
-        isCurrent: action === currentAction,
-      });
-    }
+        avgScore: bucket.count > 0 ? bucket.total / bucket.count : 0,
+        selectionPct: entries.length > 0 ? (bucket.selections / entries.length) * 100 : 0,
+      };
+    }).sort((a, b) => b.avgScore - a.avgScore);
 
-    result.sort((a, b) => b.avgScore - a.avgScore);
-    return result;
-  }
-
-  // ============================================================
-  // Private drawing helpers
-  // ============================================================
-
-  private drawHighlight(
-    ctx: CanvasRenderingContext2D,
-    pos: { x: number; y: number },
-    index: number,
-  ): void {
-    const color = BADGE_COLORS[index] ?? BADGE_COLORS[0]!;
-
-    ctx.save();
-
-    // Highlight ring
-    ctx.beginPath();
-    ctx.arc(pos.x, pos.y, HIGHLIGHT_RADIUS, 0, Math.PI * 2);
-    ctx.strokeStyle = color;
-    ctx.lineWidth = HIGHLIGHT_LINE_WIDTH;
-    ctx.stroke();
-
-    // Number badge (small circle with number, top-right of player)
-    const badgeX = pos.x + HIGHLIGHT_RADIUS - 2;
-    const badgeY = pos.y - HIGHLIGHT_RADIUS + 2;
-    ctx.beginPath();
-    ctx.arc(badgeX, badgeY, 7, 0, Math.PI * 2);
-    ctx.fillStyle = color;
-    ctx.fill();
-    ctx.fillStyle = '#000000';
-    ctx.font = 'bold 9px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(String(index + 1), badgeX, badgeY);
-
-    ctx.restore();
-  }
-
-  private drawPanel(
-    ctx: CanvasRenderingContext2D,
-    panelY: number,
-    index: number,
-    player: PlayerState,
-    distToBall: number,
-    averaged: ActionAverage[],
-    currentAction: ActionType | undefined,
-  ): void {
-    const panelHeight = this.computePanelHeight();
-    const badgeColor = BADGE_COLORS[index] ?? BADGE_COLORS[0]!;
-    const teamStrip = player.teamId === 'home' ? HOME_STRIP : AWAY_STRIP;
-
-    ctx.save();
-
-    // Panel background
-    this.drawRoundedRect(ctx, PANEL_X, panelY, PANEL_CONTENT_WIDTH, panelHeight, 4);
-    ctx.fillStyle = PANEL_BG;
-    ctx.fill();
-
-    // Team color strip on left edge
-    ctx.fillStyle = teamStrip;
-    ctx.fillRect(PANEL_X, panelY + 4, 3, panelHeight - 8);
-
-    let lineY = panelY + PANEL_PADDING + PANEL_LINE_HEIGHT - 3;
-
-    // Header: badge dot + #shirt [role] teamLabel - currentAction dist
-    const teamLabel = player.teamId === 'home' ? 'H' : 'A';
-    const shirtNum = parseInt(player.id.split('-').pop()!, 10) + 1;
-    const actionLabel = currentAction ? this.formatAction(currentAction) : '---';
-    const distLabel = `${distToBall.toFixed(0)}m`;
-
-    // Badge dot
-    ctx.beginPath();
-    ctx.arc(PANEL_X + PANEL_PADDING + 6, lineY - 4, 5, 0, Math.PI * 2);
-    ctx.fillStyle = badgeColor;
-    ctx.fill();
-    ctx.fillStyle = '#000000';
-    ctx.font = 'bold 7px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(String(index + 1), PANEL_X + PANEL_PADDING + 6, lineY - 4);
-
-    // Player info text
-    ctx.font = FONT;
-    ctx.fillStyle = TEXT_COLOR;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'alphabetic';
-    const headerText = `#${shirtNum} [${player.role}] ${teamLabel}`;
-    ctx.fillText(headerText, PANEL_X + PANEL_PADDING + 16, lineY);
-
-    // Current action + distance on the right
-    ctx.textAlign = 'right';
-    ctx.fillStyle = '#ffff44';
-    ctx.font = FONT_SMALL;
-    ctx.fillText(`${actionLabel} ${distLabel}`, PANEL_X + PANEL_CONTENT_WIDTH - PANEL_PADDING, lineY);
-
-    lineY += PANEL_LINE_HEIGHT;
-
-    // Action rows — all actions sorted by average score
-    ctx.textAlign = 'left';
-    if (averaged.length === 0) {
-      ctx.fillStyle = 'rgba(255,255,255,0.5)';
-      ctx.font = FONT_SMALL;
-      ctx.fillText('no decisions yet', PANEL_X + PANEL_PADDING, lineY);
-    } else {
-      for (const row of averaged) {
-        const isSelected = row.action === currentAction;
-
-        // Action label
-        const label = this.formatAction(row.action);
-        ctx.fillStyle = isSelected ? '#ffff44' : TEXT_COLOR;
-        ctx.font = isSelected ? `bold ${FONT_SMALL}` : FONT_SMALL;
-        ctx.fillText(label, PANEL_X + PANEL_PADDING + 4, lineY);
-
-        // Score bar
-        const barX = PANEL_X + PANEL_PADDING + 82;
-        const scoreClamped = Math.max(0, Math.min(1, row.avgScore));
-        this.drawBar(ctx, barX, lineY - BAR_HEIGHT + 2, scoreClamped, BAR_MAX_WIDTH, isSelected);
-
-        // Average score value
-        ctx.fillStyle = isSelected ? '#ffff44' : 'rgba(255,255,255,0.6)';
-        ctx.font = FONT_SMALL;
-        ctx.fillText(row.avgScore.toFixed(2), barX + BAR_MAX_WIDTH + 4, lineY);
-
-        // Selection percentage
-        const pctText = row.selectionPct > 0 ? `${row.selectionPct.toFixed(0)}%` : '-';
-        ctx.textAlign = 'right';
-        ctx.fillText(pctText, PANEL_X + PANEL_CONTENT_WIDTH - PANEL_PADDING, lineY);
-        ctx.textAlign = 'left';
-
-        lineY += PANEL_LINE_HEIGHT;
+    const top = ranked.slice(0, ACTION_ROWS);
+    if (currentAction && !top.some((row) => row.action === currentAction)) {
+      const currentRow = ranked.find((row) => row.action === currentAction);
+      if (currentRow) {
+        top[top.length - 1] = currentRow;
       }
     }
 
-    ctx.restore();
-  }
-
-  private formatAction(action: string): string {
-    switch (action) {
-      case 'MOVE_TO_POSITION': return 'MoveToPos';
-      case 'PASS_FORWARD':     return 'PassFwd';
-      case 'PASS_SAFE':        return 'PassSafe';
-      case 'PASS_THROUGH':     return 'Through';
-      case 'HOLD_SHIELD':      return 'Shield';
-      case 'MAKE_RUN':         return 'MakeRun';
-      default:                 return action.charAt(0) + action.slice(1).toLowerCase();
-    }
+    top.sort((a, b) => ACTION_ORDER.indexOf(a.action) - ACTION_ORDER.indexOf(b.action));
+    return top;
   }
 
   private drawBar(
@@ -347,32 +268,22 @@ export class DebugOverlay {
     x: number,
     y: number,
     value: number,
-    maxWidth: number,
-    isSelected: boolean,
+    width: number,
+    isCurrent: boolean,
+    color: string,
   ): void {
-    const fillWidth = Math.floor(value * maxWidth);
-
-    const r = Math.floor((1 - value) * 204) + 22;
-    const g = Math.floor(value * 204) + 22;
-    const fillColor = `rgb(${r}, ${g}, 34)`;
+    const fillWidth = Math.round(width * value);
 
     ctx.save();
-
-    // Background track
-    ctx.fillStyle = 'rgba(255,255,255,0.12)';
-    ctx.fillRect(x, y, maxWidth, BAR_HEIGHT);
-
-    // Fill
-    ctx.fillStyle = fillColor;
-    ctx.fillRect(x, y, fillWidth, BAR_HEIGHT);
-
-    // Selected highlight border
-    if (isSelected) {
-      ctx.strokeStyle = BAR_SELECTED_BORDER;
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(x, y, maxWidth, BAR_HEIGHT);
+    ctx.fillStyle = 'rgba(255,255,255,0.10)';
+    ctx.fillRect(x, y, width, 6);
+    ctx.fillStyle = withAdjustedAlpha(color, 0.9 + value * 0.35);
+    ctx.fillRect(x, y, fillWidth, 6);
+    if (isCurrent) {
+      ctx.strokeStyle = withAdjustedAlpha(color, 1.2);
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x - 0.5, y - 0.5, width + 1, 7);
     }
-
     ctx.restore();
   }
 
@@ -395,5 +306,215 @@ export class DebugOverlay {
     ctx.lineTo(x, y + r);
     ctx.quadraticCurveTo(x, y, x + r, y);
     ctx.closePath();
+  }
+
+  private drawVisionCone(
+    ctx: CanvasRenderingContext2D,
+    pitchToCanvas: PitchToCanvas,
+    snapshot: SimSnapshot,
+    player: PlayerState,
+    intent?: ActionIntent,
+  ): void {
+    const facing = resolveFacingDirection(player, snapshot, intent);
+    const start = pitchToCanvas(player.position);
+    const visionLength =
+      (TUNING.opponentVisionRadiusMin +
+      player.attributes.vision * (TUNING.opponentVisionRadiusMax - TUNING.opponentVisionRadiusMin)) * DEBUG_VISION_RADIUS_SCALE;
+    const blindSpotAngle = Math.acos(Math.max(-1, Math.min(1, TUNING.opponentVisionBlindSpotDot))) * DEBUG_VISION_ARC_SCALE;
+    const visionArcDeg = (blindSpotAngle * 180) / Math.PI;
+    const left = rotateVector(facing, -visionArcDeg).scale(visionLength);
+    const right = rotateVector(facing, visionArcDeg).scale(visionLength);
+    const leftPt = pitchToCanvas(player.position.add(left));
+    const rightPt = pitchToCanvas(player.position.add(right));
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(start.x, start.y);
+    ctx.lineTo(leftPt.x, leftPt.y);
+    ctx.arc(
+      start.x,
+      start.y,
+      Math.hypot(leftPt.x - start.x, leftPt.y - start.y),
+      Math.atan2(leftPt.y - start.y, leftPt.x - start.x),
+      Math.atan2(rightPt.y - start.y, rightPt.x - start.x),
+    );
+    ctx.closePath();
+    ctx.fillStyle = snapshot.ball.carrierId === player.id
+      ? withAdjustedAlpha(VISION_FILL[player.teamId], 1.35)
+      : VISION_FILL[player.teamId];
+    ctx.fill();
+    ctx.strokeStyle = snapshot.ball.carrierId === player.id
+      ? withAdjustedAlpha(VISION_STROKE[player.teamId], 1.25)
+      : VISION_STROKE[player.teamId];
+    ctx.lineWidth = snapshot.ball.carrierId === player.id ? 1.35 : 1.1;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  private drawIntentLine(
+    ctx: CanvasRenderingContext2D,
+    pitchToCanvas: PitchToCanvas,
+    snapshot: SimSnapshot,
+    player: PlayerState,
+    intent: ActionIntent,
+  ): void {
+    const target = resolveIntentTarget(player, snapshot, intent);
+    if (!target) return;
+
+    const start = pitchToCanvas(player.position);
+    const end = pitchToCanvas(target);
+    const style = getIntentStyle(intent.action);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.setLineDash(style.dash);
+    ctx.moveTo(start.x, start.y);
+    ctx.lineTo(end.x, end.y);
+    ctx.strokeStyle = style.color;
+    ctx.lineWidth = style.width;
+    ctx.stroke();
+
+    const tipDir = target.subtract(player.position).normalize();
+    const left = rotateVector(tipDir, 150).scale(1.2);
+    const right = rotateVector(tipDir, -150).scale(1.2);
+    const leftPt = pitchToCanvas(target.add(left));
+    const rightPt = pitchToCanvas(target.add(right));
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(end.x, end.y);
+    ctx.lineTo(leftPt.x, leftPt.y);
+    ctx.lineTo(rightPt.x, rightPt.y);
+    ctx.closePath();
+    ctx.fillStyle = style.color;
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function shirtNumber(playerId: string): number {
+  const tail = playerId.split('-').pop();
+  const parsed = Number.parseInt(tail ?? '0', 10);
+  return Number.isNaN(parsed) ? 0 : parsed + 1;
+}
+
+function formatAction(action: ActionType): string {
+  switch (action) {
+    case 'MOVE_TO_POSITION': return 'Move';
+    case 'PASS_FORWARD': return 'Pass+';
+    case 'PASS_SAFE': return 'Pass=';
+    case 'PASS_THROUGH': return 'Through';
+    case 'HOLD_SHIELD': return 'Shield';
+    case 'MAKE_RUN': return 'Run';
+    case 'OFFER_SUPPORT': return 'Support';
+    case 'DRIBBLE': return 'Dribble';
+    case 'SHOOT': return 'Shoot';
+    case 'PRESS': return 'Press';
+    default: return action;
+  }
+}
+
+function resolveFacingDirection(
+  player: PlayerState,
+  snapshot: SimSnapshot,
+  intent?: ActionIntent,
+): Vec2 {
+  const target = intent ? resolveIntentTarget(player, snapshot, intent) : null;
+  if (target) {
+    const toTarget = target.subtract(player.position);
+    if (toTarget.length() > 0.01) return toTarget.normalize();
+  }
+
+  return resolveBaseFacingDirection(player, snapshot);
+}
+
+function resolveBaseFacingDirection(
+  player: PlayerState,
+  snapshot: SimSnapshot,
+): Vec2 {
+
+  if (player.velocity.length() > 0.2) {
+    return player.velocity.normalize();
+  }
+
+  if (snapshot.ball.carrierId && snapshot.ball.carrierId !== player.id) {
+    const ballDir = snapshot.ball.position.subtract(player.position);
+    if (ballDir.length() > 0.01) return ballDir.normalize();
+  }
+
+  return new Vec2(player.teamId === 'home' ? 1 : -1, 0);
+}
+
+function resolveIntentTarget(
+  player: PlayerState,
+  snapshot: SimSnapshot,
+  intent: ActionIntent,
+): Vec2 | null {
+  if (intent.targetPlayerId) {
+    const targetPlayer = snapshot.players.find((candidate) => candidate.id === intent.targetPlayerId);
+    if (targetPlayer) return targetPlayer.position;
+  }
+  if (intent.target) return intent.target;
+
+  switch (intent.action) {
+    case 'SHOOT':
+      return new Vec2(player.teamId === 'home' ? 105 : 0, 34);
+    case 'PASS_FORWARD':
+    case 'PASS_SAFE':
+      return player.position.add(resolveBaseFacingDirection(player, snapshot).scale(16));
+    case 'PASS_THROUGH':
+      return player.position.add(resolveBaseFacingDirection(player, snapshot).scale(22));
+    case 'DRIBBLE':
+      return player.position.add(resolveBaseFacingDirection(player, snapshot).scale(8));
+    case 'MAKE_RUN':
+    case 'PRESS':
+      return player.position.add(resolveBaseFacingDirection(player, snapshot).scale(10));
+    case 'OFFER_SUPPORT':
+    case 'MOVE_TO_POSITION':
+      return player.position.add(resolveBaseFacingDirection(player, snapshot).scale(6));
+    default:
+      return null;
+  }
+}
+
+function rotateVector(vec: Vec2, degrees: number): Vec2 {
+  const radians = (degrees * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  return new Vec2(
+    vec.x * cos - vec.y * sin,
+    vec.x * sin + vec.y * cos,
+  );
+}
+
+function withAdjustedAlpha(rgba: string, multiplier: number): string {
+  const match = rgba.match(/rgba\((\d+),\s*(\d+),\s*(\d+),\s*([0-9.]+)\)/);
+  if (!match) return rgba;
+  const [, r, g, b, a] = match;
+  const nextAlpha = Math.min(1, Number.parseFloat(a ?? '1') * multiplier);
+  return `rgba(${r}, ${g}, ${b}, ${nextAlpha})`;
+}
+
+function getIntentStyle(action: ActionType): { color: string; width: number; dash: number[] } {
+  switch (action) {
+    case 'SHOOT':
+      return { color: 'rgba(251, 146, 60, 0.95)', width: 2.4, dash: [] };
+    case 'PASS_THROUGH':
+      return { color: 'rgba(34, 211, 238, 0.95)', width: 2, dash: [7, 4] };
+    case 'PASS_FORWARD':
+      return { color: 'rgba(125, 211, 252, 0.9)', width: 1.8, dash: [7, 3] };
+    case 'PASS_SAFE':
+      return { color: 'rgba(186, 230, 253, 0.85)', width: 1.5, dash: [4, 3] };
+    case 'DRIBBLE':
+      return { color: 'rgba(74, 222, 128, 0.9)', width: 1.8, dash: [] };
+    case 'PRESS':
+      return { color: 'rgba(250, 204, 21, 0.85)', width: 1.8, dash: [5, 3] };
+    case 'MAKE_RUN':
+      return { color: 'rgba(96, 165, 250, 0.85)', width: 1.7, dash: [6, 3] };
+    case 'OFFER_SUPPORT':
+      return { color: 'rgba(148, 163, 184, 0.65)', width: 1.3, dash: [3, 3] };
+    case 'MOVE_TO_POSITION':
+      return { color: 'rgba(100, 116, 139, 0.55)', width: 1.2, dash: [2, 4] };
+    default:
+      return { color: 'rgba(148, 163, 184, 0.6)', width: 1.2, dash: [2, 4] };
   }
 }

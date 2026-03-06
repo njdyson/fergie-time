@@ -26,6 +26,7 @@ export const ROLE_DUTY_WEIGHTS: Record<
       MOVE_TO_POSITION: 0.12,
       PRESS: 0.06,
       HOLD_SHIELD: 0.05,
+      OFFER_SUPPORT: -0.04,
     },
     SUPPORT: {},
     ATTACK: {
@@ -39,6 +40,7 @@ export const ROLE_DUTY_WEIGHTS: Record<
       PRESS: 0.10,
       MOVE_TO_POSITION: 0.08,
       HOLD_SHIELD: 0.06,
+      OFFER_SUPPORT: -0.05,
       MAKE_RUN: -0.08,
       SHOOT: -0.06,
       DRIBBLE: -0.04,
@@ -56,6 +58,7 @@ export const ROLE_DUTY_WEIGHTS: Record<
     DEFEND: {
       PRESS: 0.09,
       MOVE_TO_POSITION: 0.08,
+      OFFER_SUPPORT: -0.02,
       MAKE_RUN: -0.06,
     },
     SUPPORT: {},
@@ -70,6 +73,7 @@ export const ROLE_DUTY_WEIGHTS: Record<
     DEFEND: {
       PRESS: 0.09,
       MOVE_TO_POSITION: 0.08,
+      OFFER_SUPPORT: -0.02,
       MAKE_RUN: -0.06,
     },
     SUPPORT: {},
@@ -85,12 +89,14 @@ export const ROLE_DUTY_WEIGHTS: Record<
       PRESS: 0.12,
       MOVE_TO_POSITION: 0.10,
       HOLD_SHIELD: 0.07,
+      OFFER_SUPPORT: -0.01,
       MAKE_RUN: -0.06,
       SHOOT: -0.05,
     },
     SUPPORT: {
       PASS_SAFE: 0.03,
       MOVE_TO_POSITION: 0.02,
+      OFFER_SUPPORT: 0.05,
     },
     ATTACK: {
       PASS_FORWARD: 0.08,
@@ -103,15 +109,18 @@ export const ROLE_DUTY_WEIGHTS: Record<
     DEFEND: {
       PRESS: 0.07,
       MOVE_TO_POSITION: 0.06,
+      OFFER_SUPPORT: 0.02,
       MAKE_RUN: -0.03,
     },
     SUPPORT: {
       PASS_THROUGH: 0.03,
+      OFFER_SUPPORT: 0.05,
     },
     ATTACK: {
       PASS_FORWARD: 0.06,
       PASS_THROUGH: 0.06,
       DRIBBLE: 0.04,
+      OFFER_SUPPORT: 0.08,
       MAKE_RUN: 0.05,
     },
   },
@@ -120,18 +129,21 @@ export const ROLE_DUTY_WEIGHTS: Record<
     DEFEND: {
       PRESS: 0.06,
       MOVE_TO_POSITION: 0.05,
+      OFFER_SUPPORT: 0.02,
       SHOOT: -0.04,
     },
     SUPPORT: {
       PASS_FORWARD: 0.03,
       PASS_THROUGH: 0.04,
       DRIBBLE: 0.02,
+      OFFER_SUPPORT: 0.08,
     },
     ATTACK: {
       PASS_FORWARD: 0.10,
       PASS_THROUGH: 0.08,
       DRIBBLE: 0.08,
       SHOOT: 0.07,
+      OFFER_SUPPORT: 0.09,
       MAKE_RUN: 0.06,
     },
   },
@@ -140,12 +152,14 @@ export const ROLE_DUTY_WEIGHTS: Record<
     DEFEND: {
       PRESS: 0.07,
       MOVE_TO_POSITION: 0.06,
+      OFFER_SUPPORT: 0.01,
       MAKE_RUN: -0.04,
     },
     SUPPORT: {},
     ATTACK: {
       DRIBBLE: 0.09,
       PASS_FORWARD: 0.07,
+      OFFER_SUPPORT: 0.08,
       MAKE_RUN: 0.08,
       SHOOT: 0.06,
     },
@@ -155,12 +169,14 @@ export const ROLE_DUTY_WEIGHTS: Record<
     DEFEND: {
       PRESS: 0.07,
       MOVE_TO_POSITION: 0.06,
+      OFFER_SUPPORT: 0.01,
       MAKE_RUN: -0.04,
     },
     SUPPORT: {},
     ATTACK: {
       DRIBBLE: 0.09,
       PASS_FORWARD: 0.07,
+      OFFER_SUPPORT: 0.08,
       MAKE_RUN: 0.08,
       SHOOT: 0.06,
     },
@@ -170,6 +186,7 @@ export const ROLE_DUTY_WEIGHTS: Record<
     DEFEND: {
       PRESS: 0.06,
       MOVE_TO_POSITION: 0.05,
+      OFFER_SUPPORT: 0.01,
       MAKE_RUN: -0.04,
       SHOOT: -0.03,
     },
@@ -177,6 +194,7 @@ export const ROLE_DUTY_WEIGHTS: Record<
     ATTACK: {
       SHOOT: 0.12,
       DRIBBLE: 0.08,
+      OFFER_SUPPORT: 0.07,
       MAKE_RUN: 0.10,
       PASS_FORWARD: 0.04,
     },

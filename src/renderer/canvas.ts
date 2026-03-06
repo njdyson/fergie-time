@@ -272,13 +272,14 @@ export class CanvasRenderer {
     ctx.fillText(shirtNum, c.x, c.y + 1);
     ctx.restore();
 
-    // Role label above player
+    // Player surname label above player (fall back to role if no name)
+    const displayName = curr.name ? (curr.name.split(' ').pop() ?? curr.role) : curr.role;
     ctx.save();
     ctx.font = ROLE_FONT;
     ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
-    ctx.fillText(curr.role, c.x, c.y + ROLE_LABEL_OFFSET_Y);
+    ctx.fillText(displayName, c.x, c.y + ROLE_LABEL_OFFSET_Y);
     ctx.restore();
 
     // Direction indicator line (from velocity)

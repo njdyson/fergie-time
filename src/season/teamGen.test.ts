@@ -50,26 +50,26 @@ describe('createAITeam', () => {
     expect(mean).toBeLessThan(0.85);
   });
 
-  it('mid tier: all attribute values between 0.40 and 0.90', () => {
+  it('mid tier: all attribute values between 0 and 1', () => {
     const rng = seedrandom('mid-attrs');
     const squad = createAITeam('mid', 'team-m', 'Mid FC', rng);
     for (const p of squad) {
       const attrs = Object.values(p.attributes) as number[];
       for (const v of attrs) {
-        expect(v).toBeGreaterThanOrEqual(0.40);
-        expect(v).toBeLessThanOrEqual(0.90);
+        expect(v).toBeGreaterThanOrEqual(0);
+        expect(v).toBeLessThanOrEqual(1);
       }
     }
   });
 
-  it('weak tier: all attribute values between 0.25 and 0.75', () => {
+  it('weak tier: all attribute values between 0 and 1', () => {
     const rng = seedrandom('weak-attrs');
     const squad = createAITeam('weak', 'team-w', 'Weak FC', rng);
     for (const p of squad) {
       const attrs = Object.values(p.attributes) as number[];
       for (const v of attrs) {
-        expect(v).toBeGreaterThanOrEqual(0.25);
-        expect(v).toBeLessThanOrEqual(0.75);
+        expect(v).toBeGreaterThanOrEqual(0);
+        expect(v).toBeLessThanOrEqual(1);
       }
     }
   });

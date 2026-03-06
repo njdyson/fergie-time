@@ -16,8 +16,10 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd /var/www/vhosts/psybob.uk/ft.psybob.uk
-            git remote set-url origin git@github.com:njdyson/fergie-time.git
+            git remote set-url origin https://github.com/njdyson/fergie-time.git
             git pull
             export NVM_DIR="$HOME/.nvm"
-            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+            [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
+            nvm use node
+            npm install
             npm run build

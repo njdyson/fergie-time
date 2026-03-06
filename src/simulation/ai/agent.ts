@@ -91,12 +91,23 @@ export function selectAction(
     // Kill pass bias inside 15m — carrier should shoot, not pass into the goal
     if (action.id === 'PASS_FORWARD' || action.id === 'PASS_SAFE' || action.id === 'PASS_THROUGH') {
       const goalDist = ctx.distanceToOpponentGoal;
-      const passBiasScale = goalDist < 15 ? 0 : goalDist < 25 ? (goalDist - 15) / 10 : 1;
-      score += TUNING.passBias * passBiasScale;
+      const baseScale = goalDist < 15 ? 0 : goalDist < 25 ? (goalDist - 15) / 10 : 1;
+      if (action.id === 'PASS_SAFE') {
+        const pressureScale = Math.max(0, 1 - ctx.nearestDefenderDistance / 10);
+        score += TUNING.passBias * 0.45 * baseScale * pressureScale;
+      } else if (action.id === 'PASS_FORWARD') {
+        score += TUNING.passBias * 0.75 * baseScale;
+      } else {
+        score += TUNING.passBias * 0.35 * baseScale;
+      }
     }
     // Goal urgency: proximity-scaled bonus for attacking actions near opponent goal
     if (action.id === 'SHOOT' || action.id === 'DRIBBLE') {
       score += TUNING.goalUrgency * (1 - ctx.distanceToOpponentGoal / 105);
+    }
+    if (action.id === 'OFFER_SUPPORT') {
+      const supportNeed = ctx.isInPossessionTeam ? Math.max(0, 1 - ctx.nearestTeammateDistance / 18) : 0;
+      score += 0.08 * supportNeed;
     }
     // Duty modifier: role/duty specific bonus from tactical configuration
     if (dutyModifier) {

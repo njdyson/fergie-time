@@ -69,3 +69,8 @@ authRouter.post('/api/auth/login', async (req, res) => {
 
   res.json({ success: true, teamName });
 });
+
+authRouter.post('/api/auth/logout', (req, res) => {
+  req.session = null;
+  res.json({ success: true });
+});

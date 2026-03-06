@@ -66,23 +66,31 @@ export const TUNING = {
 
   // ── Dead ball pauses ────────────────────────────────────────────
   /** Ticks to pause for kickoff repositioning (~1.5s at 30 ticks/sec) */
-  kickoffPauseTicks: 45,
+  kickoffPauseTicks: 75,
   /** Ticks to pause for throw-in (~0.8s) */
   throwInPauseTicks: 25,
   /** Ticks to pause for corner kick (~1.2s) */
-  cornerPauseTicks: 35,
+  cornerPauseTicks: 55,
   /** Ticks to pause for goal kick (~0.8s) */
   goalKickPauseTicks: 25,
+  /** Ticks to pause for a free kick (~0.9s) */
+  freeKickPauseTicks: 28,
 
   // ── Vision system ───────────────────────────────────────────────────
-  /** Max vision radius (metres) at vision=1.0 */
-  visionRadiusMax: 50,
-  /** Min vision radius (metres) at vision=0.0 */
-  visionRadiusMin: 25,
-  /** Dot-product threshold for blind spot (opponent behind player) */
-  visionBlindSpotDot: -0.7,
-  /** Close range (metres) — always visible regardless of facing */
-  visionCloseRange: 8,
+  /** Max teammate perception radius (metres) at vision=1.0 */
+  teammateVisionRadiusMax: 58,
+  /** Min teammate perception radius (metres) at vision=0.0 */
+  teammateVisionRadiusMin: 30,
+  /** Dot-product threshold for teammate blind spot */
+  teammateVisionBlindSpotDot: -0.45,
+  /** Max opponent perception radius (metres) at vision=1.0 */
+  opponentVisionRadiusMax: 42,
+  /** Min opponent perception radius (metres) at vision=0.0 */
+  opponentVisionRadiusMin: 24,
+  /** Dot-product threshold for opponent blind spot */
+  opponentVisionBlindSpotDot: -0.15,
+  /** Close range (metres) — always perceived regardless of facing */
+  visionCloseRange: 9,
   /** Max ticks between vision refreshes (low anticipation) */
   visionRefreshMaxInterval: 6,
   /** Anticipation threshold for every-tick vision refresh */

@@ -74,6 +74,7 @@ export class TacticsBoard {
   private positions: Vec2[] = [];
   private roles: Role[] = [];
   private duties: Duty[] = [];
+  private playerNames: string[] = [];
 
   // Dual phase storage
   private phases: Record<TacticsPhase, PhaseState>;
@@ -204,6 +205,11 @@ export class TacticsBoard {
   /** Get the currently active editing phase */
   getCurrentPhase(): TacticsPhase {
     return this.currentPhase;
+  }
+
+  /** Set player names for display on the tactics grid */
+  setPlayerNames(names: string[]): void {
+    this.playerNames = names.slice(0, 11);
   }
 
   /** Update per-player freedom values for radius overlay */
@@ -666,16 +672,17 @@ export class TacticsBoard {
     ctx.textBaseline = 'middle';
     ctx.fillText(String(i + 1), c.x, c.y + 1);
 
-    // Role label below the dot
+    // Player label below the dot (surname if available, else role)
+    const playerLabel = isSubbedOut && inPlayer
+      ? (inPlayer.name ?? inPlayer.id).split(' ').pop() ?? role
+      : this.playerNames[i]
+        ? this.playerNames[i]!.split(' ').pop() ?? role
+        : role;
     ctx.font = ROLE_FONT;
     ctx.fillStyle = isSubbedOut ? 'rgba(251, 146, 60, 0.9)' : 'rgba(255, 255, 255, 0.8)';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    if (isSubbedOut && inPlayer) {
-      ctx.fillText((inPlayer.name ?? inPlayer.id).split(' ').pop() ?? role, c.x, c.y + PLAYER_RADIUS + 2);
-    } else {
-      ctx.fillText(role, c.x, c.y + PLAYER_RADIUS + 2);
-    }
+    ctx.fillText(playerLabel, c.x, c.y + PLAYER_RADIUS + 2);
 
     ctx.restore();
 

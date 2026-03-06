@@ -147,6 +147,61 @@ export function generateCommentary(
       };
     }
 
+    case 'free_kick': {
+      const t = team(entry.teamId);
+      const pLabel = entry.playerId ? resolvePlayer(entry.playerId, players) : '';
+      return {
+        tick: entry.tick, matchMinute: min,
+        text: `Free kick ${t}${pLabel ? ` - ${pLabel} standing over it` : ''}.`,
+        type: 'setpiece',
+      };
+    }
+
+    case 'foul': {
+      const awardedTeam = team(entry.teamId);
+      const fouler = label(entry.playerId!, entry.playerRole!);
+      const victimId = entry.data?.victimPlayerId as string | undefined;
+      const victim = victimId ? resolvePlayer(victimId, players) : 'the attacker';
+      return {
+        tick: entry.tick, matchMinute: min,
+        text: `Foul by ${fouler} on ${victim}. Free kick to ${awardedTeam}.`,
+        type: 'setpiece',
+      };
+    }
+
+    case 'yellow_card': {
+      const pLabel = label(entry.playerId!, entry.playerRole!);
+      const t = team(entry.teamId);
+      return {
+        tick: entry.tick, matchMinute: min,
+        text: `Yellow card for ${t} ${pLabel}.`,
+        type: 'setpiece',
+      };
+    }
+
+    case 'red_card': {
+      const pLabel = label(entry.playerId!, entry.playerRole!);
+      const t = team(entry.teamId);
+      const secondYellow = Boolean(entry.data?.secondYellow);
+      return {
+        tick: entry.tick, matchMinute: min,
+        text: secondYellow
+          ? `Second yellow for ${t} ${pLabel} and the referee sends them off.`
+          : `Red card for ${t} ${pLabel} and they are off.`,
+        type: 'setpiece',
+      };
+    }
+
+    case 'offside': {
+      const pLabel = label(entry.playerId!, entry.playerRole!);
+      const t = team(entry.teamId);
+      return {
+        tick: entry.tick, matchMinute: min,
+        text: `The referee blows for offside against ${t} ${pLabel}.`,
+        type: 'setpiece',
+      };
+    }
+
     case 'halftime':
       return { tick: entry.tick, matchMinute: 45, text: 'Half time.', type: 'info' };
 

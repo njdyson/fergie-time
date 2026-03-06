@@ -407,6 +407,11 @@ interface DeadBallState {
   readonly takerId: string | null;  // player who will take the restart
 }
 
+interface PerceptionSnapshot {
+  readonly teammates: readonly PlayerState[];
+  readonly opponents: readonly PlayerState[];
+}
+
 export class SimulationEngine {
   private snapshot: SimSnapshot;
   private readonly rng: () => number;
@@ -459,8 +464,8 @@ export class SimulationEngine {
   private preAdoptionAnchorsAway: Vec2[] | null = null;
 
   // ── Vision system ──────────────────────────────────────────────────────────
-  private visionCache: Map<string, readonly PlayerState[]> = new Map();
-  private visionCacheTick: Map<string, number> = new Map();
+  private perceptionCache: Map<string, PerceptionSnapshot> = new Map();
+  private perceptionCacheTick: Map<string, number> = new Map();
 
   constructor(config: MatchConfig) {
     const normalizedHomeRoster = config.homeRoster.map(normalizePlayerVectors);
@@ -618,8 +623,8 @@ export class SimulationEngine {
   startSecondHalf(): void {
     this.halftimeLatched = false;
     this.halftimeHandled = true;
-    this.visionCache.clear();
-    this.visionCacheTick.clear();
+    this.perceptionCache.clear();
+    this.perceptionCacheTick.clear();
   }
 
   /**
@@ -679,8 +684,8 @@ export class SimulationEngine {
     }
 
     // Clear vision cache — new player on pitch invalidates cached opponent lists
-    this.visionCache.clear();
-    this.visionCacheTick.clear();
+    this.perceptionCache.clear();
+    this.perceptionCacheTick.clear();
 
     return true;
   }
@@ -1233,23 +1238,27 @@ export class SimulationEngine {
 
     // ── 7. Build AgentContext for each player (with vision filtering) ────────
     const contexts: AgentContext[] = playersWithAnchors.map((p, idx) => {
-      const teammates = playersWithAnchors.filter(op => op.teamId === p.teamId && op.id !== p.id && isActivePlayer(op));
+      const allTeammates = playersWithAnchors.filter(op => op.teamId === p.teamId && op.id !== p.id && isActivePlayer(op));
       const allOpponents = playersWithAnchors.filter(op => op.teamId !== p.teamId && isActivePlayer(op));
 
-      // Vision-filtered opponents: each player only "sees" opponents within their
-      // vision radius and facing direction. Uses a per-player cache with refresh
-      // interval driven by anticipation personality trait.
+      // Perception-filtered teammates and opponents. Uses a per-player cache with
+      // refresh interval driven by anticipation personality trait to preserve a
+      // short-lived memory of recently seen players.
       const effVision = effectiveAttributes[idx]!.vision;
       const effAnticipation = effectivePersonality[idx]!.anticipation;
       const refreshInterval = visionRefreshInterval(effAnticipation);
-      const lastRefresh = this.visionCacheTick.get(p.id) ?? -Infinity;
-      let visibleOpponents: readonly PlayerState[];
+      const lastRefresh = this.perceptionCacheTick.get(p.id) ?? -Infinity;
+      let perceivedTeammates: readonly PlayerState[];
+      let perceivedOpponents: readonly PlayerState[];
       if (nextTick - lastRefresh >= refreshInterval) {
-        visibleOpponents = filterOpponentsByVision(p, allOpponents, effVision);
-        this.visionCache.set(p.id, visibleOpponents);
-        this.visionCacheTick.set(p.id, nextTick);
+        perceivedTeammates = filterPlayersByVision(p, allTeammates, effVision, current.ball, 'teammate');
+        perceivedOpponents = filterPlayersByVision(p, allOpponents, effVision, current.ball, 'opponent');
+        this.perceptionCache.set(p.id, { teammates: perceivedTeammates, opponents: perceivedOpponents });
+        this.perceptionCacheTick.set(p.id, nextTick);
       } else {
-        visibleOpponents = this.visionCache.get(p.id) ?? allOpponents;
+        const cached = this.perceptionCache.get(p.id);
+        perceivedTeammates = cached?.teammates ?? allTeammates;
+        perceivedOpponents = cached?.opponents ?? allOpponents;
       }
 
       // Opponent goal position
@@ -1262,16 +1271,13 @@ export class SimulationEngine {
 
       const isInPossessionTeam = effectivePossessionTeam === p.teamId;
 
-      // Nearest defender uses ALL opponents (ground truth) — you can feel physical
-      // pressure even from opponents you can't see. Vision filtering only affects
-      // the opponents list used by action considerations (lane clearance, etc.)
       let nearestDefenderDistance = 100;
       let nearestTeammateDistance = 100;
       for (const opp of allOpponents) {
         const d = p.position.distanceTo(opp.position);
         if (d < nearestDefenderDistance) nearestDefenderDistance = d;
       }
-      for (const tm of teammates) {
+      for (const tm of allTeammates) {
         const d = p.position.distanceTo(tm.position);
         if (d < nearestTeammateDistance) nearestTeammateDistance = d;
       }
@@ -1289,8 +1295,8 @@ export class SimulationEngine {
 
       return {
         self: effectivePlayer,
-        teammates,
-        opponents: visibleOpponents as PlayerState[],
+        teammates: allTeammates,
+        opponents: perceivedOpponents as PlayerState[],
         ball: current.ball,
         matchPhase: phaseResult.phase,
         score: current.score,
@@ -1886,9 +1892,20 @@ export class SimulationEngine {
         case 'PASS_FORWARD':
         case 'PASS_SAFE': {
           if (ball.carrierId === p.id && nextTick >= this.carrierKickLockoutUntil) {
-            // Find a target teammate — factor in lane clearance to avoid interceptions
-            const teammates = updatedPlayers.filter(tp => tp.teamId === p.teamId && tp.id !== p.id && isActivePlayer(tp));
-            const opponents = updatedPlayers.filter(op => op.teamId !== p.teamId && isActivePlayer(op));
+            // Team structure still uses full teammate knowledge, but pass target
+            // selection is perception-limited so carriers don't behave omnisciently.
+            const teammates = filterPlayersByVision(
+              p,
+              updatedPlayers.filter(tp => tp.teamId === p.teamId && tp.id !== p.id && isActivePlayer(tp)),
+              effAttr.vision,
+              ball,
+              'teammate',
+            );
+            const opponents = contexts[i]!.opponents.filter(op => isActivePlayer(op));
+            if (teammates.length === 0) {
+              updatedPlayers[i] = { ...p, velocity: Vec2.zero() };
+              break;
+            }
             let target = teammates[0];
             let targetLaneClear = 1;
             if (intent.action === 'PASS_FORWARD') {
@@ -2041,8 +2058,18 @@ export class SimulationEngine {
         case 'PASS_THROUGH': {
           // Through-ball: play the ball into space ahead of a running teammate
           if (ball.carrierId === p.id && nextTick >= this.carrierKickLockoutUntil) {
-            const teammates = updatedPlayers.filter(tp => tp.teamId === p.teamId && tp.id !== p.id && isActivePlayer(tp));
-            const opponents = updatedPlayers.filter(op => op.teamId !== p.teamId && isActivePlayer(op));
+            const teammates = filterPlayersByVision(
+              p,
+              updatedPlayers.filter(tp => tp.teamId === p.teamId && tp.id !== p.id && isActivePlayer(tp)),
+              effAttr.vision,
+              ball,
+              'teammate',
+            );
+            const opponents = contexts[i]!.opponents.filter(op => isActivePlayer(op));
+            if (teammates.length === 0) {
+              updatedPlayers[i] = { ...p, velocity: Vec2.zero() };
+              break;
+            }
             const forwardSign = p.teamId === 'home' ? 1 : -1;
             const goalX = p.teamId === 'home' ? PITCH_WIDTH : 0;
 
@@ -3411,41 +3438,55 @@ function visionRefreshInterval(anticipation: number): number {
 }
 
 /**
- * Filter opponents by a player's vision radius, facing direction, and blind spot.
- * - Always visible if within close range (5m)
- * - Invisible if beyond vision radius
- * - Blind spot: opponents behind the player (dot product < threshold) are invisible unless close
+ * Filter players by a player's current perception cone.
+ * Teammates are perceived slightly wider/further than opponents, and both share
+ * a close-range awareness bubble. Facing is task-aware: stationary players bias
+ * toward the ball instead of always staring at goal.
  */
-function filterOpponentsByVision(
+export function filterPlayersByVision(
   player: PlayerState,
-  opponents: readonly PlayerState[],
+  others: readonly PlayerState[],
   effectiveVision: number,
+  ball: BallState,
+  kind: 'teammate' | 'opponent',
 ): PlayerState[] {
-  const { visionRadiusMin, visionRadiusMax, visionBlindSpotDot, visionCloseRange } = TUNING;
-  const radius = visionRadiusMin + effectiveVision * (visionRadiusMax - visionRadiusMin);
+  const radiusMin = kind === 'teammate' ? TUNING.teammateVisionRadiusMin : TUNING.opponentVisionRadiusMin;
+  const radiusMax = kind === 'teammate' ? TUNING.teammateVisionRadiusMax : TUNING.opponentVisionRadiusMax;
+  const blindSpotDot = kind === 'teammate' ? TUNING.teammateVisionBlindSpotDot : TUNING.opponentVisionBlindSpotDot;
+  const radius = radiusMin + effectiveVision * (radiusMax - radiusMin);
+  const facing = computePerceptionFacing(player, ball);
 
-  // Facing direction: derived from velocity, or default facing opponent goal when stationary
-  let facing: Vec2;
-  if (player.velocity.length() > 0.1) {
-    facing = player.velocity.normalize();
-  } else {
-    // Face opponent goal
-    const goalX = player.teamId === 'home' ? PITCH_WIDTH : 0;
-    facing = new Vec2(goalX - player.position.x, 0).normalize();
-  }
-
-  return opponents.filter(opp => {
-    const toOpp = opp.position.subtract(player.position);
-    const dist = toOpp.length();
+  return others.filter(other => {
+    const toOther = other.position.subtract(player.position);
+    const dist = toOther.length();
 
     // Always visible at close range
-    if (dist < visionCloseRange) return true;
+    if (dist < TUNING.visionCloseRange) return true;
     // Beyond vision radius → invisible
     if (dist > radius) return false;
-    // Check blind spot: opponent behind player
-    const dot = dist > 0.01 ? toOpp.scale(1 / dist).dot(facing) : 0;
-    return dot >= visionBlindSpotDot;
+    // Check blind spot
+    const dot = dist > 0.01 ? toOther.scale(1 / dist).dot(facing) : 0;
+    return dot >= blindSpotDot;
   });
+}
+
+export function computePerceptionFacing(player: PlayerState, ball: BallState): Vec2 {
+  if (player.velocity.length() > 0.2) {
+    return player.velocity.normalize();
+  }
+
+  if (ball.carrierId === player.id) {
+    const goalX = player.teamId === 'home' ? PITCH_WIDTH : 0;
+    return new Vec2(goalX - player.position.x, 0).normalize();
+  }
+
+  const toBall = ball.position.subtract(player.position);
+  if (toBall.length() > 0.5) {
+    return toBall.normalize();
+  }
+
+  const goalX = player.teamId === 'home' ? PITCH_WIDTH : 0;
+  return new Vec2(goalX - player.position.x, 0).normalize();
 }
 
 // ============================================================

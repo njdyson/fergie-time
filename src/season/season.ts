@@ -7,6 +7,7 @@ import seedrandom from 'seedrandom';
 import type { PlayerState } from '../simulation/types.ts';
 import type { TeamTier } from './teamGen.ts';
 import { createAITeam } from './teamGen.ts';
+import type { PlayerName } from './nameService.ts';
 import type { Fixture } from './fixtures.ts';
 import { generateFixtures } from './fixtures.ts';
 import type { TeamRecord } from './leagueTable.ts';
@@ -96,7 +97,7 @@ export function createSeason(
   playerTeamName: string,
   playerSquad: PlayerState[],
   seed: string,
-  names?: string[],
+  names?: PlayerName[] | string[],
 ): SeasonState {
   const rng = seedrandom(seed);
   const tiers = getAITierDistribution();

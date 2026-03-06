@@ -791,6 +791,63 @@
         display: block;
       }
 
+      /* ── Tactics setup screen ────────────────────────────── */
+      #tactics-screen {
+        display: flex;
+        flex-direction: row;
+        align-items: stretch;
+      }
+
+      #tactics-left-panel {
+        width: 300px;
+        max-width: 25vw;
+        flex-shrink: 0;
+        background: #0f172a;
+        border-right: 1px solid #334155;
+        display: flex;
+        flex-direction: column;
+        overflow-y: auto;
+      }
+
+      #tactics-header {
+        padding: 12px 10px 10px;
+        border-bottom: 1px solid #334155;
+        text-align: center;
+      }
+
+      #tactics-left-content {
+        padding: 10px;
+        flex: 1;
+        overflow-y: auto;
+      }
+
+      #tactics-center {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        min-width: 0;
+      }
+
+      #tactics-right {
+        width: 300px;
+        max-width: 25vw;
+        flex-shrink: 0;
+        display: flex;
+        flex-direction: column;
+        overflow-y: auto;
+      }
+
+      #tactics-right > #right-panel {
+        width: 100%;
+        max-width: none;
+        flex: 1;
+      }
+
+      #tactics-center #btn-kickoff,
+      #tactics-center #btn-second-half {
+        display: none !important;
+      }
+
       /* ── Pitch area wrapper ────────────────────────────────── */
       #pitch-area {
         display: flex;
@@ -1181,26 +1238,37 @@
       }
 
       /* ── Debug sidebar (slides in from left) ────────────── */
-      #debug-sidebar {
+      .debug-sidebar {
         position: fixed;
         top: 0;
-        left: 0;
         width: 300px;
         max-width: 25vw;
         height: 100%;
         background: #0a0f1e;
-        border-right: 1px solid #334155;
         overflow: hidden;
-        transform: translateX(-100%);
         transition: transform 0.2s ease;
         z-index: 100;
       }
 
-      #debug-sidebar.open {
+      #debug-sidebar {
+        left: 0;
+        border-right: 1px solid #334155;
+        transform: translateX(-100%);
+      }
+
+      #debug-sidebar-away {
+        right: 0;
+        border-left: 1px solid #334155;
+        transform: translateX(100%);
+      }
+
+      #debug-sidebar.open,
+      #debug-sidebar-away.open {
         transform: translateX(0);
       }
 
-      #debug-canvas {
+      #debug-canvas,
+      #debug-canvas-away {
         display: block;
       }
 
@@ -1292,12 +1360,32 @@
       <div id="login-screen" style="display:none; flex:1; overflow:auto;"></div>
 
       <!-- ── Nav tabs ──────────────────────────────────────────── -->
-      <nav id="nav-tabs" style="display:flex; justify-content:center; gap:8px; padding:0; background:#0a0a0a; border-bottom:1px solid #1e293b;">
+      <nav id="nav-tabs" style="display:flex; justify-content:center; gap:8px; padding:0; background:#0a0a0a; border-bottom:1px solid #1e293b; position:relative;">
         <button id="nav-hub"      class="nav-tab" data-screen="HUB">Hub</button>
         <button id="nav-squad"    class="nav-tab" data-screen="SQUAD">Squad</button>
         <button id="nav-fixtures" class="nav-tab" data-screen="FIXTURES">Fixtures</button>
         <button id="nav-table"    class="nav-tab" data-screen="TABLE">Table</button>
+        <button id="nav-tactics" class="nav-tab" data-screen="TACTICS">Tactics</button>
+        <button id="nav-logout"   style="position:absolute; right:8px; top:50%; transform:translateY(-50%); background:none; border:none; color:#64748b; font:11px/1 'Segoe UI',system-ui,sans-serif; cursor:pointer; padding:4px 8px;">Log Out</button>
       </nav>
+
+      <!-- ── Tactics setup screen (pre-match) ─────────────────── -->
+      <div id="tactics-screen" style="display:none; flex:1; overflow:hidden;">
+        <div id="tactics-left-panel">
+          <div id="tactics-header">
+            <span style="font-weight:bold; font-size:15px; color:#e2e8f0; letter-spacing:0.05em;">TACTICS</span>
+          </div>
+          <div id="tactics-left-content">
+            <!-- tactic-selector and phase-bar reparented here when active -->
+          </div>
+        </div>
+        <div id="tactics-center">
+          <!-- canvas-wrapper reparented here when active -->
+        </div>
+        <div id="tactics-right">
+          <!-- right-panel reparented here when active -->
+        </div>
+      </div>
 
       <!-- ── Match view ──────────────────────────────────────── -->
       <div id="pitch-area" style="display:none;">
@@ -1368,11 +1456,15 @@
     </div>
 
     <!-- Debug sidebar (slides in from left) — toggled by D key -->
-    <div id="debug-sidebar">
+    <div id="debug-sidebar" class="debug-sidebar">
       <canvas id="debug-canvas"></canvas>
     </div>
 
-    <!-- Tuning panel (slides in from right) — toggled by D key -->
+    <div id="debug-sidebar-away" class="debug-sidebar">
+      <canvas id="debug-canvas-away"></canvas>
+    </div>
+
+    <!-- Tuning panel (slides in from right) — toggled by C key -->
     <div id="tuning-panel">
       <h3>Decision Engine</h3>
       <div class="tuning-row">

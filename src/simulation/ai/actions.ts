@@ -26,6 +26,14 @@ function agentHasBall(ctx: AgentContext): boolean {
   return ctx.ball.carrierId === ctx.self.id;
 }
 
+function teammatePassWindowScore(distance: number): number {
+  if (distance < 3) return 0.08;
+  if (distance < 6) return 0.25 + ((distance - 3) / 3) * 0.35;
+  if (distance <= 18) return 0.6 + ((distance - 6) / 12) * 0.35;
+  if (distance <= 28) return 0.95 - ((distance - 18) / 10) * 0.45;
+  return 0.5;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // SHOOT — strike at goal
 // ─────────────────────────────────────────────────────────────────────────────
@@ -66,7 +74,7 @@ const passForwardConsiderations: readonly ConsiderationFn[] = [
   (ctx) => agentHasBall(ctx) ? 1 : 0,
   (ctx) => linear(ctx.distanceToOpponentGoal / 105, 0.6, 0.2),
   (ctx) => ctx.self.attributes.passing,
-  (ctx) => exponentialDecay(ctx.nearestTeammateDistance / 50, 1.5),
+  (ctx) => teammatePassWindowScore(ctx.nearestTeammateDistance),
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -76,7 +84,8 @@ const passSafeConsiderations: readonly ConsiderationFn[] = [
   (ctx) => agentHasBall(ctx) ? 1 : 0,
   (ctx) => 1 - exponentialDecay(1 / Math.max(ctx.nearestDefenderDistance, 0.5), 2),
   (ctx) => ctx.self.attributes.passing,
-  (ctx) => exponentialDecay(ctx.nearestTeammateDistance / 50, 1.5),
+  (ctx) => teammatePassWindowScore(ctx.nearestTeammateDistance),
+  (ctx) => ctx.nearestDefenderDistance < 9 ? 1 : 0.45,
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -145,8 +154,36 @@ const holdShieldConsiderations: readonly ConsiderationFn[] = [
 // Reads TUNING.moveToPosIntercept and TUNING.moveToPosSlope live
 const moveToPositionConsiderations: readonly ConsiderationFn[] = [
   (ctx) => linear(ctx.distanceToFormationAnchor / 40, TUNING.moveToPosSlope, TUNING.moveToPosIntercept),
-  (ctx) => agentHasBall(ctx) ? 0.1 : 1.0,
+  (ctx) => {
+    if (agentHasBall(ctx)) return 0.1;
+    const role = ctx.self.role;
+    const attackingRole = role === 'ST' || role === 'LW' || role === 'RW' || role === 'CAM' || role === 'CM';
+    if (ctx.isInPossessionTeam && attackingRole) return 0.42;
+    return 1.0;
+  },
   (ctx) => ctx.self.attributes.positioning,
+];
+
+const offerSupportConsiderations: readonly ConsiderationFn[] = [
+  (ctx) => agentHasBall(ctx) ? 0 : 1,
+  (ctx) => ctx.isInPossessionTeam ? 1 : 0.12,
+  (ctx) => {
+    const role = ctx.self.role;
+    if (role === 'GK' || role === 'CB') return 0.15;
+    if (role === 'LB' || role === 'RB' || role === 'CDM') return 0.55;
+    if (role === 'CM' || role === 'CAM') return 0.95;
+    if (role === 'LW' || role === 'RW' || role === 'ST') return 0.85;
+    return 0.7;
+  },
+  (ctx) => {
+    const d = ctx.nearestTeammateDistance;
+    if (d < 5) return 0.2;
+    if (d < 10) return 0.55;
+    if (d < 22) return 1;
+    if (d < 32) return 0.7;
+    return 0.45;
+  },
+  (ctx) => ctx.self.attributes.positioning * 0.55 + ctx.self.attributes.vision * 0.45,
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -212,6 +249,7 @@ export const ACTIONS: readonly Action[] = [
   { id: ActionType.DRIBBLE, considerations: dribbleConsiderations },
   { id: ActionType.HOLD_SHIELD, considerations: holdShieldConsiderations },
   { id: ActionType.MOVE_TO_POSITION, considerations: moveToPositionConsiderations },
+  { id: ActionType.OFFER_SUPPORT, considerations: offerSupportConsiderations },
   { id: ActionType.PRESS, considerations: pressConsiderations },
   { id: ActionType.MAKE_RUN, considerations: makeRunConsiderations },
 ];
