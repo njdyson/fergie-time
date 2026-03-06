@@ -20,7 +20,7 @@ import { HubScreen } from './ui/screens/hubScreen.ts';
 import { FixturesScreen } from './ui/screens/fixturesScreen.ts';
 import { TableScreen } from './ui/screens/tableScreen.ts';
 import { SquadScreen } from './ui/screens/squadScreen.ts';
-import { createSeason, validateSquadSelection, isSeasonComplete, getChampion, startNewSeason } from './season/season.ts';
+import { createSeason, validateSquadSelection, isSeasonComplete, getChampion, startNewSeason, advanceMatchday } from './season/season.ts';
 import type { SeasonState } from './season/season.ts';
 
 // ============================================================
@@ -489,8 +489,20 @@ let halftimeHandled = false;
 let lastCommentaryIdx = 0;
 const commentaryEl = document.getElementById('commentary');
 
+/** Tracks which side (home/away) the player's team is on in the current match */
+let currentMatchPlayerSide: 'home' | 'away' = 'home';
 
-function startMatch(): void {
+/**
+ * Initialize and start a match with the given roster config.
+ * Extracts the engine setup, debug overlay, polls, and game loop into one reusable helper.
+ */
+function initMatchWithConfig(config: {
+  homeRoster: import('./simulation/types.ts').PlayerState[];
+  homeBench: import('./simulation/types.ts').PlayerState[];
+  awayRoster: import('./simulation/types.ts').PlayerState[];
+  awayBench: import('./simulation/types.ts').PlayerState[];
+  seed?: string;
+}): void {
   // Stop any existing loop and polls
   stopGameLoop();
   if (fullTimePoll !== null) { clearInterval(fullTimePoll); fullTimePoll = null; }
@@ -509,15 +521,12 @@ function startMatch(): void {
   const inPossConfig = tacticsBoard.getTacticalConfig();
   const oopConfig = tacticsBoard.getOutOfPossessionConfig();
 
-  // Build engine and debug overlay (now with bench players)
-  const { home, away, homeBench, awayBench } = createMatchRosters();
-
   engine = new SimulationEngine({
-    seed: 'fergie-time-match-' + Date.now(),
-    homeRoster: home,
-    awayRoster: away,
-    homeBench,
-    awayBench,
+    seed: config.seed ?? 'fergie-time-match-' + Date.now(),
+    homeRoster: config.homeRoster,
+    awayRoster: config.awayRoster,
+    homeBench: config.homeBench,
+    awayBench: config.awayBench,
     homeTacticalConfig: inPossConfig,
     homeTacticalConfigOOP: oopConfig,
   });
@@ -565,8 +574,25 @@ function startMatch(): void {
       if (canvasWrapper) {
         const playerStats = engine.gameLog.getPlayerStats();
         showFullTimeOverlay(canvasWrapper, snap.score, snap.players, playerStats, () => {
-          // Navigate back to Hub after full time
-          showScreen(ScreenId.HUB);
+          // 1. Record player team fatigue from match result
+          for (const player of snap.players) {
+            if (player.teamId === currentMatchPlayerSide) {
+              seasonState.fatigueMap.set(player.id, player.fatigue);
+            }
+          }
+
+          // 2. Record match result and run AI batch via advanceMatchday
+          const playerResult = { homeGoals: snap.score[0], awayGoals: snap.score[1] };
+          const playerWasHome = currentMatchPlayerSide === 'home';
+          seasonState = advanceMatchday(seasonState, playerResult, playerWasHome);
+
+          // 3. Check season complete
+          if (isSeasonComplete(seasonState)) {
+            showScreen(ScreenId.HUB);
+            // Champion banner is rendered by updateCurrentScreen when it detects isSeasonComplete
+          } else {
+            showScreen(ScreenId.HUB);
+          }
         });
       }
     }
@@ -580,6 +606,18 @@ function startMatch(): void {
   updatePauseButton();
   if (btnKickoff) btnKickoff.style.display = '';
   if (btnSecondHalf) btnSecondHalf.style.display = 'none';
+}
+
+function startMatch(): void {
+  // Legacy/dev path: use createMatchRosters
+  const { home, away, homeBench, awayBench } = createMatchRosters();
+  currentMatchPlayerSide = 'home';
+  initMatchWithConfig({
+    homeRoster: home,
+    homeBench,
+    awayRoster: away,
+    awayBench,
+  });
 }
 
 // ============================================================
@@ -1180,7 +1218,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ============================================================
-// Squad Kick Off — start match from squad screen
+// Squad Kick Off — start match from squad screen (season path)
 // ============================================================
 
 squadKickoffBtn.addEventListener('click', () => {
@@ -1188,9 +1226,49 @@ squadKickoffBtn.addEventListener('click', () => {
   const valid = validateSquadSelection(selection);
   if (!valid.valid) return;
 
-  // Start the match and switch to match view
+  // Find opponent for current matchday
+  const playerFixture = seasonState.fixtures.find(f =>
+    f.matchday === seasonState.currentMatchday &&
+    (f.homeTeamId === seasonState.playerTeamId || f.awayTeamId === seasonState.playerTeamId)
+  );
+  if (!playerFixture) {
+    console.error('No fixture found for matchday', seasonState.currentMatchday);
+    return;
+  }
+  const playerIsHome = playerFixture.homeTeamId === seasonState.playerTeamId;
+  const opponentId = playerIsHome ? playerFixture.awayTeamId : playerFixture.homeTeamId;
+  const opponentTeam = seasonState.teams.find(t => t.id === opponentId);
+  if (!opponentTeam) return;
+
+  // Apply fatigueMap to player squad
+  const fatigueMap = seasonState.fatigueMap;
+  const playerStarters = selection.starters.map(p => ({
+    ...p, fatigue: fatigueMap.get(p.id) ?? 0, teamId: (playerIsHome ? 'home' : 'away') as 'home' | 'away',
+  }));
+  const playerBench = selection.bench.map(p => ({
+    ...p, fatigue: fatigueMap.get(p.id) ?? 0, teamId: (playerIsHome ? 'home' : 'away') as 'home' | 'away',
+  }));
+
+  // Build opponent roster with fatigue
+  const opponentSquad = opponentTeam.squad.map(p => ({
+    ...p, fatigue: fatigueMap.get(p.id) ?? 0, teamId: (playerIsHome ? 'away' : 'home') as 'home' | 'away',
+  }));
+  const opponentStarters = opponentSquad.slice(0, 11);
+  const opponentBench = opponentSquad.slice(11, 16);
+
+  // Set which side the player is on for post-match fatigue capture
+  currentMatchPlayerSide = playerIsHome ? 'home' : 'away';
+
+  // Build match config with correct home/away assignment
+  const homeRoster = playerIsHome ? playerStarters : opponentStarters;
+  const homeBench = playerIsHome ? playerBench : opponentBench;
+  const awayRoster = playerIsHome ? opponentStarters : playerStarters;
+  const awayBench = playerIsHome ? opponentBench : playerBench;
+
+  const matchSeed = `${seasonState.seed}-md-${seasonState.currentMatchday}-player`;
+
   showScreen(ScreenId.MATCH);
-  startMatch();
+  initMatchWithConfig({ homeRoster, homeBench, awayRoster, awayBench, seed: matchSeed });
 });
 
 // ============================================================
