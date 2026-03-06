@@ -1,5 +1,7 @@
 import express from 'express';
 import cookieSession from 'cookie-session';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { getDb } from './db.js';
 import { healthRouter } from './routes/health.js';
 import { authRouter } from './routes/auth.js';
@@ -18,6 +20,14 @@ app.use(cookieSession({
 app.use(healthRouter);
 app.use(authRouter);
 app.use(gamesRouter);
+
+// Serve static frontend in production
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const distPath = path.join(__dirname, '..', 'dist');
+app.use(express.static(distPath));
+app.get('*', (_req, res) => {
+  res.sendFile(path.join(distPath, 'index.html'));
+});
 
 // Initialize database on startup
 getDb();

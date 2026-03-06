@@ -8,6 +8,7 @@
     "dev:client": "vite",
     "dev:server": "tsx watch server/index.ts",
     "build": "tsc && vite build",
+    "start": "node --import tsx server/index.ts",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest"
