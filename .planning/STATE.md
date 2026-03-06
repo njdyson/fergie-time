@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Data Layer
 status: executing
-stopped_at: Completed 06-01-PLAN.md
-last_updated: "2026-03-06T11:03:51.277Z"
-last_activity: 2026-03-06 — Plan 06-01 complete (Auth and game persistence routes)
+stopped_at: Completed 07-01-PLAN.md
+last_updated: "2026-03-06T12:23:08.334Z"
+last_activity: 2026-03-06 — Plan 07-01 complete (Squad data layer and name service)
 progress:
   total_phases: 8
   completed_phases: 4
-  total_plans: 24
-  completed_plans: 23
+  total_plans: 26
+  completed_plans: 24
   percent: 96
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-06)
 
 **Core value:** The match engine must produce emergent behavior that feels like real football — goals, mistakes, tactical dominance and individual brilliance all arising from physics, agent decisions and personality vectors, never from scripted events
-**Current focus:** Milestone v1.1 — Data Layer (Phase 6: Auth & Persistence)
+**Current focus:** Milestone v1.1 — Data Layer (Phase 7: Squads & Names)
 
 ## Current Position
 
-Phase: 6 of 8 (Auth & Persistence) — in progress
+Phase: 7 of 8 (Squads & Names) — in progress
 Plan: 1 of 2 complete
 Status: Executing
-Last activity: 2026-03-06 — Plan 06-01 complete (Auth and game persistence routes)
+Last activity: 2026-03-06 — Plan 07-01 complete (Squad data layer and name service)
 
 Progress: [██████████] 96%
 
@@ -56,6 +56,7 @@ Progress: [██████████] 96%
 | Phase 05 P02 | 2min | 2 tasks | 6 files |
 | Phase 05 P03 | 3min | 2 tasks | 3 files |
 | Phase 06 P01 | 4min | 2 tasks | 7 files |
+| Phase 07 P01 | 5min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -76,6 +77,8 @@ Recent decisions affecting current work:
 - [Phase 05]: concurrently for cross-platform dual-server dev script
 - [Phase 06]: bcryptjs (pure JS) over native bcrypt for cross-platform builds
 - [Phase 06]: Per-file test name prefixes for DB isolation in shared SQLite
+- [Phase 07]: ROLES_25 bench adjusted from plan listing to match stated 5 CB total
+- [Phase 07]: getNames remainder allocation to last nationality for exact count
 
 ### Pending Todos
 
@@ -89,6 +92,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-06T10:40:56.913Z
-Stopped at: Completed 06-01-PLAN.md
+Last session: 2026-03-06T12:23:08.331Z
+Stopped at: Completed 07-01-PLAN.md
 Resume file: None

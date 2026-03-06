@@ -67,16 +67,16 @@ Requirements for the Data Layer milestone.
 
 ### Squad Expansion
 
-- [ ] **SQD2-01**: 25-man squads for all teams (up from 16)
-- [ ] **SQD2-02**: 18-man matchday squad selection (11 starters + 7 subs from 25)
-- [ ] **SQD2-03**: Squad numbers editable per player (shirt numbers)
+- [x] **SQD2-01**: 25-man squads for all teams (up from 16)
+- [x] **SQD2-02**: 18-man matchday squad selection (11 starters + 7 subs from 25)
+- [x] **SQD2-03**: Squad numbers editable per player (shirt numbers)
 - [ ] **SQD2-04**: Squad screen updated for 25 players with matchday selection UI
 
 ### Names
 
-- [ ] **NAME-01**: Fetch realistic names from randomuser.me at game creation, cached in DB
-- [ ] **NAME-02**: Nationality-weighted name fetching (matching existing weightings)
-- [ ] **NAME-03**: Fallback to generic name pool (not position-based) if API unavailable
+- [x] **NAME-01**: Fetch realistic names from randomuser.me at game creation, cached in DB
+- [x] **NAME-02**: Nationality-weighted name fetching (matching existing weightings)
+- [x] **NAME-03**: Fallback to generic name pool (not position-based) if API unavailable
 
 ### Stats
 
@@ -184,13 +184,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AUTH-04 | Phase 6 | Complete |
 | PERS-01 | Phase 6 | Complete |
 | PERS-02 | Phase 6 | Complete |
-| SQD2-01 | Phase 7 | Pending |
-| SQD2-02 | Phase 7 | Pending |
-| SQD2-03 | Phase 7 | Pending |
+| SQD2-01 | Phase 7 | Complete |
+| SQD2-02 | Phase 7 | Complete |
+| SQD2-03 | Phase 7 | Complete |
 | SQD2-04 | Phase 7 | Pending |
-| NAME-01 | Phase 7 | Pending |
-| NAME-02 | Phase 7 | Pending |
-| NAME-03 | Phase 7 | Pending |
+| NAME-01 | Phase 7 | Complete |
+| NAME-02 | Phase 7 | Complete |
+| NAME-03 | Phase 7 | Complete |
 | STAT-01 | Phase 8 | Pending |
 | STAT-02 | Phase 8 | Pending |
 | STAT-03 | Phase 8 | Pending |
