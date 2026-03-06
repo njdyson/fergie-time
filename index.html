@@ -113,6 +113,15 @@
       .nav-tab:hover { color: #e2e8f0; border-bottom-color: #334155; }
       .nav-tab.active { color: #f59e0b; border-bottom-color: #f59e0b; }
 
+      .screen-bg {
+        background:
+          radial-gradient(ellipse at 20% 0%, rgba(22,101,52,0.15) 0%, transparent 60%),
+          radial-gradient(ellipse at 80% 100%, rgba(30,64,175,0.10) 0%, transparent 60%),
+          repeating-linear-gradient(0deg, transparent, transparent 39px, rgba(255,255,255,0.015) 39px, rgba(255,255,255,0.015) 40px),
+          repeating-linear-gradient(90deg, transparent, transparent 39px, rgba(255,255,255,0.015) 39px, rgba(255,255,255,0.015) 40px),
+          #0a0f1a;
+      }
+
       .bench-player-btn:hover:not(:disabled) {
         background: #1e293b;
       }
@@ -1357,7 +1366,7 @@
     <div id="app">
 
       <!-- ── Login screen (shown before auth, hidden after) ──── -->
-      <div id="login-screen" style="display:none; flex:1; overflow:auto;"></div>
+      <div id="login-screen" class="screen-bg" style="display:none; flex:1; overflow:auto;"></div>
 
       <!-- ── Nav tabs ──────────────────────────────────────────── -->
       <nav id="nav-tabs" style="display:flex; justify-content:center; gap:8px; padding:0; background:#0a0a0a; border-bottom:1px solid #1e293b; position:relative;">
@@ -1448,10 +1457,10 @@
       </div>
 
       <!-- ── Screen containers ─────────────────────────────────── -->
-      <div id="hub-screen"      style="display:none; flex:1; overflow:auto; padding:16px;"></div>
-      <div id="squad-screen"    style="display:none; flex:1; overflow:auto; padding:16px;"></div>
-      <div id="fixtures-screen" style="display:none; flex:1; overflow:auto; padding:16px;"></div>
-      <div id="table-screen"    style="display:none; flex:1; overflow:auto; padding:16px;"></div>
+      <div id="hub-screen"      class="screen-bg" style="display:none; flex:1; overflow:auto; padding:16px;"></div>
+      <div id="squad-screen"    class="screen-bg" style="display:none; flex:1; overflow:auto; padding:16px;"></div>
+      <div id="fixtures-screen" class="screen-bg" style="display:none; flex:1; overflow:auto; padding:16px;"></div>
+      <div id="table-screen"    class="screen-bg" style="display:none; flex:1; overflow:auto; padding:16px;"></div>
 
     </div>
 

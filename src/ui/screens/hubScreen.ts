@@ -31,12 +31,6 @@ export class HubScreen {
     this.container.style.fontFamily = "'Segoe UI', system-ui, sans-serif";
     this.container.style.padding = '24px';
     this.container.style.boxSizing = 'border-box';
-    this.container.style.background = `
-      radial-gradient(ellipse at 20% 0%, rgba(22,101,52,0.15) 0%, transparent 60%),
-      radial-gradient(ellipse at 80% 100%, rgba(30,64,175,0.10) 0%, transparent 60%),
-      repeating-linear-gradient(0deg, transparent, transparent 39px, rgba(255,255,255,0.015) 39px, rgba(255,255,255,0.015) 40px),
-      repeating-linear-gradient(90deg, transparent, transparent 39px, rgba(255,255,255,0.015) 39px, rgba(255,255,255,0.015) 40px),
-      #0a0f1a`;
   }
 
   onKickoff(cb: () => void): void {

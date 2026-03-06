@@ -12,7 +12,6 @@ import type { SquadSelection } from '../../season/season.ts';
 export type { SquadSelection } from '../../season/season.ts';
 
 // Color palette (dark theme)
-const BG = '#111111';
 const PANEL_BG = '#1e293b';
 const TEXT = '#94a3b8';
 const TEXT_BRIGHT = '#e2e8f0';
@@ -103,7 +102,6 @@ export class SquadScreen {
 
   constructor(container: HTMLElement) {
     this.container = container;
-    this.container.style.backgroundColor = BG;
     this.container.style.color = TEXT;
     this.container.style.fontFamily = "'Segoe UI', system-ui, sans-serif";
     this.container.style.padding = '16px';
