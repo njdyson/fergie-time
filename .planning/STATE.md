@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in-progress
-stopped_at: "Completed 03-03-PLAN.md"
-last_updated: "2026-03-06T07:38:07Z"
-last_activity: "2026-03-06 — Plan 03-03 complete: Headless quickSimMatch runner + Hub/Fixtures/Table/Squad screens with dark theme and squad selection toggles."
+stopped_at: "Completed 03-04-PLAN.md"
+last_updated: "2026-03-06T07:44:28Z"
+last_activity: "2026-03-06 — Plan 03-04 complete: Screen router with nav tabs, season init, fullTimeOverlay Continue button."
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 19
-  completed_plans: 16
-  percent: 84
+  completed_plans: 17
+  percent: 89
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-02)
 ## Current Position
 
 Phase: 3 of 4 (Management Shell) — IN PROGRESS
-Plan: 3 of 6 in current phase — COMPLETE (3/6)
-Status: Phase 3 plan 03 complete — quickSimMatch with real engine + 4 management screens (Hub, Fixtures, Table, Squad)
-Last activity: 2026-03-06 — Plan 03-03 complete: Headless quickSimMatch runner + Hub/Fixtures/Table/Squad screens with dark theme and squad selection toggles.
+Plan: 4 of 6 in current phase — COMPLETE (4/6)
+Status: Phase 3 plan 04 complete — Screen router, nav tabs, season init, fullTimeOverlay Continue button
+Last activity: 2026-03-06 — Plan 03-04 complete: Screen state machine with nav tabs routing 5 views, SeasonState at startup, and fullTimeOverlay Continue button.
 
-Progress: [████████░░] 84%
+Progress: [████████░░] 89%
 
 ## Performance Metrics
 
@@ -45,7 +45,7 @@ Progress: [████████░░] 84%
 |-------|-------|-------|----------|
 | 1. Engine Core | 10 | ~64 min | ~6.4 min |
 | 2. Tactical Layer | 2 | ~21 min | ~10.5 min |
-| 3. Management Shell | 3 | ~12 min | ~4 min |
+| 3. Management Shell | 4 | ~15 min | ~3.8 min |
 
 **Recent Trend:**
 - Last 5 plans: 01-06 (7 min), 01-07 (3 min), 01-08 (8 min), 01-09 (7 min), 01-10 (20 min incl. checkpoint)
@@ -105,6 +105,9 @@ Recent decisions affecting current work:
 - [Phase 03-02]: fatigueMap uses playerId keys across all teams — separate from readonly PlayerState.fatigue
 - [Phase 03-03]: quickSimMatch uses real SimulationEngine with MatchConfig — replaces stub, handles halftime latch automatically
 - [Phase 03-03]: Screen class pattern: constructor(container), update(state), getElement() — consistent standalone modules wired by Plan 05
+- [Phase 03-04]: App starts on Hub screen — no auto-match-start on load; match requires explicit Squad selection + Kick Off
+- [Phase 03-04]: SquadScreen wrapped in inner container div — Kick Off button appended as sibling so it survives innerHTML re-renders
+- [Phase 03-04]: fullTimeOverlay Continue button replaces click-anywhere-to-close — backward compatible via optional onContinue callback
 
 ### Pending Todos
 
@@ -118,6 +121,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-06T07:38:07Z
-Stopped at: Completed 03-03-PLAN.md
-Resume file: .planning/phases/03-management-shell/03-03-SUMMARY.md
+Last session: 2026-03-06T07:44:28Z
+Stopped at: Completed 03-04-PLAN.md
+Resume file: .planning/phases/03-management-shell/03-04-SUMMARY.md
