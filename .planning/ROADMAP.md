@@ -29,7 +29,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 ### v1.1 Data Layer
 
-- [ ] **Phase 5: Server Foundation** - Express + SQLite running with proven serialization, dev proxy configured, ready to receive game state
+- [x] **Phase 5: Server Foundation** - Express + SQLite running with proven serialization, dev proxy configured, ready to receive game state (completed 2026-03-06)
 - [ ] **Phase 6: Auth + Persistence** - User can create a game, log in, play matches, and return later to find their season exactly where they left it
 - [ ] **Phase 7: Squads + Names** - 25-man squads with realistic nationality-weighted names replace the 16-player placeholder rosters
 - [ ] **Phase 8: Stats + Deployment** - Per-player season stats tracked and displayed, entire application deployed to VPS
@@ -169,7 +169,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 2. Tactical Layer | v1.0 | 2/3 | In Progress | - |
 | 3. Management Shell | v1.0 | 6/6 | Complete | 2026-03-06 |
 | 4. Development Systems | v1.0 | 0/TBD | Deferred | - |
-| 5. Server Foundation | 2/3 | In Progress|  | - |
+| 5. Server Foundation | 3/3 | Complete   | 2026-03-06 | - |
 | 6. Auth + Persistence | v1.1 | 0/TBD | Not started | - |
 | 7. Squads + Names | v1.1 | 0/TBD | Not started | - |
 | 8. Stats + Deployment | v1.1 | 0/TBD | Not started | - |
