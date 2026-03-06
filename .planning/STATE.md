@@ -1,36 +1,34 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
+milestone: v1.1
+milestone_name: data-layer
 status: in-progress
-stopped_at: "Completed 03-06-PLAN.md — Phase 3 complete"
-last_updated: "2026-03-06T08:00:28Z"
-last_activity: "2026-03-06 — Plan 03-06 complete: Human verified management shell — all screens, squad selection, matchday loop approved."
+stopped_at: null
+last_updated: "2026-03-06T09:00:00Z"
+last_activity: "2026-03-06 — Milestone v1.1 started: Data Layer"
 progress:
-  total_phases: 4
-  completed_phases: 3
-  total_plans: 19
-  completed_plans: 19
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-02)
+See: .planning/PROJECT.md (updated 2026-03-06)
 
 **Core value:** The match engine must produce emergent behavior that feels like real football — goals, mistakes, tactical dominance and individual brilliance all arising from physics, agent decisions and personality vectors, never from scripted events
-**Current focus:** Phase 3 — Management Shell (COMPLETE)
+**Current focus:** Milestone v1.1 — Data Layer (defining requirements)
 
 ## Current Position
 
-Phase: 3 of 4 (Management Shell) — COMPLETE
-Plan: 6 of 6 in current phase — COMPLETE (6/6)
-Status: Phase 3 complete — Human verified management shell approved
-Last activity: 2026-03-06 — Plan 03-06 complete: Human verified management shell — all screens, squad selection, matchday loop approved.
-
-Progress: [██████████] 100%
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-06 — Milestone v1.1 started
 
 ## Performance Metrics
 

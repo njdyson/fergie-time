@@ -12,26 +12,31 @@ The match engine must produce emergent behavior that feels like real football �
 
 ### Validated
 
-(None yet — ship to validate)
+- ✓ 2.5D physics layer (2D ground + Z-axis height for aerials, headers, crosses) — v1.0 Phase 1
+- ✓ Steering-behavior player movement with physical attribute caps — v1.0 Phase 1
+- ✓ Utility AI agent system — all 22 players run identical evaluation code — v1.0 Phase 1
+- ✓ Personality vector system — floats that weight every action score per player — v1.0 Phase 1
+- ✓ Gaussian noise scaled by composure for decision variance — v1.0 Phase 1
+- ✓ Fatigue system with personality erosion — v1.0 Phase 1
+- ✓ Tactical system — formation anchors, role assignments, per-player instructions — v1.0 Phase 2
+- ✓ Drag-and-drop tactics board for formation setup — v1.0 Phase 2
+- ✓ Contact/challenge resolution (tackles, shielding, aerial contests) — v1.0 Phase 1
+- ✓ 2D top-down pitch rendering on HTML5 Canvas — v1.0 Phase 1
+- ✓ Squad screen showing player attributes, fitness — v1.0 Phase 3
+- ✓ Fixtures and league table (single 20-team league) — v1.0 Phase 3
+- ✓ Procedural player name generation — v1.0 Phase 3
 
 ### Active
 
-- [ ] 2.5D physics layer (2D ground + Z-axis height for aerials, headers, crosses)
-- [ ] Steering-behavior player movement with physical attribute caps
-- [ ] Utility AI agent system — all 22 players run identical evaluation code
-- [ ] Personality vector system — floats that weight every action score per player
-- [ ] Gaussian noise scaled by composure for decision variance
-- [ ] Fatigue system with personality erosion (tired players get cautious, error-prone)
-- [ ] Tactical system — formation anchors, role assignments, per-player instructions
-- [ ] Drag-and-drop tactics board for formation setup
-- [ ] Contact/challenge resolution (tackles, shielding, aerial contests)
-- [ ] 2D top-down pitch rendering on HTML5 Canvas
+- [ ] SQLite database layer with Express API server on VPS
+- [ ] Game persistence — save/load season state across browser sessions
+- [ ] Simple login — team name + password, create new game / continue existing
+- [ ] Realistic player names via randomuser.me API, cached in DB
+- [ ] 25-man squads (up from 16, matching Premier League rules)
+- [ ] Season player stats persisted in DB (goals, assists, appearances, etc.)
 - [ ] Procedurally generated pixel art player portraits
-- [ ] Random player name generation
 - [ ] Training system — drills that shift attributes and personality weights over time
 - [ ] Observable training sessions (mini-sims to watch player behavior)
-- [ ] Squad screen showing player attributes, personality, fitness
-- [ ] Fixtures and league table (single 20-team league)
 - [ ] Season cycle with youth graduates and retirements
 
 ### Out of Scope
@@ -43,6 +48,17 @@ The match engine must produce emergent behavior that feels like real football �
 - Mobile — web desktop-first
 - AI image generation for portraits — pixel art procedural generation instead
 - Commercial features (accounts, payments, analytics)
+
+## Current Milestone: v1.1 Data Layer
+
+**Goal:** Add persistent backend so game state survives sessions, with realistic names and expanded squads.
+
+**Target features:**
+- SQLite + Express API server deployed on existing VPS
+- Game save/load with simple team name + password login
+- Realistic player names from randomuser.me, cached in DB
+- 25-man squads matching Premier League rules
+- Season player stats (goals, assists, appearances) persisted per game
 
 ## Context
 
@@ -77,6 +93,9 @@ The match engine is the foundation — everything else (management screens, seas
 | Single league, no transfers for v1 | Focus on engine quality before management complexity | — Pending |
 | Pixel art procedural portraits | Can generate from trait combinations, fits the aesthetic, no external API dependency | — Pending |
 | Drag formation over preset templates | More expressive tactical control, aligns with "tactics as real mechanical levers" philosophy | — Pending |
+| SQLite + Express over Supabase/PocketBase | Simple single-file DB, deploy on existing VPS, no external services | — Pending |
+| randomuser.me for player names | Free, no API key, nationality-based, well-established | — Pending |
+| 25-man squads over 16 | Matches PL rules, enables rotation/depth decisions | — Pending |
 
 ---
-*Last updated: 2026-03-02 after initialization*
+*Last updated: 2026-03-06 after v1.1 milestone start*
