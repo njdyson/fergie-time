@@ -1203,16 +1203,18 @@
         color: #94a3b8;
       }
 
-      /* ── Commentary strip (CM2-style) ──────────────────────── */
+      /* ── Commentary strip (vidiprinter) ──────────────────────── */
       #commentary {
         min-height: 56px;
         flex: 1 0 56px;
         overflow-y: hidden;
-        background: #1a1a2eee;
+        background: #0c0c18ee;
         border-top: 2px solid #334155;
-        padding: 4px 10px;
-        font: 13px/1.6 'Segoe UI', system-ui, sans-serif;
-        color: #e2e8f0;
+        padding: 6px 12px;
+        font: bold 15px/1.7 'Courier New', 'Consolas', monospace;
+        color: #c8d8c0;
+        letter-spacing: 0.3px;
+        text-transform: uppercase;
         scroll-behavior: smooth;
         transition: background-color 0.6s ease;
         width: 100%;
@@ -1220,15 +1222,15 @@
       }
 
       #commentary .line {
-        padding: 1px 0;
+        padding: 2px 0;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
       }
 
       #commentary .line .minute {
-        color: rgba(255,255,255,0.4);
-        min-width: 32px;
+        color: #6b8f5e;
+        min-width: 36px;
         display: inline-block;
         font-weight: bold;
       }
@@ -1239,11 +1241,11 @@
       }
 
       #commentary .shot {
-        color: #bfdbfe;
+        color: #93c5fd;
       }
 
       #commentary .tackle {
-        color: #ddd6fe;
+        color: #c4b5fd;
       }
 
       /* ── Debug sidebar (slides in from left) ────────────── */

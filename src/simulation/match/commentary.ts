@@ -16,14 +16,10 @@ export interface CommentaryLine {
 // Helpers
 // ============================================================
 
-/** "home-9" → 10 (1-indexed shirt number) */
-function shirtNum(playerId: string): number {
-  return parseInt(playerId.split('-')[1] ?? '0', 10) + 1;
-}
-
-/** "10 ST" */
-function label(playerId: string, role: string): string {
-  return `${shirtNum(playerId)} ${role}`;
+/** Get surname (last word of full name) */
+function surname(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  return parts[parts.length - 1] ?? name;
 }
 
 function team(teamId: string): string {
@@ -44,10 +40,18 @@ function passDesc(dist: number): string {
   return '';
 }
 
-/** Resolve a player ID to "10 ST" using the player list */
+/** Resolve a player ID to "Surname" using the player list, fallback to role */
 function resolvePlayer(id: string, players: ReadonlyMap<string, PlayerState>): string {
   const p = players.get(id);
-  return p ? label(id, p.role) : id;
+  if (!p) return id;
+  return p.name ? surname(p.name) : String(p.role);
+}
+
+/** Build a display label from a game log entry + player map: "Surname" or fallback to role */
+function entryLabel(playerId: string, playerRole: string, players: ReadonlyMap<string, PlayerState>): string {
+  const p = players.get(playerId);
+  if (p?.name) return surname(p.name);
+  return playerRole;
 }
 
 // ============================================================
@@ -69,7 +73,7 @@ export function generateCommentary(
       const dist = (entry.data?.distance as number) ?? 0;
       const passType = entry.data?.passType as string;
       const targetId = entry.data?.targetPlayerId as string;
-      const pLabel = label(entry.playerId!, entry.playerRole!);
+      const pLabel = entryLabel(entry.playerId!, entry.playerRole!, players);
       const tLabel = targetId ? resolvePlayer(targetId, players) : '?';
       const t = team(entry.teamId);
       const len = passDesc(dist);
@@ -88,7 +92,7 @@ export function generateCommentary(
 
     case 'shot': {
       const dist = (entry.data?.distanceToGoal as number) ?? 0;
-      const pLabel = label(entry.playerId!, entry.playerRole!);
+      const pLabel = entryLabel(entry.playerId!, entry.playerRole!, players);
       const t = team(entry.teamId);
       const zone = shotZone(dist);
       return { tick: entry.tick, matchMinute: min, text: `${t} ${pLabel} shoots ${zone}!`, type: 'shot' };
@@ -96,7 +100,7 @@ export function generateCommentary(
 
     case 'goal': {
       const score = entry.data?.score as [number, number];
-      const pLabel = label(entry.playerId!, entry.playerRole!);
+      const pLabel = entryLabel(entry.playerId!, entry.playerRole!, players);
       const t = team(entry.teamId);
       return {
         tick: entry.tick, matchMinute: min,
@@ -107,7 +111,7 @@ export function generateCommentary(
 
     case 'tackle': {
       if (!(entry.data?.success as boolean)) return null;
-      const pLabel = label(entry.playerId!, entry.playerRole!);
+      const pLabel = entryLabel(entry.playerId!, entry.playerRole!, players);
       const t = team(entry.teamId);
       const targetId = entry.data?.targetPlayerId as string;
       const tgtDesc = targetId ? ` from ${resolvePlayer(targetId, players)}` : '';
@@ -159,7 +163,7 @@ export function generateCommentary(
 
     case 'foul': {
       const awardedTeam = team(entry.teamId);
-      const fouler = label(entry.playerId!, entry.playerRole!);
+      const fouler = entryLabel(entry.playerId!, entry.playerRole!, players);
       const victimId = entry.data?.victimPlayerId as string | undefined;
       const victim = victimId ? resolvePlayer(victimId, players) : 'the attacker';
       return {
@@ -170,7 +174,7 @@ export function generateCommentary(
     }
 
     case 'yellow_card': {
-      const pLabel = label(entry.playerId!, entry.playerRole!);
+      const pLabel = entryLabel(entry.playerId!, entry.playerRole!, players);
       const t = team(entry.teamId);
       return {
         tick: entry.tick, matchMinute: min,
@@ -180,7 +184,7 @@ export function generateCommentary(
     }
 
     case 'red_card': {
-      const pLabel = label(entry.playerId!, entry.playerRole!);
+      const pLabel = entryLabel(entry.playerId!, entry.playerRole!, players);
       const t = team(entry.teamId);
       const secondYellow = Boolean(entry.data?.secondYellow);
       return {
@@ -193,7 +197,7 @@ export function generateCommentary(
     }
 
     case 'offside': {
-      const pLabel = label(entry.playerId!, entry.playerRole!);
+      const pLabel = entryLabel(entry.playerId!, entry.playerRole!, players);
       const t = team(entry.teamId);
       return {
         tick: entry.tick, matchMinute: min,

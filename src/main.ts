@@ -387,6 +387,13 @@ tacticSelector.onDelete((name) => {
 // Both in-poss and OOP configs are stored, but the one being edited
 // gets its anchors rendered on the snapshot.
 tacticsOverlay.onChanged(() => {
+  // Sync duties and freedom to board even without engine (pre-match editor)
+  const overlayState = tacticsOverlay.getOverlayPhaseState(
+    tacticsOverlay.getCurrentPhase() as 'inPossession' | 'outOfPossession',
+  );
+  tacticsBoard.setDuties(overlayState.duties);
+  tacticsBoard.setFreedomValues(overlayState.multipliers.map(m => m.freedom));
+
   if (!engine) return;
   const baseInPoss = tacticsBoard.getTacticalConfig();
   const baseOop = tacticsBoard.getOutOfPossessionConfig();
@@ -403,19 +410,18 @@ tacticsOverlay.onChanged(() => {
   engine.setHomeTactics(activeConfig);
   // Refresh player refs so click hit-test uses updated anchor positions
   tacticsOverlay.updatePlayers(engine.getCurrentSnapshot().players);
-  // Sync freedom values to renderer and TacticsBoard for radius overlay
+  // Sync freedom values to renderer
   const mults = tacticsOverlay.getActivePhaseMultipliers();
   renderer.freedomValues = mults.map(m => m.freedom);
-  tacticsBoard.setFreedomValues(mults.map(m => m.freedom));
-  // Sync duties to TacticsBoard for visual rendering
-  tacticsBoard.setDuties(activeConfig.duties);
 });
 
 // When phase tab switches (In Poss / Out of Poss), update displayed anchors
 tacticsOverlay.onPhaseChanged(() => {
-  if (!engine) return;
+  // Always sync board phase (works pre-match without engine)
   const phase = tacticsOverlay.getCurrentPhase() as 'inPossession' | 'outOfPossession';
   tacticsBoard.setPhase(phase);
+
+  if (!engine) return;
 
   const base = phase === 'inPossession'
     ? tacticsBoard.getTacticalConfig()
