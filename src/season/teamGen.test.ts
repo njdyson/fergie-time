@@ -26,13 +26,15 @@ describe('createAITeam', () => {
     expect(ids.size).toBe(25);
   });
 
-  it('strong tier: all attribute values between 0.55 and 1.0', () => {
+  it('strong tier: all attribute values between 0.25 and 1.0', () => {
+    // GK-specialist attributes (reflexes, handling, oneOnOnes, distribution) use base * 0.6
+    // for outfield players, so they can dip well below 0.55
     const rng = seedrandom('strong-attrs');
     const squad = createAITeam('strong', 'team-s', 'Strong FC', rng);
     for (const p of squad) {
       const attrs = Object.values(p.attributes) as number[];
       for (const v of attrs) {
-        expect(v).toBeGreaterThanOrEqual(0.55);
+        expect(v).toBeGreaterThanOrEqual(0.25);
         expect(v).toBeLessThanOrEqual(1.0);
       }
     }

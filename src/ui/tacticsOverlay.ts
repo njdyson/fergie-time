@@ -1,5 +1,5 @@
-import type { TacticsPhase, PlayerTacticalMultipliers, TeamControls, PressConfig, TransitionConfig, Duty, PlayerState } from '../simulation/types.ts';
-import { defaultPlayerMultipliers, defaultTeamControls, defaultPressConfig, defaultTransitionConfig } from '../simulation/types.ts';
+import type { TacticsPhase, PlayerTacticalMultipliers, TeamControls, PressConfig, TransitionConfig, Duty, PlayerState, ExtendedTeamControls } from '../simulation/types.ts';
+import { defaultPlayerMultipliers, defaultTeamControls, defaultPressConfig, defaultTransitionConfig, defaultExtendedTeamControls } from '../simulation/types.ts';
 import { PhaseBar } from './panels/phaseBar.ts';
 import { TeamPanel } from './panels/teamPanel.ts';
 import { PlayerPanel } from './panels/playerPanel.ts';
@@ -16,6 +16,7 @@ export interface OverlayPhaseState {
   press: PressConfig;
   transitions: TransitionConfig;
   duties: Duty[];
+  extended: ExtendedTeamControls;
 }
 
 function defaultPhaseState(playerCount: number = 11): OverlayPhaseState {
@@ -25,6 +26,7 @@ function defaultPhaseState(playerCount: number = 11): OverlayPhaseState {
     press: defaultPressConfig(),
     transitions: defaultTransitionConfig(),
     duties: Array(playerCount).fill('SUPPORT') as Duty[],
+    extended: defaultExtendedTeamControls(),
   };
 }
 
@@ -111,6 +113,7 @@ export class TacticsOverlay {
       const ps = this.phases[this.currentPhase]!;
       ps.teamControls = this.teamPanel.getControls();
       ps.press = this.teamPanel.getPress();
+      ps.extended = this.teamPanel.getExtended();
       this.onConfigChange?.();
     });
 
@@ -224,6 +227,12 @@ export class TacticsOverlay {
   getActivePhaseMultipliers(): PlayerTacticalMultipliers[] {
     this._saveCurrentPhase();
     return this.phases[this.currentPhase]!.multipliers.map(m => ({ ...m }));
+  }
+
+  /** Get extended controls for a specific phase */
+  getExtendedControls(phase: TacticsPhase): ExtendedTeamControls {
+    this._saveCurrentPhase();
+    return this.phases[phase]!.extended;
   }
 
   /** Register callback for config changes */
@@ -348,6 +357,7 @@ export class TacticsOverlay {
       press: { ...ps.press },
       transitions: { ...ps.transitions },
       duties: [...ps.duties],
+      extended: { ...ps.extended, setPieces: { ...ps.extended.setPieces }, manMarkAssignments: [...ps.extended.manMarkAssignments] },
     };
   }
 
@@ -359,6 +369,7 @@ export class TacticsOverlay {
       press: { ...state.press },
       transitions: { ...state.transitions },
       duties: [...state.duties],
+      extended: state.extended ? { ...state.extended, setPieces: { ...state.extended.setPieces }, manMarkAssignments: [...state.extended.manMarkAssignments] } : defaultExtendedTeamControls(),
     };
     // If this is the active editing phase, reload the UI
     if (phase === this.currentPhase) {
@@ -408,11 +419,13 @@ export class TacticsOverlay {
     const ps = this.phases[this.currentPhase]!;
     ps.teamControls = this.teamPanel.getControls();
     ps.press = this.teamPanel.getPress();
+    ps.extended = this.teamPanel.getExtended();
   }
 
   private _loadPhase(phase: TacticsPhase): void {
     const ps = this.phases[phase]!;
     this.teamPanel.setControls(ps.teamControls, ps.press, phase);
+    this.teamPanel.setExtended(ps.extended);
     this.playerPanel.setPhase(phase);
     // Refresh squad list for the new phase's duties
     if (this.players.length > 0) this._updateSquadList();

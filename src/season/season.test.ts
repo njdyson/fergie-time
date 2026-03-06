@@ -35,6 +35,9 @@ function makePlayer(overrides: Partial<PlayerState> = {}): PlayerState {
       pace: 0.6, strength: 0.6, stamina: 0.6, dribbling: 0.6,
       passing: 0.6, shooting: 0.6, tackling: 0.6, aerial: 0.6,
       positioning: 0.6, vision: 0.6,
+      acceleration: 0.65, crossing: 0.5, finishing: 0.55, agility: 0.6,
+      heading: 0.55, concentration: 0.65, reflexes: 0.4, handling: 0.4,
+      oneOnOnes: 0.4, distribution: 0.4,
     },
     personality: {
       directness: 0.5, risk_appetite: 0.5, composure: 0.5, creativity: 0.5,

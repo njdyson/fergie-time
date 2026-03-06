@@ -24,6 +24,16 @@ const BASE_ATTRS: PlayerAttributes = {
   aerial: 0.5,
   positioning: 0.7,
   vision: 0.7,
+  acceleration: 0.65,
+  crossing: 0.5,
+  finishing: 0.55,
+  agility: 0.6,
+  heading: 0.55,
+  concentration: 0.65,
+  reflexes: 0.4,
+  handling: 0.4,
+  oneOnOnes: 0.4,
+  distribution: 0.4,
 };
 
 const BASE_PERSONALITY: PersonalityVector = {

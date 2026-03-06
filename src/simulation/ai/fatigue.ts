@@ -113,6 +113,7 @@ export function applyFatigueToAttributes(
     pace: base.pace * physFactor,
     strength: base.strength * physFactor,
     stamina: base.stamina * physFactor,
+    acceleration: base.acceleration * physFactor,
     // Technical attributes
     dribbling: base.dribbling * techFactor,
     passing: base.passing * techFactor,
@@ -121,6 +122,16 @@ export function applyFatigueToAttributes(
     aerial: base.aerial * techFactor,
     positioning: base.positioning * techFactor,
     vision: base.vision * techFactor,
+    crossing: base.crossing * techFactor,
+    finishing: base.finishing * techFactor,
+    agility: base.agility * physFactor,
+    heading: base.heading * techFactor,
+    concentration: base.concentration,  // mental — not directly attenuated (used as noise amplifier)
+    // GK attributes — mild technical attenuation
+    reflexes: base.reflexes * techFactor,
+    handling: base.handling * techFactor,
+    oneOnOnes: base.oneOnOnes * techFactor,
+    distribution: base.distribution * techFactor,
   };
 }
 

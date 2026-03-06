@@ -151,7 +151,9 @@ export function resolveTackle(
   //   tackling=0.8, dribbling=0.4 → 0.70  (clear advantage)
   //   tackling=0.3, dribbling=0.9 → 0.20  (clear disadvantage)
   //   tackling=0.5, dribbling=0.5 → 0.50  (even)
-  const base = (def.tackling - att.dribbling + 1) / 2;
+  // Attacker agility gives evasion bonus (up to +0.15 effective dribbling)
+  const effectiveDribbling = att.dribbling + (att.agility ?? 0.5) * 0.15;
+  const base = (def.tackling - effectiveDribbling + 1) / 2;
 
   // Angle modifier: how directly the defender approaches (0.5–1.0)
   const angleModifier = computeAngleModifier(defender, attacker);
@@ -258,9 +260,11 @@ export function resolveAerialContest(
     return { winnerId: dist1 <= dist2 ? p1.id : p2.id };
   }
 
-  // Both can reach: weighted attribute contest
-  const score1 = p1.attributes.aerial * 0.6 + p1.attributes.strength * 0.3 + rng() * 0.1;
-  const score2 = p2.attributes.aerial * 0.6 + p2.attributes.strength * 0.3 + rng() * 0.1;
+  // Both can reach: weighted attribute contest — heading accuracy contributes
+  const heading1 = p1.attributes.heading ?? 0.5;
+  const heading2 = p2.attributes.heading ?? 0.5;
+  const score1 = p1.attributes.aerial * 0.45 + p1.attributes.strength * 0.25 + heading1 * 0.2 + rng() * 0.1;
+  const score2 = p2.attributes.aerial * 0.45 + p2.attributes.strength * 0.25 + heading2 * 0.2 + rng() * 0.1;
 
   return { winnerId: score1 >= score2 ? p1.id : p2.id };
 }

@@ -40,7 +40,11 @@ function teammatePassWindowScore(distance: number): number {
 const shootConsiderations: readonly ConsiderationFn[] = [
   (ctx) => agentHasBall(ctx) ? 1 : 0,
   (ctx) => 1 - sigmoid(ctx.distanceToOpponentGoal / 105, 20, 0.24),
-  (ctx) => ctx.self.attributes.shooting,
+  // Blend finishing (close range) with shooting (long range) based on distance
+  (ctx) => {
+    const f = Math.max(0, 1 - ctx.distanceToOpponentGoal / 25);
+    return ctx.self.attributes.finishing * f + ctx.self.attributes.shooting * (1 - f);
+  },
   // Defender proximity: penalise when defenders are close, BUT reduce the penalty
   // when near goal — a striker through on goal should still shoot with a trailing defender
   (ctx) => {
@@ -73,7 +77,13 @@ const shootConsiderations: readonly ConsiderationFn[] = [
 const passForwardConsiderations: readonly ConsiderationFn[] = [
   (ctx) => agentHasBall(ctx) ? 1 : 0,
   (ctx) => linear(ctx.distanceToOpponentGoal / 105, 0.6, 0.2),
-  (ctx) => ctx.self.attributes.passing,
+  // Use crossing attribute when in wide areas delivering into the box
+  (ctx) => {
+    const y = ctx.self.position.y;
+    const isWide = y < 15 || y > 53; // within ~15m of touchline
+    return isWide ? ctx.self.attributes.crossing * 0.6 + ctx.self.attributes.passing * 0.4
+                  : ctx.self.attributes.passing;
+  },
   (ctx) => teammatePassWindowScore(ctx.nearestTeammateDistance),
 ];
 
@@ -132,7 +142,8 @@ const passThroughConsiderations: readonly ConsiderationFn[] = [
 const dribbleConsiderations: readonly ConsiderationFn[] = [
   (ctx) => agentHasBall(ctx) ? 1 : 0,
   (ctx) => 1 - exponentialDecay(ctx.nearestDefenderDistance / 30, 0.8),
-  (ctx) => ctx.self.attributes.dribbling,
+  // Blend dribbling skill with agility for evasion capability
+  (ctx) => ctx.self.attributes.dribbling * 0.6 + ctx.self.attributes.agility * 0.4,
   (ctx) => linear(1 - ctx.distanceToOpponentGoal / 105, 0.7, 0.3),
 ];
 
@@ -227,7 +238,8 @@ const makeRunConsiderations: readonly ConsiderationFn[] = [
   (ctx) => agentHasBall(ctx) ? 0 : 1,
   (ctx) => ctx.isInPossessionTeam ? 1 : 0.1,
   (ctx) => linear(ctx.distanceToOpponentGoal / 105, 0.5, 0.3),
-  (ctx) => ctx.self.attributes.pace,
+  // Acceleration matters more than top speed for making runs
+  (ctx) => ctx.self.attributes.acceleration * 0.6 + ctx.self.attributes.pace * 0.4,
   // Role boost: attacking roles (ST, LW, RW) strongly favour runs; defenders don't
   (ctx) => {
     const role = ctx.self.role;

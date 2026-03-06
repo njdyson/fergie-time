@@ -4,7 +4,8 @@ import { createRng } from './math/random.ts';
 import { integrateBall } from './physics/ball.ts';
 import { advancePhase } from './match/phases.ts';
 import { checkGoal, createInitialSnapshot, applyGoal, getKickoffPositions, PITCH_WIDTH, PITCH_HEIGHT, GOAL_WIDTH, CROSSBAR_HEIGHT } from './match/state.ts';
-import { MatchPhase, ActionType, RestartType, defaultMultipliers, defaultPlayerMultipliers, defaultTeamControls, defaultPressConfig, defaultTransitionConfig } from './types.ts';
+import { MatchPhase, ActionType, RestartType, defaultMultipliers, defaultPlayerMultipliers, defaultTeamControls, defaultPressConfig, defaultTransitionConfig, defaultExtendedTeamControls, generateRefConfig } from './types.ts';
+import type { ExtendedTeamControls, RefConfig } from './types.ts';
 import { ACTIONS } from './ai/actions.ts';
 import { selectAction, evaluateAction } from './ai/agent.ts';
 import { PERSONALITY_WEIGHTS } from './ai/personality.ts';
@@ -103,6 +104,16 @@ const DEFAULT_ATTRIBUTES = {
   aerial: 0.6,
   positioning: 0.65,
   vision: 0.65,
+  acceleration: 0.65,
+  crossing: 0.5,
+  finishing: 0.55,
+  agility: 0.6,
+  heading: 0.55,
+  concentration: 0.65,
+  reflexes: 0.4,
+  handling: 0.4,
+  oneOnOnes: 0.4,
+  distribution: 0.4,
 } as const;
 
 const DEFAULT_PERSONALITY = {
@@ -177,6 +188,16 @@ function jitterAttributes(
     aerial: j(base.aerial),
     positioning: j(base.positioning),
     vision: j(base.vision),
+    acceleration: j(base.acceleration),
+    crossing: j(base.crossing),
+    finishing: j(base.finishing),
+    agility: j(base.agility),
+    heading: j(base.heading),
+    concentration: j(base.concentration),
+    reflexes: j(base.reflexes),
+    handling: j(base.handling),
+    oneOnOnes: j(base.oneOnOnes),
+    distribution: j(base.distribution),
   };
 }
 
@@ -197,59 +218,59 @@ export function createMatchRosters(): {
   const homePositions = getKickoffPositions('home');
   const awayPositions = getKickoffPositions('away');
 
-  // Archetype definitions
+  // Archetype definitions — with V2 attributes (acceleration, crossing, finishing, agility, heading, concentration, reflexes, handling, oneOnOnes, distribution)
   const archetypes = {
     aggressiveDefender: {
-      attributes: { pace: 0.65, strength: 0.80, stamina: 0.75, dribbling: 0.45, passing: 0.60, shooting: 0.45, tackling: 0.82, aerial: 0.78, positioning: 0.70, vision: 0.60 },
+      attributes: { pace: 0.65, strength: 0.80, stamina: 0.75, dribbling: 0.45, passing: 0.60, shooting: 0.45, tackling: 0.82, aerial: 0.78, positioning: 0.70, vision: 0.60, acceleration: 0.60, crossing: 0.35, finishing: 0.30, agility: 0.45, heading: 0.72, concentration: 0.70, reflexes: 0.35, handling: 0.35, oneOnOnes: 0.35, distribution: 0.35 },
       personality: { directness: 0.35, risk_appetite: 0.3, composure: 0.55, creativity: 0.3, work_rate: 0.85, aggression: 0.85, anticipation: 0.75, flair: 0.25 },
     },
     steadyDefender: {
-      attributes: { pace: 0.60, strength: 0.72, stamina: 0.70, dribbling: 0.50, passing: 0.65, shooting: 0.40, tackling: 0.75, aerial: 0.72, positioning: 0.72, vision: 0.65 },
+      attributes: { pace: 0.60, strength: 0.72, stamina: 0.70, dribbling: 0.50, passing: 0.65, shooting: 0.40, tackling: 0.75, aerial: 0.72, positioning: 0.72, vision: 0.65, acceleration: 0.52, crossing: 0.38, finishing: 0.28, agility: 0.48, heading: 0.68, concentration: 0.78, reflexes: 0.35, handling: 0.35, oneOnOnes: 0.35, distribution: 0.35 },
       personality: { directness: 0.4, risk_appetite: 0.25, composure: 0.70, creativity: 0.3, work_rate: 0.70, aggression: 0.60, anticipation: 0.70, flair: 0.2 },
     },
     metronome: {
-      attributes: { pace: 0.65, strength: 0.62, stamina: 0.78, dribbling: 0.65, passing: 0.85, shooting: 0.55, tackling: 0.65, aerial: 0.58, positioning: 0.80, vision: 0.85 },
+      attributes: { pace: 0.65, strength: 0.62, stamina: 0.78, dribbling: 0.65, passing: 0.85, shooting: 0.55, tackling: 0.65, aerial: 0.58, positioning: 0.80, vision: 0.85, acceleration: 0.58, crossing: 0.55, finishing: 0.42, agility: 0.65, heading: 0.48, concentration: 0.88, reflexes: 0.35, handling: 0.35, oneOnOnes: 0.35, distribution: 0.35 },
       personality: { directness: 0.45, risk_appetite: 0.35, composure: 0.90, creativity: 0.55, work_rate: 0.80, aggression: 0.40, anticipation: 0.82, flair: 0.35 },
     },
     boxToBox: {
-      attributes: { pace: 0.75, strength: 0.68, stamina: 0.85, dribbling: 0.62, passing: 0.72, shooting: 0.60, tackling: 0.70, aerial: 0.65, positioning: 0.72, vision: 0.68 },
+      attributes: { pace: 0.75, strength: 0.68, stamina: 0.85, dribbling: 0.62, passing: 0.72, shooting: 0.60, tackling: 0.70, aerial: 0.65, positioning: 0.72, vision: 0.68, acceleration: 0.70, crossing: 0.48, finishing: 0.48, agility: 0.62, heading: 0.58, concentration: 0.72, reflexes: 0.35, handling: 0.35, oneOnOnes: 0.35, distribution: 0.35 },
       personality: { directness: 0.62, risk_appetite: 0.52, composure: 0.65, creativity: 0.45, work_rate: 0.90, aggression: 0.68, anticipation: 0.70, flair: 0.42 },
     },
     maverick: {
-      attributes: { pace: 0.88, strength: 0.55, stamina: 0.70, dribbling: 0.88, passing: 0.68, shooting: 0.82, tackling: 0.38, aerial: 0.55, positioning: 0.70, vision: 0.72 },
+      attributes: { pace: 0.88, strength: 0.55, stamina: 0.70, dribbling: 0.88, passing: 0.68, shooting: 0.82, tackling: 0.38, aerial: 0.55, positioning: 0.70, vision: 0.72, acceleration: 0.85, crossing: 0.55, finishing: 0.78, agility: 0.85, heading: 0.45, concentration: 0.52, reflexes: 0.35, handling: 0.35, oneOnOnes: 0.35, distribution: 0.35 },
       personality: { directness: 0.88, risk_appetite: 0.85, composure: 0.50, creativity: 0.90, work_rate: 0.58, aggression: 0.55, anticipation: 0.65, flair: 0.92 },
     },
     poacher: {
-      attributes: { pace: 0.82, strength: 0.62, stamina: 0.68, dribbling: 0.70, passing: 0.55, shooting: 0.88, tackling: 0.35, aerial: 0.72, positioning: 0.85, vision: 0.75 },
+      attributes: { pace: 0.82, strength: 0.62, stamina: 0.68, dribbling: 0.70, passing: 0.55, shooting: 0.88, tackling: 0.35, aerial: 0.72, positioning: 0.85, vision: 0.75, acceleration: 0.78, crossing: 0.35, finishing: 0.92, agility: 0.68, heading: 0.75, concentration: 0.72, reflexes: 0.35, handling: 0.35, oneOnOnes: 0.35, distribution: 0.35 },
       personality: { directness: 0.82, risk_appetite: 0.78, composure: 0.72, creativity: 0.52, work_rate: 0.65, aggression: 0.65, anticipation: 0.80, flair: 0.65 },
     },
     goalKeeper: {
-      attributes: { pace: 0.55, strength: 0.72, stamina: 0.72, dribbling: 0.42, passing: 0.62, shooting: 0.35, tackling: 0.50, aerial: 0.82, positioning: 0.85, vision: 0.80 },
+      attributes: { pace: 0.55, strength: 0.72, stamina: 0.72, dribbling: 0.42, passing: 0.62, shooting: 0.35, tackling: 0.50, aerial: 0.82, positioning: 0.85, vision: 0.80, acceleration: 0.48, crossing: 0.25, finishing: 0.20, agility: 0.68, heading: 0.40, concentration: 0.82, reflexes: 0.82, handling: 0.78, oneOnOnes: 0.75, distribution: 0.72 },
       personality: { directness: 0.30, risk_appetite: 0.20, composure: 0.82, creativity: 0.30, work_rate: 0.70, aggression: 0.40, anticipation: 0.85, flair: 0.20 },
     },
     technician: {
-      attributes: { pace: 0.72, strength: 0.55, stamina: 0.72, dribbling: 0.80, passing: 0.78, shooting: 0.62, tackling: 0.55, aerial: 0.52, positioning: 0.75, vision: 0.78 },
+      attributes: { pace: 0.72, strength: 0.55, stamina: 0.72, dribbling: 0.80, passing: 0.78, shooting: 0.62, tackling: 0.55, aerial: 0.52, positioning: 0.75, vision: 0.78, acceleration: 0.68, crossing: 0.65, finishing: 0.55, agility: 0.78, heading: 0.42, concentration: 0.72, reflexes: 0.35, handling: 0.35, oneOnOnes: 0.35, distribution: 0.35 },
       personality: { directness: 0.58, risk_appetite: 0.65, composure: 0.72, creativity: 0.80, work_rate: 0.70, aggression: 0.42, anticipation: 0.72, flair: 0.72 },
     },
     // Bench archetypes
     utilityDefender: {
-      attributes: { pace: 0.62, strength: 0.70, stamina: 0.68, dribbling: 0.48, passing: 0.62, shooting: 0.42, tackling: 0.72, aerial: 0.70, positioning: 0.68, vision: 0.62 },
+      attributes: { pace: 0.62, strength: 0.70, stamina: 0.68, dribbling: 0.48, passing: 0.62, shooting: 0.42, tackling: 0.72, aerial: 0.70, positioning: 0.68, vision: 0.62, acceleration: 0.55, crossing: 0.38, finishing: 0.30, agility: 0.50, heading: 0.65, concentration: 0.68, reflexes: 0.35, handling: 0.35, oneOnOnes: 0.35, distribution: 0.35 },
       personality: { directness: 0.38, risk_appetite: 0.28, composure: 0.65, creativity: 0.32, work_rate: 0.72, aggression: 0.65, anticipation: 0.68, flair: 0.22 },
     },
     youngProspect: {
-      attributes: { pace: 0.85, strength: 0.50, stamina: 0.80, dribbling: 0.72, passing: 0.62, shooting: 0.65, tackling: 0.50, aerial: 0.52, positioning: 0.62, vision: 0.58 },
+      attributes: { pace: 0.85, strength: 0.50, stamina: 0.80, dribbling: 0.72, passing: 0.62, shooting: 0.65, tackling: 0.50, aerial: 0.52, positioning: 0.62, vision: 0.58, acceleration: 0.82, crossing: 0.52, finishing: 0.55, agility: 0.75, heading: 0.42, concentration: 0.48, reflexes: 0.35, handling: 0.35, oneOnOnes: 0.35, distribution: 0.35 },
       personality: { directness: 0.70, risk_appetite: 0.72, composure: 0.42, creativity: 0.68, work_rate: 0.85, aggression: 0.55, anticipation: 0.58, flair: 0.78 },
     },
     targetMan: {
-      attributes: { pace: 0.62, strength: 0.88, stamina: 0.70, dribbling: 0.52, passing: 0.58, shooting: 0.78, tackling: 0.42, aerial: 0.92, positioning: 0.78, vision: 0.60 },
+      attributes: { pace: 0.62, strength: 0.88, stamina: 0.70, dribbling: 0.52, passing: 0.58, shooting: 0.78, tackling: 0.42, aerial: 0.92, positioning: 0.78, vision: 0.60, acceleration: 0.50, crossing: 0.32, finishing: 0.72, agility: 0.42, heading: 0.88, concentration: 0.68, reflexes: 0.35, handling: 0.35, oneOnOnes: 0.35, distribution: 0.35 },
       personality: { directness: 0.78, risk_appetite: 0.62, composure: 0.68, creativity: 0.38, work_rate: 0.72, aggression: 0.78, anticipation: 0.72, flair: 0.42 },
     },
     playmaker: {
-      attributes: { pace: 0.68, strength: 0.55, stamina: 0.75, dribbling: 0.75, passing: 0.90, shooting: 0.58, tackling: 0.58, aerial: 0.50, positioning: 0.82, vision: 0.90 },
+      attributes: { pace: 0.68, strength: 0.55, stamina: 0.75, dribbling: 0.75, passing: 0.90, shooting: 0.58, tackling: 0.58, aerial: 0.50, positioning: 0.82, vision: 0.90, acceleration: 0.62, crossing: 0.62, finishing: 0.45, agility: 0.72, heading: 0.40, concentration: 0.85, reflexes: 0.35, handling: 0.35, oneOnOnes: 0.35, distribution: 0.35 },
       personality: { directness: 0.42, risk_appetite: 0.45, composure: 0.88, creativity: 0.88, work_rate: 0.75, aggression: 0.38, anticipation: 0.85, flair: 0.65 },
     },
     speedster: {
-      attributes: { pace: 0.95, strength: 0.50, stamina: 0.78, dribbling: 0.78, passing: 0.62, shooting: 0.72, tackling: 0.42, aerial: 0.48, positioning: 0.70, vision: 0.62 },
+      attributes: { pace: 0.95, strength: 0.50, stamina: 0.78, dribbling: 0.78, passing: 0.62, shooting: 0.72, tackling: 0.42, aerial: 0.48, positioning: 0.70, vision: 0.62, acceleration: 0.92, crossing: 0.58, finishing: 0.62, agility: 0.82, heading: 0.38, concentration: 0.55, reflexes: 0.35, handling: 0.35, oneOnOnes: 0.35, distribution: 0.35 },
       personality: { directness: 0.88, risk_appetite: 0.80, composure: 0.52, creativity: 0.58, work_rate: 0.72, aggression: 0.58, anticipation: 0.65, flair: 0.75 },
     },
   };
@@ -467,6 +488,19 @@ export class SimulationEngine {
   private perceptionCache: Map<string, PerceptionSnapshot> = new Map();
   private perceptionCacheTick: Map<string, number> = new Map();
 
+  // ── V2 Realism: Momentum system ──────────────────────────────────────────
+  private momentum: [number, number] = [0.5, 0.5]; // [home, away] — 0..1, 0.5=neutral
+
+  // ── V2 Realism: Referee personality ──────────────────────────────────────
+  private refConfig: RefConfig;
+
+  // ── V2 Realism: Injury tracking ──────────────────────────────────────────
+  private sprintTicks: Map<string, number> = new Map(); // player id → consecutive sprint ticks
+
+  // ── V2 Realism: Extended team controls ───────────────────────────────────
+  private homeExtendedControls: ExtendedTeamControls;
+  private awayExtendedControls: ExtendedTeamControls;
+
   constructor(config: MatchConfig) {
     const normalizedHomeRoster = config.homeRoster.map(normalizePlayerVectors);
     const normalizedAwayRoster = config.awayRoster.map(normalizePlayerVectors);
@@ -503,6 +537,13 @@ export class SimulationEngine {
     this.homeTacticalConfigAttTrans = config.homeTacticalConfigAttTrans ?? this.homeTacticalConfig;
     this.homeBench = normalizedHomeBench;
     this.awayBench = normalizedAwayBench;
+
+    // V2 Realism: Referee personality (random per match)
+    this.refConfig = generateRefConfig(this.rng);
+
+    // V2 Realism: Extended team controls
+    this.homeExtendedControls = defaultExtendedTeamControls();
+    this.awayExtendedControls = defaultExtendedTeamControls();
 
     // Apply tactical config to initial snapshot so players start at correct
     // formation positions (not hard-coded 4-4-2 kickoff positions)
@@ -1046,9 +1087,21 @@ export class SimulationEngine {
 
     // ── 4. Compute effective attributes/personality per player ───────────────
     // (store effective values for this tick; base values preserved in player state)
-    const effectiveAttributes = playersWithFatigue.map(p =>
-      applyFatigueToAttributes(p.attributes, p.fatigue)
-    );
+    const effectiveAttributes = playersWithFatigue.map(p => {
+      let attrs = applyFatigueToAttributes(p.attributes, p.fatigue);
+      // V2: Minor injury debuff — -0.15 pace, -0.10 to all physical attributes
+      if (p.injured && !p.forcedOff) {
+        attrs = {
+          ...attrs,
+          pace: Math.max(0, attrs.pace - 0.15),
+          acceleration: Math.max(0, attrs.acceleration - 0.12),
+          strength: Math.max(0, attrs.strength - 0.10),
+          agility: Math.max(0, attrs.agility - 0.10),
+          stamina: Math.max(0, attrs.stamina - 0.10),
+        };
+      }
+      return attrs;
+    });
     const effectivePersonality = playersWithFatigue.map(p =>
       applyDisciplineToPersonality(
         applyFatigueToPersonality(p.personality, p.fatigue),
@@ -1152,10 +1205,26 @@ export class SimulationEngine {
       const tacticalConfig = isHome ? activeHomeConfig : activeAwayConfig;
       const anchors = isHome ? homeAnchors : awayAnchors;
       const roleIdx = isHome ? homeIdx++ : awayIdx++;
-      const anchor = anchors[roleIdx] ?? p.formationAnchor;
+      let anchor = anchors[roleIdx] ?? p.formationAnchor;
       // Update role and duty from tactical config
       const role = tacticalConfig.roles[roleIdx] ?? p.role;
       const duty = tacticalConfig.duties[roleIdx] ?? p.duty;
+
+      // V2: Man-marking — blend anchor toward marked opponent's position (out of possession)
+      const extCtrl = isHome ? this.homeExtendedControls : this.awayExtendedControls;
+      if (!isHome ? !awayPossession : !homePossession) {
+        const markEntry = extCtrl.manMarkAssignments.find(m => m.markerIndex === roleIdx);
+        if (markEntry) {
+          const target = playersWithFatigue.find(opp => opp.id === markEntry.targetId);
+          if (target && isActivePlayer(target)) {
+            // 60% formation, 40% opponent position
+            anchor = new Vec2(
+              anchor.x * 0.6 + target.position.x * 0.4,
+              anchor.y * 0.6 + target.position.y * 0.4,
+            );
+          }
+        }
+      }
       return { ...p, formationAnchor: anchor, role, duty };
     });
 
@@ -1168,6 +1237,9 @@ export class SimulationEngine {
     // ── 6d. Defensive line blending for CB/LB/RB ─────────────────────────
     // When out of possession, blend defender anchors toward a coordinated flat line.
     // The line target is the x of the 2nd-deepest defender (the offside line).
+    // V2: Offside trap toggle tightens tolerance dramatically
+    const homeOffsideTrap = this.homeExtendedControls.offsideTrap;
+    const awayOffsideTrap = this.awayExtendedControls.offsideTrap;
     for (let i = 1; i < 11; i++) {
       const p = playersWithAnchors[i]!;
       if (p.teamId !== 'home') continue;
@@ -1176,9 +1248,11 @@ export class SimulationEngine {
       if (homePossession) continue; // only when defending
       const lineX = homeOffsideLine;
       const anchor = homeAnchors[i]!;
-      // Clamp anchor x tightly around the line so the back four holds shape.
       const diff = anchor.x - lineX;
-      const tolerance = p.role === 'CB' ? 1.1 : 1.8;
+      // V2: Offside trap = very tight tolerance (coordinated step-up)
+      const tolerance = homeOffsideTrap
+        ? (p.role === 'CB' ? 0.3 : 0.5)
+        : (p.role === 'CB' ? 1.1 : 1.8);
       if (Math.abs(diff) > tolerance) {
         homeAnchors[i] = new Vec2(lineX + Math.sign(diff) * tolerance, anchor.y);
       }
@@ -1192,7 +1266,9 @@ export class SimulationEngine {
       const lineX = awayOffsideLine;
       const anchor = awayAnchors[i]!;
       const diff = anchor.x - lineX;
-      const tolerance = p.role === 'CB' ? 1.1 : 1.8;
+      const tolerance = awayOffsideTrap
+        ? (p.role === 'CB' ? 0.3 : 0.5)
+        : (p.role === 'CB' ? 1.1 : 1.8);
       if (Math.abs(diff) > tolerance) {
         awayAnchors[i] = new Vec2(lineX + Math.sign(diff) * tolerance, anchor.y);
       }
@@ -1912,6 +1988,11 @@ export class SimulationEngine {
               // Progressive passing: score teammates by advancement gain vs distance,
               // penalising targets with blocked lanes.
               const passerAdvance = p.teamId === 'home' ? p.position.x : (PITCH_WIDTH - p.position.x);
+              // V2: Attack channel preference
+              const extCtrl = p.teamId === 'home' ? this.homeExtendedControls : this.awayExtendedControls;
+              const atkChannel = extCtrl.attackChannel;
+              // V2: Target man bonus
+              const targetManIdx = extCtrl.targetManIndex;
               let bestScore = -Infinity;
               for (const tm of teammates) {
                 const tmAdvance = p.teamId === 'home' ? tm.position.x : (PITCH_WIDTH - tm.position.x);
@@ -1926,7 +2007,16 @@ export class SimulationEngine {
                 // Lane clearance: penalise targets with opponents in the passing lane
                 const laneClear = passLaneClearance(p.position, tm.position, opponents);
                 const shortNoGainPenalty = dist < 8 && advGain < 3 ? 1.2 : 0;
-                const score = advScore + distWindow + (laneClear - 0.45) * 2.0 - shortNoGainPenalty;
+                let score = advScore + distWindow + (laneClear - 0.45) * 2.0 - shortNoGainPenalty;
+                // V2: Attack channel bonus
+                if (atkChannel === 'left' && tm.position.y < 22) score += 0.15;
+                else if (atkChannel === 'right' && tm.position.y > 46) score += 0.15;
+                else if (atkChannel === 'central' && tm.position.y >= 22 && tm.position.y <= 46) score += 0.15;
+                // V2: Target man bonus — long passes to designated target
+                if (targetManIdx !== null && dist > 30) {
+                  const tmRosterIdx = playersWithAnchors.findIndex(pp => pp.id === tm.id);
+                  if (tmRosterIdx === targetManIdx) score += 0.20;
+                }
                 if (score > bestScore) {
                   bestScore = score;
                   target = tm;
@@ -2246,6 +2336,9 @@ export class SimulationEngine {
             if (onTarget) {
               this.statsAccumulator.recordShotOnTarget(p.teamId);
               this.gameLog.recordShotOnTarget(p.id);
+              this._shiftMomentum(p.teamId, 0.03); // V2: momentum boost for shot on target
+            } else {
+              this._shiftMomentum(p.teamId, -0.01); // V2: slight momentum loss for shot off target
             }
             this.lastKickWasShot = true;
           }
@@ -2352,13 +2445,29 @@ export class SimulationEngine {
             continue;
           }
 
-          const result = resolveTackle(p, carrier, this.rng);
+          const rawResult = resolveTackle(p, carrier, this.rng);
+          // V2: Referee strictness modifies foul decision
+          // Strict ref (strictness > 0.5) may upgrade borderline non-fouls;
+          // Lenient ref (strictness < 0.5) may downgrade borderline fouls
+          let isFoul = rawResult.foul;
+          if (!isFoul && this.refConfig.strictness > 0.6) {
+            // Strict ref: small chance to call extra fouls on hard challenges
+            isFoul = this.rng() < (this.refConfig.strictness - 0.6) * 0.15;
+          } else if (isFoul && this.refConfig.strictness < 0.4) {
+            // Lenient ref: small chance to wave play on
+            isFoul = this.rng() > (0.4 - this.refConfig.strictness) * 0.2;
+          }
+          const result = { success: rawResult.success, foul: isFoul };
 
           if (result.success && !result.foul) {
             this.gameLog.recordTackle(nextTick, p.teamId, p.id, p.role,
               p.position.x, p.position.y, carrier.id, true);
+            // V2: Momentum boost for successful tackle
+            this._shiftMomentum(p.teamId, 0.02);
             // Tackler touched the ball last
             this.lastTouchTeamId = p.teamId;
+            // V2: Second ball recovery — sometimes ball goes loose instead of clean win
+            const cleanWin = this.rng() < 0.6 + p.attributes.tackling * 0.2;
             // Ball knocked loose — add lateral component so it goes sideways, not just back
             const knockBase = p.position.subtract(carrier.position).normalize();
             const lateralSign = this.rng() > 0.5 ? 1 : -1;
@@ -2366,10 +2475,11 @@ export class SimulationEngine {
               knockBase.x * 0.6 + (-knockBase.y) * lateralSign * 0.4,
               knockBase.y * 0.6 + knockBase.x * lateralSign * 0.4,
             ).normalize();
+            const knockSpeed = cleanWin ? (8 + this.rng() * 4) : (10 + this.rng() * 6); // loose ball goes further
             ball = {
               ...ball,
               carrierId: null,
-              velocity: ensureDirectionStaysInPlay(carrier.position, knockDir).scale(8 + this.rng() * 4),
+              velocity: ensureDirectionStaysInPlay(carrier.position, knockDir).scale(knockSpeed),
             };
             // Prevent the dispossessed carrier from instantly reclaiming the ball, but
             // don't freeze the entire scrum long enough for repeated body clashes.
@@ -2392,6 +2502,11 @@ export class SimulationEngine {
               position: recovery.tacklerPosition,
               velocity: Vec2.zero(),
             };
+            // V2: Injury check on tackle victim
+            const carrierIdxForInjury = updatedPlayers.findIndex(up => up.id === carrier.id);
+            if (carrierIdxForInjury >= 0) {
+              this._checkTackleInjury(carrier, p, carrierIdxForInjury, updatedPlayers as PlayerState[], nextTick, tickEvents);
+            }
             break; // One successful tackle per tick
           }
 
@@ -2420,6 +2535,13 @@ export class SimulationEngine {
             });
             this.gameLog.recordFoul(nextTick, carrier.teamId, p.id, p.role, carrier.id,
               carrier.position.x, carrier.position.y);
+            // V2: Momentum shift on foul
+            this._shiftMomentum(p.teamId, -0.02);
+            // V2: Injury check on foul victim
+            const victimIdx = updatedPlayers.findIndex(up => up.id === carrier.id);
+            if (victimIdx >= 0) {
+              this._checkTackleInjury(carrier, p, victimIdx, updatedPlayers as PlayerState[], nextTick, tickEvents);
+            }
             const cardDecision = assessCardDecision(p, carrier, updatedPlayers);
             const cardOutcome = resolveCardOutcome(p.yellowCards ?? 0, cardDecision);
             if (cardOutcome.event === 'yellow') {
@@ -2585,6 +2707,11 @@ export class SimulationEngine {
         scorer?.position.x ?? ball.position.x, scorer?.position.y ?? ball.position.y,
         score as [number, number]);
 
+      // V2: Momentum shift on goal
+      this._shiftMomentum(scoringTeam, 0.15);
+      const concedingTeam: TeamId = scoringTeam === 'home' ? 'away' : 'home';
+      this._shiftMomentum(concedingTeam, -0.15);
+
       const goalPhaseResult = advancePhase(current.matchPhase, nextTick, true);
       events.push(...goalPhaseResult.events);
 
@@ -2748,6 +2875,17 @@ export class SimulationEngine {
       if (teamId) this.statsAccumulator.recordIntent(intent, teamId);
     }
 
+    // ── 14b. Decay momentum ─────────────────────────────────────────────────
+    this._decayMomentum();
+
+    // ── 14c. Sprint injury checks ─────────────────────────────────────────
+    for (let i = 0; i < updatedPlayers.length; i++) {
+      const p = updatedPlayers[i]!;
+      if (!isActivePlayer(p) || p.injured || p.forcedOff) continue;
+      const maxSpd = p.attributes.pace * TUNING.playerBaseSpeed;
+      this._checkSprintInjury(p, i, updatedPlayers as PlayerState[], nextTick, events, maxSpd);
+    }
+
     // ── 15. Produce new snapshot ──────────────────────────────────────────────
     const newSnapshot: SimSnapshot = {
       tick: nextTick,
@@ -2758,6 +2896,7 @@ export class SimulationEngine {
       score,
       events,
       stats: this.statsAccumulator.getSnapshot(),
+      momentum: [this.momentum[0]!, this.momentum[1]!],
     };
 
     this.latestDebugIntents = intents.map(intent => ({ ...intent }));
@@ -2778,6 +2917,123 @@ export class SimulationEngine {
   /** Returns the latest resolved action intents for debug rendering. */
   getLatestDebugIntents(): readonly ActionIntent[] {
     return this.latestDebugIntents;
+  }
+
+  // ── V2 Realism: Momentum ──────────────────────────────────────────────
+
+  /** Shift momentum for a team by delta, clamped to [0, 1]. */
+  private _shiftMomentum(teamId: TeamId, delta: number): void {
+    const idx = teamId === 'home' ? 0 : 1;
+    this.momentum[idx] = Math.max(0, Math.min(1, this.momentum[idx]! + delta));
+  }
+
+  /** Decay momentum toward 0.5 each tick. */
+  private _decayMomentum(): void {
+    const rate = 0.002;
+    for (let i = 0; i < 2; i++) {
+      const diff = this.momentum[i]! - 0.5;
+      if (Math.abs(diff) < rate) {
+        this.momentum[i] = 0.5;
+      } else {
+        this.momentum[i] = this.momentum[i]! - Math.sign(diff) * rate;
+      }
+    }
+  }
+
+  /** Get current momentum for a team (0..1, 0.5=neutral). */
+  getMomentum(teamId: TeamId): number {
+    return teamId === 'home' ? this.momentum[0]! : this.momentum[1]!;
+  }
+
+  /** Get the ref config for the current match. */
+  getRefConfig(): RefConfig {
+    return this.refConfig;
+  }
+
+  // ── V2 Realism: Extended controls ─────────────────────────────────────
+
+  /** Set extended team controls for a team. */
+  setExtendedControls(teamId: TeamId, controls: ExtendedTeamControls): void {
+    if (teamId === 'home') {
+      this.homeExtendedControls = controls;
+    } else {
+      this.awayExtendedControls = controls;
+    }
+  }
+
+  /** Get extended team controls for a team. */
+  getExtendedControls(teamId: TeamId): ExtendedTeamControls {
+    return teamId === 'home' ? this.homeExtendedControls : this.awayExtendedControls;
+  }
+
+  // ── V2 Realism: Injury check ──────────────────────────────────────────
+
+  /** Check for injury after a tackle event. Returns true if injury occurred. */
+  private _checkTackleInjury(
+    victim: PlayerState,
+    tackler: PlayerState,
+    playerIndex: number,
+    players: PlayerState[],
+    tick: number,
+    events: import('./types.ts').MatchEvent[],
+  ): boolean {
+    const chance = 0.002 * (1 + victim.fatigue) * (1 + tackler.personality.aggression * 0.5);
+    if (this.rng() >= chance) return false;
+
+    // Injury occurred — determine severity
+    const isMajor = this.rng() < 0.3;
+    if (isMajor) {
+      players[playerIndex] = { ...players[playerIndex]!, forcedOff: true, injured: true };
+    } else {
+      players[playerIndex] = { ...players[playerIndex]!, injured: true };
+    }
+    events.push({
+      tick,
+      type: 'injury',
+      playerId: victim.id,
+      teamId: victim.teamId,
+      position: victim.position,
+      data: { major: isMajor },
+    });
+    return true;
+  }
+
+  /** Check for sprint injury. Called per sprinting player per tick. */
+  private _checkSprintInjury(
+    player: PlayerState,
+    playerIndex: number,
+    players: PlayerState[],
+    tick: number,
+    events: import('./types.ts').MatchEvent[],
+    maxSpeed: number,
+  ): void {
+    const speed = player.velocity.length();
+    if (speed > maxSpeed * 0.9) {
+      const current = this.sprintTicks.get(player.id) ?? 0;
+      this.sprintTicks.set(player.id, current + 1);
+      if (current + 1 >= 90) { // 3 seconds at 30 ticks/sec
+        const ageFactor = (player.age ?? 25) > 30 ? 1.5 : 1.0;
+        const chance = 0.0005 * player.fatigue * (1 - player.attributes.stamina * 0.5) * ageFactor;
+        if (this.rng() < chance) {
+          const isMajor = this.rng() < 0.3;
+          if (isMajor) {
+            players[playerIndex] = { ...players[playerIndex]!, forcedOff: true, injured: true };
+          } else {
+            players[playerIndex] = { ...players[playerIndex]!, injured: true };
+          }
+          events.push({
+            tick,
+            type: 'injury',
+            playerId: player.id,
+            teamId: player.teamId,
+            position: player.position,
+            data: { major: isMajor, sprintRelated: true },
+          });
+        }
+      }
+    } else {
+      this.sprintTicks.set(player.id, 0);
+    }
   }
 }
 
@@ -2836,8 +3092,12 @@ export function computeShotTargetY(
 ): number {
   const goalCenterY = PITCH_HEIGHT / 2;
   const goalHalfWidth = GOAL_WIDTH / 2;
+  // V2: Blend finishing (close range) with shooting (long range)
+  const finishingBlend = Math.max(0, 1 - distanceToGoal / 25);
+  const effectiveShooting = (shooter.attributes.finishing ?? shooter.attributes.shooting) * finishingBlend +
+    shooter.attributes.shooting * (1 - finishingBlend);
   const shootingSkill =
-    shooter.attributes.shooting * 0.56 +
+    effectiveShooting * 0.56 +
     shooter.personality.composure * 0.28 +
     shooter.personality.flair * 0.16;
   const pressure = clamp01(1 - nearestPressureDist / 8);
@@ -3015,7 +3275,7 @@ export function computeLooseBallRecoveryTarget(
 type CardDecision = 'NONE' | 'YELLOW' | 'RED';
 
 function isActivePlayer(player: PlayerState): boolean {
-  return !player.sentOff;
+  return !player.sentOff && !player.forcedOff;
 }
 
 function getDismissalPosition(teamId: TeamId): Vec2 {
@@ -3226,20 +3486,32 @@ export function resolveGoalkeeperSave(
   const contactPoint = prevBall.position.add(segment.scale(closestT));
   const contactZ = prevBall.z + (nextBall.z - prevBall.z) * closestT;
   const horizontalDist = contactPoint.distanceTo(goalkeeper.position);
+  // V2: Use reflexes and positioning for reach, aerial for vertical
+  const reflexes = goalkeeper.attributes.reflexes ?? goalkeeper.attributes.positioning;
+  const handling = goalkeeper.attributes.handling ?? 0.5;
+  const oneOnOnesAttr = goalkeeper.attributes.oneOnOnes ?? 0.5;
+
   const horizontalReach = 0.95 + goalkeeper.attributes.positioning * 0.95 + goalkeeper.attributes.aerial * 0.35;
   const verticalReach = 1.45 + goalkeeper.attributes.aerial * 0.7 + goalkeeper.attributes.positioning * 0.35;
   if (horizontalDist > horizontalReach + 0.35 || contactZ > verticalReach + 0.45) return null;
 
   const shotSpeed = nextBall.velocity.length();
-  const saveSkill = goalkeeper.attributes.positioning * 0.6 + goalkeeper.attributes.aerial * 0.4;
+  // V2: Save skill uses reflexes for close-range, positioning for general, aerial for high shots
+  const isCloseRange = horizontalDist < 5;
+  const saveSkill = isCloseRange
+    ? reflexes * 0.5 + goalkeeper.attributes.positioning * 0.3 + goalkeeper.attributes.aerial * 0.2
+    : goalkeeper.attributes.positioning * 0.5 + reflexes * 0.3 + goalkeeper.attributes.aerial * 0.2;
   const closeness = clamp01(1 - horizontalDist / Math.max(horizontalReach, 0.1));
   const heightPenalty = clamp01(Math.max(0, contactZ - 1.3) / 1.6);
   const speedPenalty = clamp01((shotSpeed - 14) / 12);
-  const saveChance = clamp01(0.42 + saveSkill * 0.3 + closeness * 0.28 - heightPenalty * 0.12 - speedPenalty * 0.12);
+  // V2: 1v1 bonus — boost save chance when shot is close and few defenders nearby
+  const oneOnOneBonus = isCloseRange ? oneOnOnesAttr * 0.15 : 0;
+  const saveChance = clamp01(0.42 + saveSkill * 0.3 + closeness * 0.28 - heightPenalty * 0.12 - speedPenalty * 0.12 + oneOnOneBonus);
   if (rngValue > saveChance) return null;
 
   const keeperPosition = clampToPitchInset(contactPoint, 0.6);
-  const catchChance = clamp01(0.02 + saveSkill * 0.28 + closeness * 0.24 - heightPenalty * 0.4 - speedPenalty * 0.45);
+  // V2: Handling determines catch vs parry
+  const catchChance = clamp01(0.02 + handling * 0.32 + closeness * 0.20 - heightPenalty * 0.4 - speedPenalty * 0.45);
   const caught = contactZ < 1.7 && rngValue < catchChance;
 
   if (caught) {
@@ -3263,7 +3535,8 @@ export function resolveGoalkeeperSave(
     awayFromGoalX,
     lateral * (0.45 + (1 - closeness) * 0.55),
   ).normalize();
-  const parrySpeed = 9 + shotSpeed * 0.18 + (1 - saveSkill) * 1.6;
+  // V2: Better handling = shorter, more controlled parry
+  const parrySpeed = 9 + shotSpeed * 0.18 + (1 - handling) * 2.2;
   return {
     caught: false,
     keeperPosition,

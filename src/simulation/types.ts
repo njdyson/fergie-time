@@ -55,16 +55,28 @@ export interface PersonalityVector {
 
 // Physical/technical attributes — all 0..1
 export interface PlayerAttributes {
-  readonly pace: number;            // 0..1
+  readonly pace: number;            // 0..1 — top speed
   readonly strength: number;        // 0..1
   readonly stamina: number;         // 0..1
   readonly dribbling: number;       // 0..1
   readonly passing: number;         // 0..1
-  readonly shooting: number;        // 0..1
+  readonly shooting: number;        // 0..1 — long-range shooting
   readonly tackling: number;        // 0..1
-  readonly aerial: number;          // 0..1
+  readonly aerial: number;          // 0..1 — jump height / aerial contest
   readonly positioning: number;     // 0..1
   readonly vision: number;          // 0..1 — spatial awareness radius and scanning frequency
+  // New attributes (V2 realism)
+  readonly acceleration: number;    // 0..1 — burst speed (first few metres)
+  readonly crossing: number;        // 0..1 — delivery quality from wide areas
+  readonly finishing: number;       // 0..1 — close-range shot conversion
+  readonly agility: number;         // 0..1 — turning speed, evasion
+  readonly heading: number;         // 0..1 — header accuracy (separate from aerial jump)
+  readonly concentration: number;   // 0..1 — decision consistency under fatigue
+  // GK specialist attributes (meaningful for GKs; outfield players default ~0.3-0.5)
+  readonly reflexes: number;        // 0..1 — reaction saves, close-range shot-stopping
+  readonly handling: number;        // 0..1 — catch vs parry probability
+  readonly oneOnOnes: number;       // 0..1 — 1v1 save ability
+  readonly distribution: number;    // 0..1 — goal kick / throw accuracy
 }
 
 // Personality weight matrix (ENG-04) — maps action type to trait weights
@@ -115,6 +127,56 @@ export interface TransitionConfig {
 export type TacticsPhase = 'inPossession' | 'outOfPossession' | 'defensiveTransition' | 'attackingTransition';
 
 // ============================================================
+// V2 Tactical types (realism enhancements)
+// ============================================================
+
+/** Team mentality preset — global modifier that shifts multiple controls at once */
+export type Mentality = 'ultraDefensive' | 'defensive' | 'balanced' | 'attacking' | 'ultraAttacking';
+
+/** Attack channel preference */
+export type AttackChannel = 'left' | 'central' | 'right' | 'mixed';
+
+/** Set piece corner routine */
+export type CornerRoutine = 'nearPost' | 'farPost' | 'short';
+
+/** Set piece free kick routine (when in shooting range) */
+export type FreeKickRoutine = 'directShot' | 'whippedCross' | 'shortPass';
+
+/** GK distribution preference */
+export type GKDistributionPref = 'short' | 'long' | 'mixed';
+
+/** Set piece configuration */
+export interface SetPieceConfig {
+  readonly cornerRoutine: CornerRoutine;
+  readonly freeKickRoutine: FreeKickRoutine;
+}
+
+/** Referee personality — generated per match */
+export interface RefConfig {
+  readonly strictness: number;          // 0..1 — foul threshold modifier
+  readonly cardThreshold: number;       // 0..1 — how easily cards are shown
+  readonly advantageLength: number;      // ticks — how long advantage is played
+}
+
+/** Extended team controls with V2 tactical options */
+export interface ExtendedTeamControls extends TeamControls {
+  readonly mentality: Mentality;
+  readonly attackChannel: AttackChannel;
+  readonly offsideTrap: boolean;
+  readonly timeWasting: boolean;
+  readonly gkDistribution: GKDistributionPref;
+  readonly setPieces: SetPieceConfig;
+  readonly targetManIndex: number | null;         // player roster index, or null
+  readonly manMarkAssignments: readonly ManMarkEntry[];
+}
+
+/** Man-marking assignment entry */
+export interface ManMarkEntry {
+  readonly markerIndex: number;         // our player roster index
+  readonly targetId: string;            // opponent player id
+}
+
+// ============================================================
 // Defaults factories
 // ============================================================
 
@@ -124,6 +186,36 @@ export function defaultMultipliers(): PlayerTacticalMultipliers {
 
 export function defaultTeamControls(): TeamControls {
   return { lineHeight: 0.5, compactness: 0.5, width: 0.5, tempo: 0.5, restDefence: 3 };
+}
+
+export function defaultExtendedTeamControls(): ExtendedTeamControls {
+  return {
+    ...defaultTeamControls(),
+    mentality: 'balanced',
+    attackChannel: 'mixed',
+    offsideTrap: false,
+    timeWasting: false,
+    gkDistribution: 'mixed',
+    setPieces: defaultSetPieceConfig(),
+    targetManIndex: null,
+    manMarkAssignments: [],
+  };
+}
+
+export function defaultSetPieceConfig(): SetPieceConfig {
+  return { cornerRoutine: 'nearPost', freeKickRoutine: 'directShot' };
+}
+
+export function defaultRefConfig(): RefConfig {
+  return { strictness: 0.5, cardThreshold: 0.5, advantageLength: 60 };
+}
+
+export function generateRefConfig(rng: () => number): RefConfig {
+  return {
+    strictness: 0.25 + rng() * 0.5,           // 0.25..0.75
+    cardThreshold: 0.3 + rng() * 0.4,         // 0.3..0.7
+    advantageLength: 30 + Math.floor(rng() * 60), // 30..90 ticks (1-3 seconds)
+  };
 }
 
 export function defaultPressConfig(): PressConfig {
@@ -137,6 +229,28 @@ export function defaultTransitionConfig(): TransitionConfig {
 export function defaultPlayerMultipliers(count: number = 11): PlayerTacticalMultipliers[] {
   return Array.from({ length: count }, () => defaultMultipliers());
 }
+
+/** Default test player attributes — includes all V2 attributes with sensible mid-range values. */
+export function defaultTestAttributes(overrides?: Partial<PlayerAttributes>): PlayerAttributes {
+  return {
+    pace: 0.7, strength: 0.6, stamina: 0.7, dribbling: 0.7,
+    passing: 0.7, shooting: 0.7, tackling: 0.6, aerial: 0.6,
+    positioning: 0.6, vision: 0.7,
+    acceleration: 0.65, crossing: 0.5, finishing: 0.55, agility: 0.6,
+    heading: 0.55, concentration: 0.65,
+    reflexes: 0.4, handling: 0.4, oneOnOnes: 0.4, distribution: 0.4,
+    ...overrides,
+  };
+}
+
+/** Mentality offset table — applied additively to team controls */
+export const MENTALITY_OFFSETS: Record<Mentality, { lineHeight: number; width: number; tempo: number; restDefence: number; pressIntensity: number }> = {
+  ultraDefensive: { lineHeight: -0.15, width: -0.10, tempo: -0.10, restDefence: 1, pressIntensity: -0.10 },
+  defensive:      { lineHeight: -0.08, width: -0.05, tempo: -0.05, restDefence: 0, pressIntensity: -0.05 },
+  balanced:       { lineHeight: 0, width: 0, tempo: 0, restDefence: 0, pressIntensity: 0 },
+  attacking:      { lineHeight: 0.08, width: 0.05, tempo: 0.05, restDefence: -1, pressIntensity: 0.05 },
+  ultraAttacking: { lineHeight: 0.15, width: 0.10, tempo: 0.15, restDefence: -1, pressIntensity: 0.10 },
+};
 
 // Ball state (ENG-01)
 export interface BallState {
@@ -199,12 +313,14 @@ export interface PlayerState {
   readonly nationality?: string;   // ISO country code (e.g. 'GB', 'ES')
   readonly yellowCards?: number;    // cautions shown in this match
   readonly sentOff?: boolean;       // dismissed from the match
+  readonly injured?: boolean;       // minor injury sustained (pace/physical debuff)
+  readonly forcedOff?: boolean;     // major injury — must be substituted
 }
 
 // Match events
 export interface MatchEvent {
   readonly tick: number;
-  readonly type: 'goal' | 'shot' | 'pass' | 'tackle' | 'foul' | 'save' | 'yellow_card' | 'red_card' | 'kickoff' | 'halftime' | 'fulltime' | 'throw_in' | 'corner' | 'goal_kick' | 'offside';
+  readonly type: 'goal' | 'shot' | 'pass' | 'tackle' | 'foul' | 'save' | 'yellow_card' | 'red_card' | 'kickoff' | 'halftime' | 'fulltime' | 'throw_in' | 'corner' | 'goal_kick' | 'offside' | 'injury';
   readonly playerId?: string;
   readonly teamId?: TeamId;
   readonly position?: Vec2;
@@ -267,4 +383,5 @@ export interface SimSnapshot {
   readonly events: readonly MatchEvent[];
   readonly stats: MatchStats;
   readonly deadBallInfo?: DeadBallInfo;
+  readonly momentum?: readonly [number, number]; // [home, away] — 0..1, 0.5 = neutral
 }

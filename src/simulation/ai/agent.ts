@@ -45,7 +45,9 @@ export function evaluateAction(
   const personalityBonus = dotProduct(weights[action.id], personality);
 
   // Step 4: Gaussian noise — reads TUNING.noiseScale live
-  const noise = gaussianNoise(0, (1 - personality.composure) * TUNING.noiseScale, rng);
+  // Concentration amplifies noise under fatigue: low concentration + high fatigue = noisier decisions
+  const fatigueConcentrationPenalty = ctx.self.fatigue * (1 - (ctx.self.attributes.concentration ?? 0.65)) * 0.5;
+  const noise = gaussianNoise(0, (1 - personality.composure) * (1 + fatigueConcentrationPenalty) * TUNING.noiseScale, rng);
 
   return product + personalityBonus + noise;
 }

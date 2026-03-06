@@ -1,5 +1,5 @@
-import type { TeamControls, PressConfig, PressHeight, TacticsPhase } from '../../simulation/types.ts';
-import { defaultTeamControls, defaultPressConfig } from '../../simulation/types.ts';
+import type { TeamControls, PressConfig, PressHeight, TacticsPhase, Mentality, AttackChannel, CornerRoutine, FreeKickRoutine, GKDistributionPref, ExtendedTeamControls } from '../../simulation/types.ts';
+import { defaultTeamControls, defaultPressConfig, defaultExtendedTeamControls } from '../../simulation/types.ts';
 
 const QUICK_SHAPES = ['4-4-2', '4-3-3', '4-5-1', '3-5-2', '4-2-3-1'] as const;
 
@@ -15,6 +15,7 @@ export class TeamPanel {
   private readonly el: HTMLElement;
   private controls: TeamControls = defaultTeamControls();
   private press: PressConfig = defaultPressConfig();
+  private extended: ExtendedTeamControls = defaultExtendedTeamControls();
   private phase: TacticsPhase = 'inPossession';
   private onChange: (() => void) | null = null;
   private onQuickShapeCb: ((formationId: string) => void) | null = null;
@@ -46,10 +47,28 @@ export class TeamPanel {
     }
     this.el.appendChild(row);
 
+    // V2: Mentality preset — shown in both phases
+    this._addHeading('Mentality');
+    this._addSegment<string>('Mentality', 'mentality', this.extended.mentality, [
+      { label: 'Ultra Def', value: 'ultraDefensive' },
+      { label: 'Defensive', value: 'defensive' },
+      { label: 'Balanced', value: 'balanced' },
+      { label: 'Attacking', value: 'attacking' },
+      { label: 'Ultra Att', value: 'ultraAttacking' },
+    ], 'Global mentality shifts line height, width, tempo, and pressing as a preset.');
+
     if (this.phase === 'inPossession') {
       this._addHeading('Tempo');
       this._addNotch('Tempo', 'tempo', this.controls.tempo, ['Patient', '', 'Balanced', '', 'Frantic'],
         'Overall decision-making speed. Patient = hold and recycle possession, Frantic = quick one-touch play.');
+
+      this._addHeading('Attack');
+      this._addSegment<string>('Channel', 'attackChannel', this.extended.attackChannel, [
+        { label: 'Left', value: 'left' },
+        { label: 'Central', value: 'central' },
+        { label: 'Right', value: 'right' },
+        { label: 'Mixed', value: 'mixed' },
+      ], 'Preferred attacking channel. Passes and runs will favour this area of the pitch.');
 
       this._addHeading('Defence');
       this._addSegment('Rest Defence', 'restDefence', this.controls.restDefence, [
@@ -57,6 +76,31 @@ export class TeamPanel {
         { label: '3', value: 3 },
         { label: '4', value: 4 },
       ], 'Number of players pinned behind the ball during attacks. More = safer but fewer bodies forward.');
+
+      // V2: Time wasting toggle
+      this._addToggle('Time Wasting', 'timeWasting', this.extended.timeWasting,
+        'Slow tempo, hold ball, delay restarts. Use when protecting a lead.');
+
+      // V2: GK distribution
+      this._addHeading('GK Distribution');
+      this._addSegment<string>('Build-up', 'gkDistribution', this.extended.gkDistribution, [
+        { label: 'Short', value: 'short' },
+        { label: 'Mixed', value: 'mixed' },
+        { label: 'Long', value: 'long' },
+      ], 'How the goalkeeper distributes the ball after saves and goal kicks.');
+
+      // V2: Set pieces
+      this._addHeading('Set Pieces');
+      this._addSegment<string>('Corners', 'cornerRoutine', this.extended.setPieces.cornerRoutine, [
+        { label: 'Near Post', value: 'nearPost' },
+        { label: 'Far Post', value: 'farPost' },
+        { label: 'Short', value: 'short' },
+      ], 'Corner kick delivery target area.');
+      this._addSegment<string>('Free Kicks', 'freeKickRoutine', this.extended.setPieces.freeKickRoutine, [
+        { label: 'Direct', value: 'directShot' },
+        { label: 'Cross', value: 'whippedCross' },
+        { label: 'Short', value: 'shortPass' },
+      ], 'Free kick routine when in shooting range.');
     }
 
     if (this.phase === 'outOfPossession') {
@@ -74,6 +118,10 @@ export class TeamPanel {
       this._addNotch('Duration', 'counterPress', this.press.counterPressSecs / 5,
         ['0s', '1s', '2s', '3s', '5s'],
         'How long the team aggressively hunts the ball after losing possession. 0s = drop straight into shape, 5s = sustained press.');
+
+      // V2: Offside trap toggle
+      this._addToggle('Offside Trap', 'offsideTrap', this.extended.offsideTrap,
+        'High-risk defensive line that steps up aggressively to catch attackers offside.');
     }
   }
 
@@ -143,6 +191,29 @@ export class TeamPanel {
     this.el.appendChild(seg);
   }
 
+  private _addToggle(label: string, key: string, value: boolean, tooltip?: string): void {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'toggle-row';
+    if (tooltip) wrapper.title = tooltip;
+
+    const lbl = document.createElement('span');
+    lbl.className = 'toggle-label';
+    lbl.textContent = label;
+    wrapper.appendChild(lbl);
+
+    const btn = document.createElement('button');
+    btn.className = 'toggle-btn' + (value ? ' active' : '');
+    btn.textContent = value ? 'ON' : 'OFF';
+    btn.addEventListener('click', () => {
+      const newVal = !btn.classList.contains('active');
+      btn.classList.toggle('active', newVal);
+      btn.textContent = newVal ? 'ON' : 'OFF';
+      this._setControlValue(key, newVal ? 1 : 0);
+    });
+    wrapper.appendChild(btn);
+    this.el.appendChild(wrapper);
+  }
+
   private _setControlValue(key: string, value: number | string): void {
     switch (key) {
       case 'tempo':
@@ -162,6 +233,28 @@ export class TeamPanel {
       }
       case 'pressIntensity':
         this.press = { ...this.press, intensity: value as number };
+        break;
+      // V2 extended controls
+      case 'mentality':
+        this.extended = { ...this.extended, mentality: value as Mentality };
+        break;
+      case 'attackChannel':
+        this.extended = { ...this.extended, attackChannel: value as AttackChannel };
+        break;
+      case 'timeWasting':
+        this.extended = { ...this.extended, timeWasting: value === 1 };
+        break;
+      case 'gkDistribution':
+        this.extended = { ...this.extended, gkDistribution: value as GKDistributionPref };
+        break;
+      case 'cornerRoutine':
+        this.extended = { ...this.extended, setPieces: { ...this.extended.setPieces, cornerRoutine: value as CornerRoutine } };
+        break;
+      case 'freeKickRoutine':
+        this.extended = { ...this.extended, setPieces: { ...this.extended.setPieces, freeKickRoutine: value as FreeKickRoutine } };
+        break;
+      case 'offsideTrap':
+        this.extended = { ...this.extended, offsideTrap: value === 1 };
         break;
     }
     this.onChange?.();
@@ -183,6 +276,13 @@ export class TeamPanel {
 
   setPhase(phase: TacticsPhase): void {
     this.phase = phase;
+    this._build();
+  }
+
+  getExtended(): ExtendedTeamControls { return this.extended; }
+
+  setExtended(ext: ExtendedTeamControls): void {
+    this.extended = ext;
     this._build();
   }
 

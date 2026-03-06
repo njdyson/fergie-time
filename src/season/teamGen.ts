@@ -31,16 +31,16 @@ function generateAttribute(base: number, spread: number, rng: () => number): num
 
 // Role-based attribute boosts — makes players feel distinct by position
 const ROLE_BOOSTS: Partial<Record<Role, Partial<Record<keyof PlayerAttributes, number>>>> = {
-  GK:  { positioning: 0.15, aerial: 0.10 },
-  CB:  { tackling: 0.12, strength: 0.10, aerial: 0.10 },
-  LB:  { pace: 0.10, stamina: 0.08 },
-  RB:  { pace: 0.10, stamina: 0.08 },
-  CDM: { tackling: 0.10, positioning: 0.10, passing: 0.05 },
-  CM:  { passing: 0.10, stamina: 0.08, vision: 0.08 },
-  CAM: { vision: 0.12, passing: 0.10, dribbling: 0.08 },
-  LW:  { pace: 0.12, dribbling: 0.10 },
-  RW:  { pace: 0.12, dribbling: 0.10 },
-  ST:  { shooting: 0.15, pace: 0.08, dribbling: 0.05 },
+  GK:  { positioning: 0.15, aerial: 0.10, reflexes: 0.30, handling: 0.28, oneOnOnes: 0.25, distribution: 0.20, concentration: 0.10 },
+  CB:  { tackling: 0.12, strength: 0.10, aerial: 0.10, heading: 0.12, concentration: 0.08 },
+  LB:  { pace: 0.10, stamina: 0.08, crossing: 0.10, acceleration: 0.06 },
+  RB:  { pace: 0.10, stamina: 0.08, crossing: 0.10, acceleration: 0.06 },
+  CDM: { tackling: 0.10, positioning: 0.10, passing: 0.05, concentration: 0.08 },
+  CM:  { passing: 0.10, stamina: 0.08, vision: 0.08, concentration: 0.05 },
+  CAM: { vision: 0.12, passing: 0.10, dribbling: 0.08, agility: 0.08, finishing: 0.05 },
+  LW:  { pace: 0.12, dribbling: 0.10, acceleration: 0.10, crossing: 0.10, agility: 0.08 },
+  RW:  { pace: 0.12, dribbling: 0.10, acceleration: 0.10, crossing: 0.10, agility: 0.08 },
+  ST:  { shooting: 0.15, pace: 0.08, dribbling: 0.05, finishing: 0.15, acceleration: 0.08, heading: 0.08 },
 };
 
 function generateAttributes(base: number, spread: number, rng: () => number, role: Role): PlayerAttributes {
@@ -56,6 +56,16 @@ function generateAttributes(base: number, spread: number, rng: () => number, rol
     aerial: generateAttribute(base + (boosts.aerial ?? 0), spread, rng),
     positioning: generateAttribute(base + (boosts.positioning ?? 0), spread, rng),
     vision: generateAttribute(base + (boosts.vision ?? 0), spread, rng),
+    acceleration: generateAttribute(base + (boosts.acceleration ?? 0), spread, rng),
+    crossing: generateAttribute(base + (boosts.crossing ?? 0), spread, rng),
+    finishing: generateAttribute(base + (boosts.finishing ?? 0), spread, rng),
+    agility: generateAttribute(base + (boosts.agility ?? 0), spread, rng),
+    heading: generateAttribute(base + (boosts.heading ?? 0), spread, rng),
+    concentration: generateAttribute(base + (boosts.concentration ?? 0), spread, rng),
+    reflexes: generateAttribute((role === 'GK' ? base : base * 0.6) + (boosts.reflexes ?? 0), spread, rng),
+    handling: generateAttribute((role === 'GK' ? base : base * 0.6) + (boosts.handling ?? 0), spread, rng),
+    oneOnOnes: generateAttribute((role === 'GK' ? base : base * 0.6) + (boosts.oneOnOnes ?? 0), spread, rng),
+    distribution: generateAttribute((role === 'GK' ? base : base * 0.6) + (boosts.distribution ?? 0), spread, rng),
   };
 }
 

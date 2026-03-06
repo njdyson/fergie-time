@@ -1,4 +1,5 @@
 import type { PlayerTacticalMultipliers, TeamControls, PressConfig, TransitionConfig, Duty, Role } from '../simulation/types.ts';
+import { defaultExtendedTeamControls } from '../simulation/types.ts';
 import type { OverlayPhaseState } from './tacticsOverlay.ts';
 import type { TacticsBoard } from './tacticsBoard.ts';
 import type { TacticsOverlay } from './tacticsOverlay.ts';
@@ -131,6 +132,7 @@ export function applySavedTactic(
       press: { ...sp.press },
       transitions: { ...sp.transitions },
       duties: [...duties],
+      extended: defaultExtendedTeamControls(),
     };
     overlay.setOverlayPhaseState(phase, overlayState);
   }

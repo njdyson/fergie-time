@@ -15,6 +15,9 @@ function makePlayer(id: string, teamId: TeamId): PlayerState {
       pace: 0.7, strength: 0.7, stamina: 0.7,
       dribbling: 0.7, passing: 0.7, shooting: 0.7,
       tackling: 0.7, aerial: 0.7, positioning: 0.7, vision: 0.7,
+      acceleration: 0.65, crossing: 0.5, finishing: 0.55, agility: 0.6,
+      heading: 0.55, concentration: 0.65, reflexes: 0.4, handling: 0.4,
+      oneOnOnes: 0.4, distribution: 0.4,
     },
     personality: {
       directness: 0.5, risk_appetite: 0.5, composure: 0.5,

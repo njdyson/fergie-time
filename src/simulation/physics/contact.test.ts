@@ -30,6 +30,16 @@ function makePlayer(
       aerial,
       positioning: 0.7,
       vision: 0.7,
+      acceleration: 0.65,
+      crossing: 0.5,
+      finishing: 0.55,
+      agility: 0.6,
+      heading: 0.55,
+      concentration: 0.65,
+      reflexes: 0.4,
+      handling: 0.4,
+      oneOnOnes: 0.4,
+      distribution: 0.4,
     },
     personality: {
       directness: 0.5,
@@ -71,8 +81,9 @@ describe('resolveTackle', () => {
   });
 
   describe('frontal tackle (high success rate)', () => {
-    it('strong defender tackling weak dribbler from front succeeds >70% of time', () => {
+    it('strong defender tackling weak dribbler from front succeeds >65% of time', () => {
       // defender.tackling=0.8, strength=0.7 vs attacker.dribbling=0.4, strength=0.5
+      // Attacker agility evasion bonus (0.5 * 0.15 = +0.075 effective dribbling) lowers success slightly
       // Defender faces the attacker from the front (defender velocity points toward attacker)
       // Attacker is 1m away — typical contact distance for a frontal tackle
       const defPos = new Vec2(50, 34);
@@ -91,7 +102,7 @@ describe('resolveTackle', () => {
         if (result.success) successCount++;
       }
       const rate = successCount / 1000;
-      expect(rate).toBeGreaterThan(0.70);
+      expect(rate).toBeGreaterThan(0.65);
     });
   });
 
