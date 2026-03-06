@@ -20,8 +20,11 @@ import { HubScreen } from './ui/screens/hubScreen.ts';
 import { FixturesScreen } from './ui/screens/fixturesScreen.ts';
 import { TableScreen } from './ui/screens/tableScreen.ts';
 import { SquadScreen } from './ui/screens/squadScreen.ts';
+import { LoginScreen } from './ui/screens/loginScreen.ts';
 import { createSeason, validateSquadSelection, isSeasonComplete, getChampion, startNewSeason, recordPlayerResult, simOneAIFixture, finalizeMatchday } from './season/season.ts';
 import type { SeasonState, AIFixtureResult } from './season/season.ts';
+import { saveGame, loadGame } from './api/client.ts';
+import { serializeState, deserializeState } from '../server/serialize.ts';
 
 // ============================================================
 // Canvas setup
@@ -81,7 +84,7 @@ function hideTacticsCanvas(): void {
 // Screen routing + Season state
 // ============================================================
 
-const ScreenId = { HUB: 'HUB', SQUAD: 'SQUAD', FIXTURES: 'FIXTURES', TABLE: 'TABLE', MATCH: 'MATCH' } as const;
+const ScreenId = { LOGIN: 'LOGIN', HUB: 'HUB', SQUAD: 'SQUAD', FIXTURES: 'FIXTURES', TABLE: 'TABLE', MATCH: 'MATCH' } as const;
 type ScreenId = (typeof ScreenId)[keyof typeof ScreenId];
 let currentScreen: ScreenId = ScreenId.HUB;
 
@@ -95,10 +98,12 @@ const hubScreenView = new HubScreen(hubScreenEl);
 const fixturesScreenView = new FixturesScreen(fixturesScreenEl);
 const tableScreenView = new TableScreen(tableScreenEl);
 
-// Season state initialization
-const initialRosters = createMatchRosters();
-const playerSquad = [...initialRosters.home, ...initialRosters.homeBench];
-let seasonState: SeasonState = createSeason('player-team', 'Fergie United', playerSquad, 'season-1');
+// Login screen
+const loginScreenEl = document.getElementById('login-screen')!;
+const loginScreenView = new LoginScreen(loginScreenEl);
+
+// Season state — assigned in boot()
+let seasonState: SeasonState;
 
 function updateCurrentScreen(): void {
   const playerTeam = seasonState.teams.find(t => t.isPlayerTeam)!;
@@ -117,6 +122,7 @@ function updateCurrentScreen(): void {
       hubScreenEl.appendChild(championBanner);
       document.getElementById('btn-new-season')?.addEventListener('click', () => {
         seasonState = startNewSeason(seasonState, playerTeam.squad);
+        saveGame(serializeState(seasonState), 1).catch(err => console.error('Auto-save failed:', err));
         showScreen(ScreenId.HUB);
       });
     }
@@ -128,15 +134,15 @@ function updateCurrentScreen(): void {
 
 function showScreen(screen: ScreenId): void {
   const map: Record<string, string> = {
-    HUB: 'hub-screen', SQUAD: 'squad-screen',
+    LOGIN: 'login-screen', HUB: 'hub-screen', SQUAD: 'squad-screen',
     FIXTURES: 'fixtures-screen', TABLE: 'table-screen', MATCH: 'pitch-area',
   };
   for (const [key, id] of Object.entries(map)) {
     const el = document.getElementById(id);
-    if (el) el.style.display = key === screen ? (key === 'MATCH' || key === 'SQUAD' ? 'flex' : 'block') : 'none';
+    if (el) el.style.display = key === screen ? (key === 'MATCH' || key === 'SQUAD' || key === 'LOGIN' ? 'flex' : 'block') : 'none';
   }
   const navEl = document.getElementById('nav-tabs');
-  if (navEl) navEl.style.display = screen === ScreenId.MATCH ? 'none' : 'flex';
+  if (navEl) navEl.style.display = (screen === ScreenId.MATCH || screen === ScreenId.LOGIN) ? 'none' : 'flex';
   // Mark active nav tab
   document.querySelectorAll('.nav-tab').forEach(btn => {
     btn.classList.toggle('active', (btn as HTMLElement).dataset.screen === screen);
@@ -1271,6 +1277,7 @@ function showVidiprinter(aiFixtures: import('./season/fixtures.ts').Fixture[]): 
   function simNext(): void {
     if (i >= aiFixtures.length) {
       seasonState = finalizeMatchday(seasonState);
+      saveGame(serializeState(seasonState), 1).catch(err => console.error('Auto-save failed:', err));
 
       const header = document.getElementById('vidi-header')!;
       header.textContent = '■ All Results In';
@@ -1368,10 +1375,43 @@ squadKickoffBtn.addEventListener('click', () => {
 });
 
 // ============================================================
-// Start on Hub screen
+// Boot — login gate + session restore
 // ============================================================
 
-showScreen(ScreenId.HUB);
+async function boot(): Promise<void> {
+  // Try to resume an existing session (cookie still valid)
+  try {
+    const loadResult = await loadGame();
+    if (loadResult.hasState && loadResult.gameState) {
+      const envelope = deserializeState(loadResult.gameState);
+      seasonState = envelope.state;
+      showScreen(ScreenId.HUB);
+      console.log('[Fergie Time] Session restored — welcome back.');
+      return;
+    }
+  } catch {
+    // 401 or network error — fall through to login screen
+  }
 
-console.log('[Fergie Time] Season started — navigate to Squad to select your team and Kick Off.');
-console.log('  Use nav tabs to switch between Hub, Squad, Fixtures, and Table.');
+  // Show login screen
+  showScreen(ScreenId.LOGIN);
+  loginScreenView.show((teamName, isNewGame, gameStateJson) => {
+    if (isNewGame) {
+      // Create fresh season with user's team name
+      const initialRosters = createMatchRosters();
+      const playerSquad = [...initialRosters.home, ...initialRosters.homeBench];
+      seasonState = createSeason('player-team', teamName, playerSquad, 'season-1');
+      // Auto-save the fresh season immediately
+      const json = serializeState(seasonState);
+      saveGame(json, 1).catch(err => console.error('Initial save failed:', err));
+    } else if (gameStateJson) {
+      // Restore from loaded state
+      const envelope = deserializeState(gameStateJson);
+      seasonState = envelope.state;
+    }
+    loginScreenView.hide();
+    showScreen(ScreenId.HUB);
+    console.log('[Fergie Time] Season started — navigate to Squad to select your team and Kick Off.');
+  });
+}
+boot();
