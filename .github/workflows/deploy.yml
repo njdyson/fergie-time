@@ -40,3 +40,6 @@ jobs:
             pm2 delete fergie-time 2>/dev/null || true
             PORT=3001 pm2 start npm --name fergie-time -- start
             pm2 save
+            sleep 3
+            pm2 list
+            pm2 logs fergie-time --lines 20 --nostream
