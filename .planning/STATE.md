@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Data Layer
 status: executing
-stopped_at: Completed 05-03-PLAN.md
-last_updated: "2026-03-06T10:12:51.167Z"
-last_activity: 2026-03-06 — Plan 05-03 complete (Dev proxy + combined script)
+stopped_at: Completed 06-01-PLAN.md
+last_updated: "2026-03-06T10:40:56.916Z"
+last_activity: 2026-03-06 — Plan 06-01 complete (Auth and game persistence routes)
 progress:
   total_phases: 8
   completed_phases: 4
-  total_plans: 22
-  completed_plans: 22
-  percent: 100
+  total_plans: 24
+  completed_plans: 23
+  percent: 96
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-06)
 
 **Core value:** The match engine must produce emergent behavior that feels like real football — goals, mistakes, tactical dominance and individual brilliance all arising from physics, agent decisions and personality vectors, never from scripted events
-**Current focus:** Milestone v1.1 — Data Layer (Phase 5: Server Foundation)
+**Current focus:** Milestone v1.1 — Data Layer (Phase 6: Auth & Persistence)
 
 ## Current Position
 
-Phase: 5 of 8 (Server Foundation) — in progress
-Plan: 3 of 5 complete
+Phase: 6 of 8 (Auth & Persistence) — in progress
+Plan: 1 of 2 complete
 Status: Executing
-Last activity: 2026-03-06 — Plan 05-03 complete (Dev proxy + combined script)
+Last activity: 2026-03-06 — Plan 06-01 complete (Auth and game persistence routes)
 
-Progress: [██████████] 100%
+Progress: [██████████] 96%
 
 ## Performance Metrics
 
@@ -55,6 +55,7 @@ Progress: [██████████] 100%
 *Updated after each plan completion*
 | Phase 05 P02 | 2min | 2 tasks | 6 files |
 | Phase 05 P03 | 3min | 2 tasks | 3 files |
+| Phase 06 P01 | 4min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -73,6 +74,8 @@ Recent decisions affecting current work:
 - [Roadmap v1.1]: Server is a filing cabinet — client stays authoritative, server stores/retrieves JSON blobs
 - [Roadmap v1.1]: Cookie sessions over JWT — same-origin single-player game, no token management needed
 - [Phase 05]: concurrently for cross-platform dual-server dev script
+- [Phase 06]: bcryptjs (pure JS) over native bcrypt for cross-platform builds
+- [Phase 06]: Per-file test name prefixes for DB isolation in shared SQLite
 
 ### Pending Todos
 
@@ -86,6 +89,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-06T10:09:51.756Z
-Stopped at: Completed 05-03-PLAN.md
+Last session: 2026-03-06T10:40:56.913Z
+Stopped at: Completed 06-01-PLAN.md
 Resume file: None

@@ -173,6 +173,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 3. Management Shell | v1.0 | 6/6 | Complete | 2026-03-06 |
 | 4. Development Systems | v1.0 | 0/TBD | Deferred | - |
 | 5. Server Foundation | 3/3 | Complete   | 2026-03-06 | - |
-| 6. Auth + Persistence | v1.1 | 0/2 | Not started | - |
+| 6. Auth + Persistence | 1/2 | In Progress|  | - |
 | 7. Squads + Names | v1.1 | 0/TBD | Not started | - |
 | 8. Stats + Deployment | v1.1 | 0/TBD | Not started | - |

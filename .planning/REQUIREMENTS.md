@@ -46,17 +46,17 @@ Requirements for the Data Layer milestone.
 
 ### Persistence
 
-- [ ] **PERS-01**: Game state saves to SQLite after each matchday automatically
-- [ ] **PERS-02**: Game state loads from DB on login, restoring full season position
+- [x] **PERS-01**: Game state saves to SQLite after each matchday automatically
+- [x] **PERS-02**: Game state loads from DB on login, restoring full season position
 - [x] **PERS-03**: SeasonState serialization handles Map types with round-trip tests
 - [x] **PERS-04**: Save format includes version field for future migration
 
 ### Authentication
 
-- [ ] **AUTH-01**: User can create a new game with team name + password
-- [ ] **AUTH-02**: User can continue an existing game by entering team name + password
+- [x] **AUTH-01**: User can create a new game with team name + password
+- [x] **AUTH-02**: User can continue an existing game by entering team name + password
 - [ ] **AUTH-03**: Login screen shown on app load with "New Game" / "Continue" options
-- [ ] **AUTH-04**: Passwords hashed with bcrypt, never stored in plain text
+- [x] **AUTH-04**: Passwords hashed with bcrypt, never stored in plain text
 
 ### Server
 
@@ -178,12 +178,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SERV-01 | Phase 5 | Complete |
 | SERV-02 | Phase 5 | Complete |
 | SERV-04 | Phase 5 | Complete |
-| AUTH-01 | Phase 6 | Pending |
-| AUTH-02 | Phase 6 | Pending |
+| AUTH-01 | Phase 6 | Complete |
+| AUTH-02 | Phase 6 | Complete |
 | AUTH-03 | Phase 6 | Pending |
-| AUTH-04 | Phase 6 | Pending |
-| PERS-01 | Phase 6 | Pending |
-| PERS-02 | Phase 6 | Pending |
+| AUTH-04 | Phase 6 | Complete |
+| PERS-01 | Phase 6 | Complete |
+| PERS-02 | Phase 6 | Complete |
 | SQD2-01 | Phase 7 | Pending |
 | SQD2-02 | Phase 7 | Pending |
 | SQD2-03 | Phase 7 | Pending |
