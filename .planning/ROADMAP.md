@@ -148,7 +148,10 @@ Plans:
   3. Player names look realistic and nationality-appropriate — not procedurally obvious like the current generator
   4. If randomuser.me is unreachable during game creation, the game still creates successfully with fallback names from the generic name pool
   5. Players have editable shirt numbers visible on the squad screen
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 07-01-PLAN.md -- Name service (API + fallback), 25-man squad roles, shirtNumber, validation update (TDD)
+- [ ] 07-02-PLAN.md -- Squad screen UI, game creation wiring, human verification
 
 ### Phase 8: Stats + Deployment
 **Goal**: Per-player season statistics are tracked across all matches and displayed in the UI, and the complete application is deployed and playable on the VPS
@@ -174,5 +177,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 4. Development Systems | v1.0 | 0/TBD | Deferred | - |
 | 5. Server Foundation | 3/3 | Complete   | 2026-03-06 | - |
 | 6. Auth + Persistence | 1/2 | In Progress|  | - |
-| 7. Squads + Names | v1.1 | 0/TBD | Not started | - |
+| 7. Squads + Names | v1.1 | 0/2 | Not started | - |
 | 8. Stats + Deployment | v1.1 | 0/TBD | Not started | - |
