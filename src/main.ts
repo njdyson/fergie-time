@@ -1303,6 +1303,9 @@ document.addEventListener('keydown', (e) => {
   const tag = (e.target as HTMLElement)?.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA') return;
 
+  // Only allow match shortcuts during an active match
+  if (currentScreen !== ScreenId.MATCH) return;
+
   if (e.key === ' ') {
     if (getIsPaused() && btnKickoff?.style.display !== 'none') {
       kickoff();

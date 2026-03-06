@@ -98,6 +98,8 @@ export class SquadScreen {
   private shirtNumberChangeCallbacks: Array<(players: PlayerState[]) => void> = [];
   private formationRoles: string[] = ['GK', 'CB', 'CB', 'LB', 'RB', 'CDM', 'CM', 'LW', 'RW', 'ST', 'ST']; // default 4-4-2
   private formationRolesOOP: string[] = []; // out-of-possession roles (empty = same as in-poss)
+  private sortColumn: string = 'default';
+  private sortAscending: boolean = false;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -395,6 +397,111 @@ export class SquadScreen {
     document.body.appendChild(popup);
   }
 
+  /** Rate a player's suitability for a role (higher = better fit). */
+  private rateForRole(p: PlayerState, role: string): number {
+    const a = p.attributes;
+    const fatigue = this.fatigueMap.get(p.id) ?? p.fatigue ?? 0;
+    const fitness = 1 - fatigue;
+
+    // Base: average of all attributes weighted by fitness
+    let score = 0;
+    switch (role) {
+      case 'GK':  score = a.positioning * 2 + a.aerial * 1.5 + a.strength; break;
+      case 'CB':  score = a.tackling * 2 + a.aerial * 1.5 + a.positioning + a.strength; break;
+      case 'LB': case 'RB':
+        score = a.tackling + a.pace * 1.5 + a.stamina + a.passing; break;
+      case 'CDM': score = a.tackling * 1.5 + a.positioning * 1.5 + a.passing + a.stamina; break;
+      case 'CM':  score = a.passing * 1.5 + a.stamina + a.vision + a.tackling; break;
+      case 'CAM': score = a.vision * 1.5 + a.passing * 1.5 + a.dribbling + a.shooting; break;
+      case 'LW': case 'RW':
+        score = a.pace * 1.5 + a.dribbling * 1.5 + a.passing + a.shooting; break;
+      case 'ST':  score = a.shooting * 2 + a.pace + a.dribbling + a.aerial; break;
+      default:    score = a.passing + a.shooting + a.tackling + a.pace; break;
+    }
+
+    // Bonus for playing in natural position
+    if (p.role === role) score += 2;
+
+    return score * fitness;
+  }
+
+  /** Auto-assign best players to formation roles, next best to bench. */
+  private autoPick(): void {
+    this.selections.clear();
+    this.slotIndices.clear();
+
+    // Build slots to fill from formation
+    const slots = this.formationRoles.map((role, idx) => ({ role, idx }));
+    const assigned = new Set<string>();
+
+    // Greedily assign best-fit player to each slot
+    for (const slot of slots) {
+      let bestPlayer: PlayerState | null = null;
+      let bestScore = -1;
+      for (const p of this.players) {
+        if (assigned.has(p.id)) continue;
+        const score = this.rateForRole(p, slot.role);
+        if (score > bestScore) {
+          bestScore = score;
+          bestPlayer = p;
+        }
+      }
+      if (bestPlayer) {
+        assigned.add(bestPlayer.id);
+        this.selections.set(bestPlayer.id, slot.role);
+        this.slotIndices.set(bestPlayer.id, slot.idx);
+      }
+    }
+
+    // Pick 7 best remaining for bench (by overall attribute average * fitness)
+    const remaining = this.players.filter(p => !assigned.has(p.id));
+    remaining.sort((a, b) => {
+      const avgA = Object.values(a.attributes).reduce((s, v) => s + v, 0) / 10;
+      const avgB = Object.values(b.attributes).reduce((s, v) => s + v, 0) / 10;
+      const fitA = 1 - (this.fatigueMap.get(a.id) ?? a.fatigue ?? 0);
+      const fitB = 1 - (this.fatigueMap.get(b.id) ?? b.fatigue ?? 0);
+      return (avgB * fitB) - (avgA * fitA);
+    });
+
+    for (let i = 0; i < remaining.length; i++) {
+      this.selections.set(remaining[i]!.id, i < 7 ? 'bench' : 'not-selected');
+    }
+  }
+
+  private getSortedPlayers(): PlayerState[] {
+    const col = this.sortColumn;
+    if (col === 'default') return this.players;
+
+    const sorted = [...this.players];
+    const dir = this.sortAscending ? 1 : -1;
+
+    sorted.sort((a, b) => {
+      let va: number | string = 0;
+      let vb: number | string = 0;
+
+      if (col === 'name') {
+        va = a.name ?? ''; vb = b.name ?? '';
+        return dir * (va as string).localeCompare(vb as string);
+      } else if (col === 'pos') {
+        va = getRoleOrder(a.role); vb = getRoleOrder(b.role);
+      } else if (col === 'age') {
+        va = a.age ?? 0; vb = b.age ?? 0;
+      } else if (col === 'fit') {
+        va = 1 - (this.fatigueMap.get(a.id) ?? a.fatigue ?? 0);
+        vb = 1 - (this.fatigueMap.get(b.id) ?? b.fatigue ?? 0);
+      } else if (col === '#') {
+        va = this.shirtNumbers.get(a.id) ?? a.shirtNumber ?? 99;
+        vb = this.shirtNumbers.get(b.id) ?? b.shirtNumber ?? 99;
+      } else if (col in a.attributes) {
+        va = a.attributes[col as keyof PlayerState['attributes']];
+        vb = b.attributes[col as keyof PlayerState['attributes']];
+      }
+      return dir * ((va as number) - (vb as number));
+    });
+
+    return sorted;
+  }
+
   private render(): void {
     const selection = this.getSelection();
     const validation = validateSquadSelection(selection);
@@ -409,36 +516,44 @@ export class SquadScreen {
       html += `</div>`;
     }
 
-    // Selection summary
+    // Selection summary + Clear All button
     const starterCount = [...this.selections.values()].filter(s => isStarterRole(s)).length;
     const benchCount = [...this.selections.values()].filter(s => s === 'bench').length;
-    html += `<div style="color: ${TEXT}; font-size: 13px; margin-bottom: 12px;">`;
+    html += `<div style="color: ${TEXT}; font-size: 13px; margin-bottom: 12px; display: flex; align-items: center; gap: 12px;">`;
     html += `<span style="color: ${GREEN};">Starters: ${starterCount}/11</span>`;
-    html += `<span style="margin: 0 12px;">|</span>`;
+    html += `<span>|</span>`;
     html += `<span style="color: ${ACCENT_BLUE};">Bench: ${benchCount}/7</span>`;
+    html += `<span style="flex: 1;"></span>`;
+    html += `<button data-auto-pick style="padding: 4px 12px; border-radius: 4px; border: 1px solid ${GREEN}; background: #0f172a; color: ${GREEN}; font-size: 11px; cursor: pointer;">Assistant Picks</button>`;
+    html += `<button data-clear-all style="padding: 4px 12px; border-radius: 4px; border: 1px solid #475569; background: #0f172a; color: ${TEXT_BRIGHT}; font-size: 11px; cursor: pointer;">Clear All</button>`;
     html += `</div>`;
 
     // Grid column template
     const gridCols = `56px 36px 140px 48px 36px 40px 48px ${ATTR_NAMES.map(() => '32px').join(' ')} 48px`;
 
+    // Sortable header helper
+    const sortArrow = (col: string) => this.sortColumn === col ? (this.sortAscending ? ' ▲' : ' ▼') : '';
+    const hdrStyle = `cursor: pointer; user-select: none;`;
+
     // Attribute header row
     html += `<div style="display: grid; grid-template-columns: ${gridCols}; gap: 2px; padding: 4px 8px; font-size: 10px; color: ${TEXT}; border-bottom: 1px solid #334155; align-items: center;">`;
     html += '<span></span>'; // badge
-    html += '<span>#</span>';
-    html += '<span>Name</span>';
-    html += '<span>Pos</span>';
+    html += `<span data-sort="#" style="${hdrStyle}">#${sortArrow('#')}</span>`;
+    html += `<span data-sort="name" style="${hdrStyle}">Name${sortArrow('name')}</span>`;
+    html += `<span data-sort="pos" style="${hdrStyle}">Pos${sortArrow('pos')}</span>`;
     html += '<span>Nat</span>';
-    html += '<span>Age</span>';
+    html += `<span data-sort="age" style="${hdrStyle}">Age${sortArrow('age')}</span>`;
     html += '<span>Ht</span>';
     for (const attr of ATTR_NAMES) {
-      html += `<span style="text-align: center;" title="${attr}">${ATTR_SHORT[attr]}</span>`;
+      html += `<span data-sort="${attr}" style="text-align: center; ${hdrStyle}" title="${attr}">${ATTR_SHORT[attr]}${sortArrow(attr)}</span>`;
     }
-    html += '<span style="text-align: center;">FIT</span>';
+    html += `<span data-sort="fit" style="text-align: center; ${hdrStyle}">FIT${sortArrow('fit')}</span>`;
     html += '</div>';
 
     // Player rows
-    for (let i = 0; i < this.players.length; i++) {
-      const p = this.players[i]!;
+    const sortedPlayers = this.getSortedPlayers();
+    for (let i = 0; i < sortedPlayers.length; i++) {
+      const p = sortedPlayers[i]!;
       const selState = this.selections.get(p.id) ?? 'not-selected';
       const badgeColor = getBadgeColor(selState);
       const badgeLabel = this.getCombinedBadgeLabel(p.id, selState);
@@ -524,6 +639,47 @@ export class SquadScreen {
       const playerId = (row as HTMLElement).dataset.playerId!;
       row.addEventListener('click', () => {
         this.openRolePicker(playerId);
+      });
+    }
+
+    // Sort header click handlers
+    const sortHeaders = this.container.querySelectorAll('[data-sort]');
+    for (const hdr of sortHeaders) {
+      const col = (hdr as HTMLElement).dataset.sort!;
+      hdr.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (this.sortColumn === col) {
+          this.sortAscending = !this.sortAscending;
+        } else {
+          this.sortColumn = col;
+          this.sortAscending = col === 'name' || col === '#' || col === 'pos'; // alpha/number default asc, stats default desc
+        }
+        this.render();
+      });
+    }
+
+    // Auto Pick button handler
+    const autoBtn = this.container.querySelector('[data-auto-pick]');
+    if (autoBtn) {
+      autoBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.autoPick();
+        this.render();
+        for (const cb of this.changeCallbacks) cb(this.getSelection());
+      });
+    }
+
+    // Clear All button handler
+    const clearBtn = this.container.querySelector('[data-clear-all]');
+    if (clearBtn) {
+      clearBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        for (const p of this.players) {
+          this.selections.set(p.id, 'not-selected');
+          this.slotIndices.delete(p.id);
+        }
+        this.render();
+        for (const cb of this.changeCallbacks) cb(this.getSelection());
       });
     }
   }
