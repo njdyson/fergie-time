@@ -1,7 +1,7 @@
 /**
  * Squad Screen — pre-match squad management view.
- * Shows all 16 players with attributes (NO personality), selection toggles,
- * and inline validation. This is a NEW standalone screen, not extending SquadPanel.
+ * Shows all 25 players with attributes (NO personality), selection toggles,
+ * editable shirt numbers, and inline validation. This is a standalone screen.
  */
 
 import type { PlayerState } from '../../simulation/types.ts';
@@ -74,7 +74,9 @@ export class SquadScreen {
   private players: PlayerState[] = [];
   private fatigueMap: Map<string, number> = new Map();
   private selections: Map<string, SelectionState> = new Map();
+  private shirtNumbers: Map<string, number> = new Map();
   private changeCallbacks: Array<(selection: SquadSelection) => void> = [];
+  private shirtNumberChangeCallbacks: Array<(players: PlayerState[]) => void> = [];
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -89,23 +91,28 @@ export class SquadScreen {
 
   /**
    * Set players and reset selection to defaults.
-   * Default: first 11 sorted by role are starters, next 5 are bench, rest not-selected.
+   * Default: first 11 sorted by role are starters, next 7 are bench, rest not-selected.
    * GK sorted to top.
    */
   setPlayers(players: PlayerState[], fatigueMap: Map<string, number>): void {
     this.players = [...players].sort((a, b) => getRoleOrder(a.role) - getRoleOrder(b.role));
     this.fatigueMap = fatigueMap;
     this.selections.clear();
+    this.shirtNumbers.clear();
 
-    // Default selection: first 11 starters, next 5 bench
+    // Default selection: first 11 starters, next 7 bench, rest not-selected
     for (let i = 0; i < this.players.length; i++) {
       const p = this.players[i]!;
       if (i < 11) {
         this.selections.set(p.id, 'starter');
-      } else if (i < 16) {
+      } else if (i < 18) {
         this.selections.set(p.id, 'bench');
       } else {
         this.selections.set(p.id, 'not-selected');
+      }
+      // Initialize shirt numbers from player data
+      if (p.shirtNumber != null) {
+        this.shirtNumbers.set(p.id, p.shirtNumber);
       }
     }
 
@@ -129,9 +136,25 @@ export class SquadScreen {
     return { starters, bench };
   }
 
+  /** Return the current players array with any shirt number edits applied. */
+  getUpdatedPlayers(): PlayerState[] {
+    return this.players.map(p => {
+      const num = this.shirtNumbers.get(p.id);
+      if (num != null && num !== p.shirtNumber) {
+        return { ...p, shirtNumber: num };
+      }
+      return p;
+    });
+  }
+
   /** Register a callback fired after every toggle change. */
   onSelectionChange(cb: (selection: SquadSelection) => void): void {
     this.changeCallbacks.push(cb);
+  }
+
+  /** Register a callback fired after a shirt number is edited. */
+  onShirtNumberChange(cb: (players: PlayerState[]) => void): void {
+    this.shirtNumberChangeCallbacks.push(cb);
   }
 
   private cycleSelection(playerId: string): void {
@@ -147,6 +170,66 @@ export class SquadScreen {
     for (const cb of this.changeCallbacks) {
       cb(selection);
     }
+  }
+
+  private startShirtNumberEdit(playerId: string, cellEl: HTMLElement): void {
+    const currentNum = this.shirtNumbers.get(playerId) ?? 0;
+    cellEl.innerHTML = '';
+
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.min = '1';
+    input.max = '99';
+    input.value = String(currentNum);
+    input.style.cssText = `width: 36px; font: 12px 'Segoe UI', system-ui, sans-serif; background: #0f172a; color: ${TEXT_BRIGHT}; border: 1px solid ${ACCENT_BLUE}; border-radius: 2px; text-align: right; padding: 1px 2px; outline: none;`;
+
+    const finishEdit = (save: boolean): void => {
+      if (save) {
+        const newNum = parseInt(input.value, 10);
+        if (isNaN(newNum) || newNum < 1 || newNum > 99) {
+          // Invalid range — flash red and revert
+          input.style.borderColor = RED;
+          setTimeout(() => this.render(), 400);
+          return;
+        }
+        // Check uniqueness — no other player in team should have this number
+        for (const [id, num] of this.shirtNumbers) {
+          if (id !== playerId && num === newNum) {
+            // Duplicate — flash red and revert
+            input.style.borderColor = RED;
+            setTimeout(() => this.render(), 400);
+            return;
+          }
+        }
+        // Valid and unique — apply
+        this.shirtNumbers.set(playerId, newNum);
+        // Update the player object in the array
+        const idx = this.players.findIndex(p => p.id === playerId);
+        if (idx >= 0) {
+          this.players[idx] = { ...this.players[idx]!, shirtNumber: newNum };
+        }
+        // Notify listeners
+        for (const cb of this.shirtNumberChangeCallbacks) {
+          cb(this.getUpdatedPlayers());
+        }
+      }
+      this.render();
+    };
+
+    input.addEventListener('blur', () => finishEdit(true));
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        input.blur();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        finishEdit(false);
+      }
+    });
+
+    cellEl.appendChild(input);
+    input.focus();
+    input.select();
   }
 
   private render(): void {
@@ -169,7 +252,7 @@ export class SquadScreen {
     html += `<div style="color: ${TEXT}; font-size: 13px; margin-bottom: 12px;">`;
     html += `<span style="color: ${GREEN};">Starters: ${starterCount}/11</span>`;
     html += `<span style="margin: 0 12px;">|</span>`;
-    html += `<span style="color: ${ACCENT_BLUE};">Bench: ${benchCount}/5</span>`;
+    html += `<span style="color: ${ACCENT_BLUE};">Bench: ${benchCount}/7</span>`;
     html += `</div>`;
 
     // Attribute header row
@@ -195,14 +278,15 @@ export class SquadScreen {
       const fatigue = this.fatigueMap.get(p.id) ?? p.fatigue ?? 0;
       const fitness = 1 - fatigue; // 100% = fresh, 0% = exhausted
       const rowBg = i % 2 === 0 ? PANEL_BG : '#151f2e';
+      const shirtNum = this.shirtNumbers.get(p.id) ?? p.shirtNumber ?? '';
 
       html += `<div data-player-id="${p.id}" style="display: grid; grid-template-columns: 44px 36px 140px 48px 40px 48px ${ATTR_NAMES.map(() => '32px').join(' ')} 48px; gap: 2px; padding: 6px 8px; font-size: 12px; background: ${rowBg}; border-radius: 2px; align-items: center; cursor: pointer;" class="squad-row">`;
 
       // Selection badge (clickable)
       html += `<span data-toggle="${p.id}" style="display: inline-block; background: ${badgeColor}; color: #000; font-weight: bold; font-size: 10px; padding: 2px 6px; border-radius: 3px; text-align: center; cursor: pointer; user-select: none;">${badgeLabel}</span>`;
 
-      // Shirt number
-      html += `<span style="color: ${TEXT};">${i + 1}</span>`;
+      // Shirt number (click-to-edit)
+      html += `<span data-shirt="${p.id}" style="color: ${TEXT}; text-align: right; cursor: pointer; user-select: none; font-size: 11px; font-family: monospace;" title="Click to edit shirt number">${shirtNum}</span>`;
 
       // Name
       html += `<span style="color: ${TEXT_BRIGHT}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${p.name ?? 'Unknown'}</span>`;
@@ -250,6 +334,16 @@ export class SquadScreen {
       toggle.addEventListener('click', (e) => {
         e.stopPropagation();
         this.cycleSelection(playerId);
+      });
+    }
+
+    // Attach click handlers for shirt number editing
+    const shirtCells = this.container.querySelectorAll('[data-shirt]');
+    for (const cell of shirtCells) {
+      const playerId = (cell as HTMLElement).dataset.shirt!;
+      cell.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.startShirtNumberEdit(playerId, cell as HTMLElement);
       });
     }
 

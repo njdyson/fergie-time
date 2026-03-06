@@ -96,6 +96,7 @@ export function createSeason(
   playerTeamName: string,
   playerSquad: PlayerState[],
   seed: string,
+  names?: string[],
 ): SeasonState {
   const rng = seedrandom(seed);
   const tiers = getAITierDistribution();
@@ -104,7 +105,7 @@ export function createSeason(
   const aiTeams: SeasonTeam[] = tiers.map((tier, index) => {
     const teamId = `ai-team-${index}`;
     const teamName = AI_TEAM_NAMES[index]!;
-    const squad = createAITeam(tier, teamId, teamName, rng);
+    const squad = createAITeam(tier, teamId, teamName, rng, names?.slice(index * 25, (index + 1) * 25));
     return { id: teamId, name: teamName, tier, squad, isPlayerTeam: false };
   });
 

@@ -1,4 +1,7 @@
 import { SimulationEngine, createMatchRosters } from './simulation/engine.ts';
+import seedrandom from 'seedrandom';
+import { getNames } from './season/nameService.ts';
+import { createAITeam } from './season/teamGen.ts';
 import { CanvasRenderer } from './renderer/canvas.ts';
 import { DebugOverlay } from './renderer/debug.ts';
 import { startGameLoop, stopGameLoop, getIsPaused, setPaused, setSpeedMultiplier } from './loop/gameLoop.ts';
@@ -22,7 +25,7 @@ import { TableScreen } from './ui/screens/tableScreen.ts';
 import { SquadScreen } from './ui/screens/squadScreen.ts';
 import { LoginScreen } from './ui/screens/loginScreen.ts';
 import { createSeason, validateSquadSelection, isSeasonComplete, getChampion, startNewSeason, recordPlayerResult, simOneAIFixture, finalizeMatchday } from './season/season.ts';
-import type { SeasonState, AIFixtureResult } from './season/season.ts';
+import type { SeasonState } from './season/season.ts';
 import { saveGame, loadGame } from './api/client.ts';
 import { serializeState, deserializeState } from '../server/serialize.ts';
 
@@ -41,7 +44,13 @@ if (!(debugCanvasRaw instanceof HTMLCanvasElement)) {
   throw new Error('Could not find #debug-canvas element');
 }
 const debugCanvasEl: HTMLCanvasElement = debugCanvasRaw;
+const debugCanvasAwayRaw = document.getElementById('debug-canvas-away');
+if (!(debugCanvasAwayRaw instanceof HTMLCanvasElement)) {
+  throw new Error('Could not find #debug-canvas-away element');
+}
+const debugCanvasAwayEl: HTMLCanvasElement = debugCanvasAwayRaw;
 const debugSidebar = document.getElementById('debug-sidebar');
+const debugSidebarAway = document.getElementById('debug-sidebar-away');
 const tuningPanel = document.getElementById('tuning-panel');
 
 // ============================================================
@@ -106,6 +115,7 @@ const loginScreenView = new LoginScreen(loginScreenEl);
 let seasonState: SeasonState;
 
 function updateCurrentScreen(): void {
+  if (!seasonState) return;
   const playerTeam = seasonState.teams.find(t => t.isPlayerTeam)!;
   if (currentScreen === ScreenId.HUB) {
     hubScreenView.update(seasonState, playerTeam.name);
@@ -490,7 +500,9 @@ tacticsOverlay.onSubstitutionQueued((pitchIndex, benchPlayer) => {
 // ============================================================
 
 let engine: SimulationEngine;
-let debugOverlay: DebugOverlay;
+let homeDebugOverlay: DebugOverlay;
+let awayDebugOverlay: DebugOverlay;
+let selectedDebugPlayerId: string | null = null;
 let fullTimePoll: ReturnType<typeof setInterval> | null = null;
 let halfTimePoll: ReturnType<typeof setInterval> | null = null;
 let commentaryPoll: ReturnType<typeof setInterval> | null = null;
@@ -540,7 +552,10 @@ function initMatchWithConfig(config: {
     homeTacticalConfig: inPossConfig,
     homeTacticalConfigOOP: oopConfig,
   });
-  debugOverlay = new DebugOverlay(debugCanvasEl, engine.decisionLog);
+  homeDebugOverlay = new DebugOverlay(debugCanvasEl, engine.decisionLog, 'home');
+  awayDebugOverlay = new DebugOverlay(debugCanvasAwayEl, engine.decisionLog, 'away');
+  selectedDebugPlayerId = null;
+  syncDebugSelection();
 
   // Wrap renderer.draw to include debug overlay highlights on top
   const originalDraw = renderer.draw.bind(renderer);
@@ -553,12 +568,14 @@ function initMatchWithConfig(config: {
       tacticsOverlay.updateLiveSquad(curr.players, curr.ball.carrierId);
     }
     if (renderer.showDebug) {
-      // Draw panels on the sidebar canvas
-      debugOverlay.drawPanels(curr);
-      // Draw highlight rings on the main pitch canvas
+      homeDebugOverlay.drawPanels(curr);
+      awayDebugOverlay.drawPanels(curr);
       const canvas2d = canvasEl.getContext('2d');
       if (canvas2d) {
-        debugOverlay.drawHighlights(canvas2d, (v) => renderer.pitchToCanvas(v));
+        const debugIntents = engine.getLatestDebugIntents();
+        homeDebugOverlay.drawPitchVisuals(curr, canvas2d, (v) => renderer.pitchToCanvas(v), debugIntents);
+        awayDebugOverlay.drawPitchVisuals(curr, canvas2d, (v) => renderer.pitchToCanvas(v), debugIntents);
+        homeDebugOverlay.drawPossessionHighlight(curr, canvas2d, (v) => renderer.pitchToCanvas(v));
       }
     }
   };
@@ -839,21 +856,57 @@ function updateCommentary(): void {
 }
 
 // ============================================================
-// Debug panel toggle (D key shows ALL panels)
+// Thoughts/tuning toggles
 // ============================================================
 
-let debugPanelsOpen = false;
+let debugThoughtsOpen = false;
+let tuningPanelOpen = false;
 
-function _setDebugPanels(open: boolean): void {
-  debugPanelsOpen = open;
-  renderer.showDebug = open;
-  renderer.showHeatmap = open;
-  debugSidebar?.classList.toggle('open', open);
+function _setTuningPanel(open: boolean): void {
+  tuningPanelOpen = open;
   tuningPanel?.classList.toggle('open', open);
+  if (getIsPaused()) updatePauseButton();
 }
 
-function toggleDebugPanels(): void {
-  _setDebugPanels(!debugPanelsOpen);
+function syncDebugSelection(): void {
+  homeDebugOverlay?.setSelectedPlayerId(selectedDebugPlayerId);
+  awayDebugOverlay?.setSelectedPlayerId(selectedDebugPlayerId);
+}
+
+function handleDebugPanelClick(overlay: DebugOverlay, event: MouseEvent): void {
+  const playerId = overlay.getSelectedPlayerIdAt(event.offsetY);
+  if (!playerId) return;
+  selectedDebugPlayerId = selectedDebugPlayerId === playerId ? null : playerId;
+  syncDebugSelection();
+}
+
+debugCanvasEl.addEventListener('click', (event) => {
+  if (!renderer.showDebug) return;
+  handleDebugPanelClick(homeDebugOverlay, event);
+});
+
+debugCanvasAwayEl.addEventListener('click', (event) => {
+  if (!renderer.showDebug) return;
+  handleDebugPanelClick(awayDebugOverlay, event);
+});
+
+function _setDebugThoughts(open: boolean): void {
+  debugThoughtsOpen = open;
+  renderer.showDebug = open;
+  debugSidebar?.classList.toggle('open', open);
+  debugSidebarAway?.classList.toggle('open', open);
+  if (open) _setTuningPanel(false);
+  if (getIsPaused()) updatePauseButton();
+}
+
+function toggleDebugThoughts(): void {
+  _setDebugThoughts(!debugThoughtsOpen);
+}
+
+function toggleTuningPanel(): void {
+  const next = !tuningPanelOpen;
+  if (next) _setDebugThoughts(false);
+  _setTuningPanel(next);
 }
 
 // ============================================================
@@ -897,9 +950,21 @@ function updatePauseButton(): void {
   const paused = getIsPaused();
   btnPause.textContent = paused ? 'Resume' : 'Pause';
   btnPause.classList.toggle('active', paused);
+  const debugFreezeView = paused && debugThoughtsOpen;
 
   // Show/hide tactics overlay on pause
   if (paused && engine) {
+    if (debugFreezeView) {
+      hideTacticsCanvas();
+      tacticsOverlay.close();
+      tacticSelector.hide();
+      renderer.showAnchors = false;
+      renderer.editingTransitionPhase = null;
+      hideBenchPanel();
+      if (liveStatsEl) liveStatsEl.style.display = '';
+      return;
+    }
+
     // Hide live stats, show tactics
     if (liveStatsEl) liveStatsEl.style.display = 'none';
     const snap = engine.getCurrentSnapshot();
@@ -1029,7 +1094,8 @@ btnReset?.addEventListener('click', () => {
   setSpeed(1);
   hideBenchPanel();
   tacticsBoard.resetSubstitutions();
-  _setDebugPanels(false);
+  _setDebugThoughts(false);
+  _setTuningPanel(false);
   startMatch();
   console.log('[Fergie Time] Reset — new match started.');
 });
@@ -1217,7 +1283,9 @@ document.addEventListener('keydown', (e) => {
   } else if (e.key === '5') {
     setSpeed(0.25);
   } else if (e.key === 'd' || e.key === 'D') {
-    toggleDebugPanels();
+    toggleDebugThoughts();
+  } else if (e.key === 'c' || e.key === 'C') {
+    toggleTuningPanel();
   } else if (e.key === 'g' || e.key === 'G') {
     renderer.showGhosts = !renderer.showGhosts;
   }
@@ -1357,7 +1425,7 @@ squadKickoffBtn.addEventListener('click', () => {
     ...p, fatigue: fatigueMap.get(p.id) ?? 0, teamId: (playerIsHome ? 'away' : 'home') as 'home' | 'away',
   }));
   const opponentStarters = opponentSquad.slice(0, 11);
-  const opponentBench = opponentSquad.slice(11, 16);
+  const opponentBench = opponentSquad.slice(11, 18);
 
   // Set which side the player is on for post-match fatigue capture
   currentMatchPlayerSide = playerIsHome ? 'home' : 'away';
@@ -1395,12 +1463,14 @@ async function boot(): Promise<void> {
 
   // Show login screen
   showScreen(ScreenId.LOGIN);
-  loginScreenView.show((teamName, isNewGame, gameStateJson) => {
+  loginScreenView.show(async (teamName, isNewGame, gameStateJson) => {
     if (isNewGame) {
-      // Create fresh season with user's team name
-      const initialRosters = createMatchRosters();
-      const playerSquad = [...initialRosters.home, ...initialRosters.homeBench];
-      seasonState = createSeason('player-team', teamName, playerSquad, 'season-1');
+      // Fetch realistic names for all 20 teams (500 = 20 * 25)
+      const names = await getNames(500, seedrandom('names-' + teamName));
+      // Create player squad using createAITeam with 'mid' tier
+      const playerSquad = createAITeam('mid', 'player-team', teamName, seedrandom('player-' + teamName), names.slice(0, 25));
+      // Create season with remaining names for AI teams
+      seasonState = createSeason('player-team', teamName, playerSquad, 'season-1', names.slice(25));
       // Auto-save the fresh season immediately
       const json = serializeState(seasonState);
       saveGame(json, 1).catch(err => console.error('Initial save failed:', err));
