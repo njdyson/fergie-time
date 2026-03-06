@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: completed
-stopped_at: Phase 3 context gathered
-last_updated: "2026-03-05T15:38:19.894Z"
-last_activity: "2026-03-03 — Plan 02-03 complete: Halftime flow, substitutePlayer() method, bench panel UI, formation changes apply at second-half kickoff. Human-verified formation changes produce visible behavior differences. 457 tests pass, build succeeds."
+status: in-progress
+stopped_at: "Completed 03-01-PLAN.md"
+last_updated: "2026-03-06T07:26:00Z"
+last_activity: "2026-03-06 — Plan 03-01 complete: Season data module with nameGen, teamGen, fixtures, leagueTable. 32 TDD tests. PlayerState extended with age/height."
 progress:
   total_phases: 4
   completed_phases: 2
-  total_plans: 13
-  completed_plans: 13
-  percent: 30
+  total_plans: 19
+  completed_plans: 14
+  percent: 74
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-02)
 
 **Core value:** The match engine must produce emergent behavior that feels like real football — goals, mistakes, tactical dominance and individual brilliance all arising from physics, agent decisions and personality vectors, never from scripted events
-**Current focus:** Phase 2 — Tactical Layer
+**Current focus:** Phase 3 — Management Shell
 
 ## Current Position
 
-Phase: 2 of 4 (Tactical Layer) — IN PROGRESS
-Plan: 3 of 10 in current phase — COMPLETE (3/10)
-Status: Phase 2 plan 03 complete — 16-man squad with 5-player bench, substitution engine (max 3/match), halftime auto-pause with formation/duty/sub changes
-Last activity: 2026-03-03 — Plan 02-03 complete: Halftime flow, substitutePlayer() method, bench panel UI, formation changes apply at second-half kickoff. Human-verified formation changes produce visible behavior differences. 457 tests pass, build succeeds.
+Phase: 3 of 4 (Management Shell) — IN PROGRESS
+Plan: 1 of 6 in current phase — COMPLETE (1/6)
+Status: Phase 3 plan 01 complete — Season data module with nameGen, teamGen, fixtures, leagueTable
+Last activity: 2026-03-06 — Plan 03-01 complete: Season data module with procedural name generation, AI team squad creation, Berger round-robin fixtures, and league table logic. 32 TDD tests pass.
 
-Progress: [███░░░░░░░] 30%
+Progress: [███████░░░] 74%
 
 ## Performance Metrics
 
@@ -45,6 +45,7 @@ Progress: [███░░░░░░░] 30%
 |-------|-------|-------|----------|
 | 1. Engine Core | 10 | ~64 min | ~6.4 min |
 | 2. Tactical Layer | 2 | ~21 min | ~10.5 min |
+| 3. Management Shell | 1 | ~4 min | ~4 min |
 
 **Recent Trend:**
 - Last 5 plans: 01-06 (7 min), 01-07 (3 min), 01-08 (8 min), 01-09 (7 min), 01-10 (20 min incl. checkpoint)
@@ -97,6 +98,8 @@ Recent decisions affecting current work:
 - [Phase 02-03]: Halftime latch mechanism using isHalftimeLatched() guard — prevents repeated auto-pause during long halftime period, latch cleared on startSecondHalf()
 - [Phase 02-03]: Formation changes apply at second-half kickoff via _applyInitialFormation(), not immediately — maintains state consistency, allows review before commit
 - [Phase 02-03]: Substituted player inherits role/duty/anchor from outgoing player, but retains own attributes/personality — preserves tactical role while representing individual player strengths
+- [Phase 03-01]: 16-man squad bench composition: GK, CB, CM, CM, ST — 2 CM for midfield flexibility over plan's ambiguous "5 bench" specification
+- [Phase 03-01]: Attribute generation uses clamp(base + (rng-0.5)*2*spread, 0, 1) — tight range per tier prevents cross-tier overlap
 
 ### Pending Todos
 
@@ -110,6 +113,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-05T15:38:19.891Z
-Stopped at: Phase 3 context gathered
-Resume file: .planning/phases/03-management-shell/03-CONTEXT.md
+Last session: 2026-03-06T07:26:00Z
+Stopped at: Completed 03-01-PLAN.md
+Resume file: .planning/phases/03-management-shell/03-01-SUMMARY.md
