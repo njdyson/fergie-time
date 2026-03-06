@@ -2,6 +2,7 @@ import express from 'express';
 import cookieSession from 'cookie-session';
 import { getDb } from './db.js';
 import { healthRouter } from './routes/health.js';
+import { authRouter } from './routes/auth.js';
 
 const app = express();
 
@@ -14,6 +15,7 @@ app.use(cookieSession({
 }));
 
 app.use(healthRouter);
+app.use(authRouter);
 
 // Initialize database on startup
 getDb();
