@@ -17,9 +17,8 @@ jobs:
           script_stop: true
           script: |
             cd /var/www/vhosts/psybob.uk/ft.psybob.uk
-            git remote set-url origin https://github.com/njdyson/fergie-time.git
-            git fetch origin
-            git reset --hard origin/main
+            GIT_TERMINAL_PROMPT=0 git -c credential.helper= fetch https://github.com/njdyson/fergie-time.git main
+            git reset --hard FETCH_HEAD
             export PATH="/usr/local/bin:/usr/bin:$PATH"
             which node && node --version || echo "NODE NOT FOUND"
             which npm && npm --version || echo "NPM NOT FOUND"
