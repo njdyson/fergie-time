@@ -1,274 +1,178 @@
 # Project Research Summary
 
-**Project:** Fergie Time — Browser-Based Emergent Football Simulation
-**Domain:** Browser game — football management/simulation with autonomous AI agents
-**Researched:** 2026-03-02
-**Confidence:** MEDIUM (training data only; no live web verification)
+**Project:** Fergie Time v1.1 Data Layer
+**Domain:** Backend persistence layer for existing browser-based football management game
+**Researched:** 2026-03-06
+**Confidence:** HIGH
 
 ## Executive Summary
 
-Fergie Time is a browser-based football management game whose core differentiator is genuine emergent match behavior — goals arise from autonomous agent decisions, not scripted event tables. Research confirms this is technically achievable in a browser with TypeScript and HTML5 Canvas, but the implementation order is unforgiving: the match engine must be proven functional before any management layer has value. Experts in this domain (Football Manager's 2D engine, RoboCup research, game AI literature) are unanimous that the engine-first, management-second build order is correct, and every game in the genre that inverted this order shipped a broken simulation with polished menus.
+Fergie Time is a browser-based football management game with a working match engine, tactical system, and management shell (Phases 1-3 complete). The v1.1 milestone adds a persistence layer so game state survives browser refreshes. The recommended approach is the thinnest possible backend: Express 5 serving a REST API over SQLite via better-sqlite3, with the browser remaining the sole authority on game logic. The server is a "filing cabinet" -- it accepts serialized state blobs and hands them back. No game logic runs server-side.
 
-The recommended stack is intentionally minimal: Vite + TypeScript for tooling, raw HTML5 Canvas 2D for rendering, custom physics and steering behaviors (no library), custom utility AI with a consideration architecture, and Preact for management UI. The key insight across every category is the same — libraries designed for general problems (Phaser, Matter.js, ECS frameworks) fight this specific simulation's requirements. At 23 total entities (22 players + ball), there is no scale justification for framework overhead. The value of the project lives in the agent behavior and personality vector system, not in any technology choice.
+The stack is deliberately minimal: Express 5, better-sqlite3, express-session, helmet, compression, and tsx for dev. No ORM, no WebSockets, no Redis, no Passport.js. The entire database has 4 tables, the most complex query is a single SELECT, and the game has one concurrent user. Every technology decision is calibrated to this reality. The existing frontend stack (TypeScript 5.9, Vite 7.3, Vitest 3.2, Zod 3.24) is unchanged.
 
-The top risk is not technical failure but calibration failure: utility AI systems that are logically correct in isolation produce degenerate match behavior in context — the entire team passing sideways forever, or all 22 players clustering around the ball. These pathologies are invisible to unit tests and only surface when watching a full match. Prevention requires building observability tooling (score range auditing, per-agent decision logging, statistical match invariant tests) alongside the simulation, not as an afterthought. The architecture must enforce strict simulation/renderer separation from the first line of code — retrofit is painful and blocks headless simulation.
-
----
+The primary risks are: (1) SeasonState serialization -- the `fatigueMap` uses a JavaScript Map which silently serializes to `{}`, causing silent data loss; (2) deployment complexity -- the project jumps from static file hosting to running a live Node process, requiring process management and reverse proxying; and (3) randomuser.me dependency on the critical path of game creation. All three have clear mitigations: round-trip serialization tests, systemd service configuration planned upfront, and a name cache with fallback to the existing procedural generator.
 
 ## Key Findings
 
 ### Recommended Stack
 
-The stack is radically dependency-light by design. Custom implementations outperform libraries in every category because the domain is narrow and specific. TypeScript 5.x, Vite 5.x, and Vitest form the tooling baseline. The simulation layer is entirely custom: Craig Reynolds steering behaviors (~40 lines per behavior), custom utility AI (~200 lines of scoring functions), and custom 2D physics for the ball (Newtonian projectile with X/Y/Z). Preact + Preact Signals handles management screen UI at 3KB vs React's 45KB.
+The existing frontend stack stays untouched. New dependencies are server-only and deliberately few.
 
 **Core technologies:**
-- **TypeScript 5.x + Vite 5.x**: Primary language and build tooling — fastest DX for browser TS, native ESM, required by project constraints
-- **HTML5 Canvas 2D API**: Match rendering — sufficient for 22 sprites + ball at 60fps; PixiJS (WebGL) is the known escape hatch if this proves wrong
-- **Custom utility AI**: Per-agent action scoring — personality vectors thread through every score calculation; no library adapts cleanly to this
-- **Custom steering behaviors (Reynolds model)**: Player movement — `seek`, `arrive`, `pursuit`, `separation`, `wander` are all 40-line implementations from canonical 1999 paper
-- **Custom ball physics (2.5D)**: Ball trajectory with Z-axis — libraries like Matter.js and Rapier solve rigid-body constraints that don't exist in this simulation
-- **Preact + Preact Signals**: Management UI — fine-grained reactivity matches game state update patterns; 15x smaller than React
-- **Vitest + @vitest/coverage-v8**: Testing — critical for headless simulation testing and physics determinism
-- **seedrandom 3.x**: Seeded PRNG — reproducible match replays and procedural portrait generation
-- **zod 3.x**: Runtime validation — safe parsing of season save/load data
+- **Express 5.2** (HTTP server) -- v5 is the npm default since March 2025, native promise support eliminates async error handling boilerplate
+- **better-sqlite3 12.6** (database) -- synchronous API matches the single-process, single-user model; fastest Node SQLite driver; zero external services
+- **express-session 1.19** (auth) -- simple cookie-based sessions; no JWT complexity for a same-origin single-player game
+- **tsx 4.21** (dev/runtime) -- runs TypeScript server without a compile step; sub-second restarts in dev
 
-**Do not use:** Phaser 3 (owns the game loop, fights sim/render separation), any ECS library (23 entities need zero cache optimization), Matter.js/Rapier for player movement (steering agents resist rigid-body constraints), React (15x bundle size for same capability).
+**Explicitly not needed:** ORM (4 tables), WebSockets (no real-time), Redis (one user), Passport.js (two auth endpoints), CORS middleware (same-origin), dotenv (Node 20+ `--env-file`), migration framework (`CREATE TABLE IF NOT EXISTS` + `PRAGMA user_version`).
 
 ### Expected Features
 
-The feature dependency chain is strict: physics must work before steering behaviors are useful, steering behaviors must work before utility AI has meaning, utility AI must work before tactics have effect, and tactics must have effect before the management layer has value. Every layer below must be proven before the layer above is built.
+**Must have (table stakes for v1.1):**
+- SQLite database with 4 tables (games, saves, name_cache, player_stats)
+- Express API server with ~6 REST endpoints + Vite dev proxy
+- SeasonState serialize/deserialize handling Map-to-Object conversion
+- Login screen (team name + password) gating save game access
+- Auto-save after each matchday (zero-friction persistence)
+- 25-man squads (expanded from 16; independent frontend change)
+- randomuser.me name cache with procedural fallback
+- Per-match player stats extraction and season aggregation
 
-**Must have (table stakes — Phase 1-3):**
-- Emergent match play with visible events (goals, shots, possession changes) — the core product promise
-- Tactical formations that mechanically differentiate team behavior (4-3-3 vs 4-5-1 must produce measurably different spatial footprints)
-- Squad management with attributes, fatigue, and match-day selection
-- League structure: fixture list, table, season boundary with champion
-- Player attributes (physical + technical) that create genuine quality differentials
+**Should have (v1.1.x polish):**
+- Quick-sim goalscorer attribution (expose GameEventLog from engine)
+- League-wide stat leaderboards (top scorer, most assists)
+- Match history browser on fixtures screen
+- Nationality field on PlayerState with flag display
+- Player form indicator (rolling 5-match average)
 
-**Should have (differentiators — Phase 1-4):**
-- Personality vectors creating emergent archetypes (maverick vs. metronome from the same code)
-- 2.5D physics with Z-axis aerial play (crosses, headers emerge naturally)
-- Fatigue-driven behavioral drift (tired players become cautious mid-match)
-- Observable agent decision-making (debug overlay for why that pass happened)
-- Training drills that shift personality vectors — genuinely novel vs. any commercial product
-- Procedural player name and pixel-art portrait generation from trait data
-
-**Defer to v2+:**
-- Transfer market (separate economic simulation problem)
-- Multiple divisions and promotion/relegation (scheduling complexity multiplier)
-- Injury system (complex subsystem; fatigue covers performance degradation)
-- Scouting/fog-of-war attributes
-- Morale subsystem (composure covers much of this)
-- Contract negotiations, press conferences, board objectives
-- Match replay from different camera angles (valuable but post-engine-proof)
-
-**Explicitly not building (ever, or indefinitely):**
-- Scripted match events or event tables — directly contradicts the core value proposition
-- Multiplayer, mobile UI, 3D rendering
+**Defer (v1.2+):**
+- Export/import save as JSON (cross-device)
+- Player of the month/season awards
+- Historical season records and career stats tables
 
 ### Architecture Approach
 
-The system follows strict layered architecture with unidirectional data flow: Simulation Engine writes immutable snapshots, Canvas Renderer reads them, Manager Interface issues commands. No layer reaches upward. The critical non-negotiable is the fixed-timestep accumulator pattern (Gaffer on Games canonical reference): simulation runs at 30Hz fixed ticks, rendering runs at 60fps via `requestAnimationFrame` with state interpolation using alpha between the two most recent snapshots. This enables deterministic simulation, headless match running, and visual smoothness independent of frame rate.
+The simulation stays client-side (22 agents at 30Hz with Canvas rendering cannot move server-side without a complete rewrite). The backend is a pure persistence layer: Express receives JSON blobs via POST, stores them in SQLite, returns them via GET. The client owns all game logic -- the server validates only auth and payload shape. State is stored as a single JSON blob per save (50-80KB), not normalized into relational tables, because there is one save per user and no cross-save queries needed. Player stats get their own table because they benefit from aggregation queries.
 
 **Major components:**
-1. **Game Loop Coordinator** — fixed-timestep accumulator, owns the clock, dispatches `simulate(dt)` and `render(alpha)` calls; holds no game state
-2. **Simulation Engine (pure TS, no DOM)** — contains Physics World, Agent System (utility AI), Tactical System (context provider), and Match State; produces `SimSnapshot` per tick
-3. **Canvas Renderer** — reads only `SimSnapshot` objects, interpolates between prev/curr, draws to canvas; contains zero game logic
-4. **Manager Interface (Preact)** — squad screen, tactics board, training, league table; issues typed commands to simulation via command queue
-5. **Persistent State (localStorage/IndexedDB)** — club, squad, season progress; mutated only by season events, training, and user actions
-
-The agent architecture inside the engine separates concerns cleanly: Tactical System runs first each tick and provides context (formation anchors, phase of play, role instructions) that the Agent System reads. Agents produce `ActionIntent` objects, not state mutations. Physics integrates all intents simultaneously to produce the next snapshot. This prevents order-dependent agent evaluation.
+1. **Frontend game** (existing, modified) -- simulation, rendering, UI; adds login screen + save/load wiring + API client
+2. **Express server** (new, `server/`) -- REST endpoints, session auth, Zod request validation
+3. **SQLite database** (new, `data/games.db`) -- 4 tables; auto-created on first run; WAL mode
+4. **Serialization layer** (new, in `season.ts`) -- `serializeSeason()`/`deserializeSeason()` handling Map-to-Object conversion
+5. **Name cache service** (new) -- proxies randomuser.me, caches in SQLite, fallback to `nameGen.ts`
 
 ### Critical Pitfalls
 
-1. **Utility score degeneracy (one action always wins)** — a single action dominates across all game states because formulas are calibrated in isolation but compete on different numerical ranges. Prevention: build a score range audit tool before the first playable match; no action should dominate > 40% of all ticks across all agents. Detection: shot counts < 2 or > 30 per match; agents all doing the same animation.
-
-2. **Ball clustering (all 22 players swarm the ball)** — formation and roles become visually meaningless because ball-proximity utility scores outweigh positional anchor pull. Prevention: treat formation anchor distance as a multiplicative penalty (not additive) on ball-approaching actions; implement role-gated action availability masks so wingers cannot "press opposition midfielder" from their own half. Detection: average distance between teammates collapses to < 15m; changing formation produces no visible spatial difference.
-
-3. **Emergent behavior in a debugging black box** — when something weird happens (striker stands still for 20 seconds), there is no structured way to understand why without observability tooling. Prevention: build per-agent decision logging (ring buffer of top 3 scored actions per tick) alongside the agent system; implement a click-to-inspect "why did X do that?" tool. This is Phase 1 work, not a later addition.
-
-4. **Physics that feels perceptually wrong** — ball tunneling at high velocity (ball passes through players), Z-axis collisions at wrong heights (headers when ball is at ground level), and untuned friction curves (ball slides forever). Prevention: use continuous collision detection (sweep ball trajectory per tick); authoritative shadow position for aerial collision checks; validate by eye test (diagonal pass across 2/3 pitch should slow and stop naturally in ~3 seconds) before attaching any AI.
-
-5. **Tactical instructions with no mechanical effect** — formation changes and role instructions exist as data but produce no measurable spatial difference in match output. Prevention: define a quantitative spatial test for every tactical instruction before building the UI for it; run 100-match head-to-head (high press 4-3-3 vs. low block 4-5-1) and assert statistically distinguishable outcomes. This must be validated in Phase 2 before the management layer is built.
-
----
+1. **Map serialization data loss** -- `JSON.stringify()` silently converts `fatigueMap` to `{}`. Must convert Map to Record before serializing and write a mandatory round-trip test before any other persistence work begins.
+2. **Deployment complexity jump** -- going from static files to a live Node process requires systemd, nginx reverse proxy, port management, and crash recovery. Plan the deployment model in Phase 1, execute manually via SSH before automating.
+3. **randomuser.me as boot blocker** -- free API with no SLA and documented outages. Never call it on the critical path. Pre-cache names in SQLite, keep `nameGen.ts` as hard fallback.
+4. **Squad size magic numbers** -- hardcoded `16`, `5` (bench), and `slice(11)` patterns scattered through codebase. Must grep and replace with named constants before persistence encodes the wrong assumptions.
+5. **Auth scope creep** -- the instinct to build production-grade auth for a single-player personal project. Time-box to 4 hours. Cookie sessions, bcrypt hashing, no email, no OAuth.
 
 ## Implications for Roadmap
 
-All four research files converge on the same phase structure. The architecture's build order (ARCHITECTURE.md section 14-step dependency sequence) maps directly onto the feature dependency chain from FEATURES.md, and the pitfalls concentrate in specific phases. This is not arbitrary — it reflects genuine dependency structure.
+Based on research, suggested phase structure:
 
-### Phase 1: Engine Core
+### Phase 1: Foundation -- Serialization + Database + Express Skeleton
 
-**Rationale:** The entire product's value lives in the simulation. No management screen, no season structure, no tactical UI has any meaning until a match produces genuine emergent behavior. Research is unanimous that this is the highest-risk phase and must come first. The match engine is also the most technically uncertain component.
+**Rationale:** Serialization is the riskiest piece (silent data loss from Map) and has zero dependencies. The database schema and Express skeleton are prerequisites for everything else. Building and testing these first de-risks the entire milestone.
+**Delivers:** Proven serialize/deserialize with round-trip tests; Express server with health check; SQLite schema created on startup with WAL mode; separate `tsconfig.server.json`; Vite dev proxy configured.
+**Addresses:** SQLite database, Express API server, SeasonState serialization (from FEATURES.md)
+**Avoids:** Map serialization data loss (Pitfall 1), WAL mode omission (Pitfall 5), Vite proxy misconfiguration
 
-**Delivers:** A single watchable match with emergent goals, realistic player movement, and observable possession changes. Success gate: "I watched a full match and it felt like football."
+### Phase 2: Auth + Save/Load + Login Screen
 
-**Addresses (from FEATURES.md):**
-- 2.5D physics (ball trajectory with Z-axis)
-- Steering behavior movement for all 22 players
-- Utility AI with 7 core actions
-- Personality vectors influencing every score
-- Fatigue + personality erosion within a match
-- Canvas rendering (top-down 2D view)
-- Basic contact resolution (tackles, challenges)
-- Goal detection and scoreline display
-- Match statistics (shots, possession)
-- Halftime/full-time state machine
+**Rationale:** With the server running and serialization proven, auth and save/load are the core persistence flow. Login screen gates access to the hub. This phase delivers the primary user-facing value of the milestone.
+**Delivers:** Register/login endpoints with bcrypt + cookie sessions; save/load endpoints accepting JSON blobs; login screen UI; auto-save after matchday; manual save button in hub.
+**Addresses:** Simple login, game save/load, auto-save (from FEATURES.md)
+**Avoids:** Auth scope creep (Pitfall 6), dual state ownership (Pitfall 2)
 
-**Must avoid (from PITFALLS.md):**
-- Utility score degeneracy: build score range audit tool in this phase
-- Ball clustering: implement anchor-distance multiplicative penalty in this phase
-- Observability black box: build per-agent decision logging in this phase
-- Physics tunneling: use CCD for ball-player interactions
-- Variable timestep: implement fixed-timestep accumulator from day one
-- GC pressure: pre-allocate score arrays at startup; profile at full 22-agent count as exit criterion
+### Phase 3: 25-Man Squads
 
-**Stack required:** TypeScript + Vite, Canvas 2D, custom physics, custom steering behaviors, custom utility AI, Vitest, seedrandom
+**Rationale:** Independent of the backend -- purely frontend. Can be built in parallel with or after persistence. Placing it here avoids encoding 16-player assumptions into save files created in Phase 2.
+**Delivers:** Expanded ROLES array (16 to 25), updated squad selection validation, updated AI team simulation, updated squad screen UI layout.
+**Addresses:** 25-man squads (from FEATURES.md)
+**Avoids:** Squad size magic numbers (Pitfall 7)
 
-**Research flag:** This phase likely needs a focused research pass on utility AI consideration calibration — specifically the response curves that normalize score ranges to comparable scales. The pitfall literature is clear but the specific calibration for football simulation is not well-documented.
+### Phase 4: Name Cache + randomuser.me Integration
 
----
+**Rationale:** Depends on the server and database from Phase 1. Lower priority than core save/load. The existing `nameGen.ts` works as a fallback, so this is an enhancement not a blocker.
+**Delivers:** `/api/names/batch` endpoint; SQLite name_cache table; batch fetch from randomuser.me with nationality filtering; fallback to procedural generator.
+**Addresses:** Realistic names via randomuser.me (from FEATURES.md)
+**Avoids:** randomuser.me as boot blocker (Pitfall 4)
 
-### Phase 2: Tactical Layer
+### Phase 5: Player Stats Persistence
 
-**Rationale:** Once the engine produces believable matches, the tactical system transforms it from a passive simulation into a game. Formation anchors are already partially present in Phase 1 (agents need positional targets), but this phase makes them user-controllable and validates that they produce measurable spatial differences.
+**Rationale:** Depends on save/load working (Phase 2) and requires a post-match hook that does not yet exist. The `GameEventLog.getPlayerStats()` output must be captured and persisted after each match.
+**Delivers:** Per-match stat extraction hook; player_stats table population; season stats aggregation; stats display on squad screen.
+**Addresses:** Season player stats persisted in DB (from FEATURES.md)
+**Avoids:** N/A -- standard CRUD pattern
 
-**Delivers:** Formation drag-and-drop that visibly changes team shape; role assignments that change individual agent behavior; halftime adjustments and substitutions. Success gate: "Changing formation visibly changes how the team plays."
+### Phase 6: Deployment
 
-**Addresses (from FEATURES.md):**
-- Formation anchors as positional pull targets
-- Drag-and-drop tactics board (project's distinctive UI)
-- Role assignments modifying agent behavior
-- Per-player personality-aware instructions
-- Halftime tactical adjustments
-- Substitutions (bench management + in-game swap logic)
-- Tactical counter-system (low block actually reduces space for tiki-taka)
-
-**Must avoid (from PITFALLS.md):**
-- Tactical instructions with no mechanical effect: run quantitative spatial fingerprint tests for every tactic before building UI
-- Contact resolution asymmetries: include anchor-distance penalty on challenge utility; foul probability as cost term
-- Pitfall 2 compounds here if not addressed in Phase 1
-
-**Stack addition:** Preact for tactics board UI; Preact Signals for reactive formation state
-
-**Research flag:** The drag-and-drop formation board interaction model is well-specified in the project brief. Standard patterns apply. Skip dedicated research phase.
-
----
-
-### Phase 3: Management Shell
-
-**Rationale:** With a proven engine and meaningful tactics, the management layer provides context and continuity. Squad selection, fixture lists, and league tables give the match engine narrative stakes.
-
-**Delivers:** A full playable season with squad management, fixtures, league table, and a champion declared at season end. Success gate: "I can play a full season and care who wins the league."
-
-**Addresses (from FEATURES.md):**
-- Squad screen with attributes, personality, fitness display
-- Procedural player name generation (bundled nationality name datasets)
-- Match-day squad selection (starting 11 + bench)
-- Fixture list (round-robin schedule generation)
-- League table (points, GD, position)
-- AI manager heuristics for 19 opposition teams (simple heuristics only, not FM-level)
-- Season boundary (champion declared, squad carry-forward)
-
-**Must avoid (from PITFALLS.md):**
-- League singleton that precludes expansion: wrap in a `League` class from the start, even with one instance
-- Personality vector convergence: design personality anchor bounds before implementing training deltas (even though training is Phase 4)
-- AI managers over-engineered: stub with simple heuristics; this is not a feature, it's infrastructure
-
-**Stack addition:** localStorage/IndexedDB for persistent state; zod for save/load validation
-
-**Research flag:** AI manager heuristic design is under-specified and needs a focused research pass. How do 19 AI managers make formation and substitution decisions without becoming an FM-scale problem? This is a scoping and design question, not a technology question.
-
----
-
-### Phase 4: Development Systems
-
-**Rationale:** Once seasons have continuity, the player development layer adds the long-term dimension that distinguishes a management game from a match simulator. Training, youth graduates, and procedural portraits are the features that make seasons 2 and 3 meaningfully different from season 1.
-
-**Delivers:** A squad with distinct character after multiple seasons of development; youth graduates with fresh procedural personalities; pixel-art portraits tied to player trait data. Success gate: "My squad has a distinct character after 3 seasons."
-
-**Addresses (from FEATURES.md):**
-- Training drills that shift personality vectors and attributes
-- Observable training sessions (mini-sims that show how training shapes behavior)
-- Youth graduates with procedurally generated personalities (wild variance, not regression to mean)
-- Retirements
-- Pixel-art procedural portrait generation from personality/trait data
-- Observable personality drift over a career
-- Season-to-season continuity
-
-**Must avoid (from PITFALLS.md):**
-- Personality vector convergence over seasons: enforce personality anchors (±0.3 of base personality); fatigue erosion must be temporary, not cumulative
-- Portrait generation accumulating technical debt: model portraits as a trait-to-layer mapping system, not hardcoded pixel coordinates; generate 100 and audit before squad screen integration
-
-**Research flag:** Pixel-art procedural portrait generation has no standard library or well-documented approach. This phase needs dedicated research before implementation. The layer-based trait mapping system is the right architectural concept but the specifics of palette selection, layer compositing, and anti-collision for visual features need research.
-
----
+**Rationale:** Deploy after all features work locally. The deployment model (systemd, nginx reverse proxy, SQLite file location) should be planned in Phase 1 but executed here to avoid deploying broken features.
+**Delivers:** Updated deploy.yml; nginx `/api` proxy; systemd service for Express; SQLite backup cron; verified end-to-end on VPS.
+**Addresses:** Production deployment (from ARCHITECTURE.md)
+**Avoids:** Static-to-process deployment gap (Pitfall 3)
 
 ### Phase Ordering Rationale
 
-- **Physics before steering before AI before tactics:** Each layer's outputs are inputs to the next. There is no shortcut.
-- **Engine before management:** The management layer has zero value if the match engine is broken. Every project that has tried to build both in parallel has shipped broken matches with polished menus.
-- **Tactics before league:** Meaningful tactical decisions require a working tactical system. A league structure around a match that plays identically regardless of formation is a worse product than a single match that responds to tactical input.
-- **Development systems last:** Player development requires multiple seasons to observe, which requires a working league structure, which requires working tactics, which requires a working engine.
-- **Observability in Phase 1:** Debug tooling is not a Phase 4 "nice to have." Emergent behavior is only debuggable with purpose-built observability, and attempting to tune utility AI without score range visualization is known to produce weeks of trial-and-error.
+- **Serialization first** because it is the single highest-risk item with the cheapest fix. A round-trip test takes an hour; discovering Map data loss after building the entire save/load pipeline wastes days.
+- **Auth + save/load before squads** because save files created during testing will encode squad size assumptions. Getting persistence working with the current 16-player squads first, then expanding to 25, ensures the serialization layer handles both.
+- **25-man squads is independent** and can be done in parallel with any phase. Placing it at Phase 3 is a suggestion, not a hard dependency. However, it MUST be done before deployment so production saves use the correct squad size.
+- **Name cache after save/load** because the existing `nameGen.ts` works fine. Names are cosmetic; persistence is the milestone's reason for existing.
+- **Stats last** because they require the most integration (post-match hook, engine changes for quick-sim attribution) and are additive to a working save/load system.
+- **Deployment last** because deploying broken features to the VPS is worse than not deploying at all. Local dev with Vite proxy is sufficient for all development.
 
 ### Research Flags
 
-**Phases likely needing `/gsd:research-phase` during planning:**
-- **Phase 1 (utility AI calibration):** Response curve design for consideration normalization is poorly documented for football simulations specifically. Requires focused research on input curve design patterns.
-- **Phase 3 (AI manager heuristics):** Under-specified in all reference material. Needs scoping research to bound the problem and find minimal viable heuristic patterns.
-- **Phase 4 (procedural portraits):** No standard approach. Canvas-based procedural pixel art generation from data is a domain-specific problem needing dedicated research.
+**Phases likely needing deeper research during planning:**
+- **Phase 2 (Auth + Save/Load):** Resolve JWT vs cookie sessions contradiction across research files (recommendation: use express-session with cookies). Determine exact save payload size with 25-man squads.
+- **Phase 6 (Deployment):** Verify VPS has build tools for better-sqlite3 native addon (`python3 make g++`). Confirm nginx config for reverse proxy alongside existing static serving.
 
-**Phases with standard patterns (skip research):**
-- **Phase 1 (game loop, physics, renderer):** Fixed-timestep accumulator, CCD, Canvas 2D rendering are canonical with high-quality documentation.
-- **Phase 2 (tactics board UI):** Drag-and-drop formation is a standard interaction model; Preact + Signals handles it cleanly.
-- **Phase 3 (season structure, league table):** Round-robin scheduling and table calculation are trivial algorithmic problems.
-- **Phase 4 (training delta system):** Personality anchors and bounded attribute deltas are straightforward once personality vector structure is established.
-
----
+**Phases with standard patterns (skip research-phase):**
+- **Phase 1 (Foundation):** Express + better-sqlite3 + Vite proxy is thoroughly documented. No unknowns.
+- **Phase 3 (25-Man Squads):** Pure frontend refactor with known touchpoints. Grep for magic numbers, replace with constants.
+- **Phase 4 (Name Cache):** randomuser.me API is well-documented, fetch-and-cache is a standard pattern.
+- **Phase 5 (Player Stats):** Standard CRUD with aggregation queries. `GameEventLog` already produces the data.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Core recommendations (custom physics, Canvas 2D, Preact, Vite) are robust from first principles and well-established patterns. Web verification unavailable but architectural reasoning is sound. |
-| Features | MEDIUM | Table-stakes features are clear from FM/CM genre precedent. Differentiator features are well-specified in the project brief. Anti-feature list is opinionated but well-justified. |
-| Architecture | HIGH | Fixed-timestep accumulator, sim/render separation, utility AI consideration architecture, and immutable snapshots are canonical patterns with extensive documentation. |
-| Pitfalls | HIGH | Utility score degeneracy, ball clustering, and physics tunneling are well-documented in game AI literature and RoboCup research. Calibration thresholds are estimates requiring validation against actual match output. |
+| Stack | HIGH | All packages verified on npm with current versions. Express 5 is the npm default. better-sqlite3 is the standard Node SQLite driver. No exotic dependencies. |
+| Features | HIGH | Features derived directly from PROJECT.md milestone definition and codebase analysis. Specific files and line numbers identified for each change. |
+| Architecture | HIGH | Express + SQLite + JSON blob storage is a well-established pattern. Architecture is intentionally simple -- no novel decisions. |
+| Pitfalls | HIGH | Pitfalls are codebase-specific (Map serialization, hardcoded squad sizes) with concrete file references and line numbers. Not generic warnings. |
 
-**Overall confidence:** MEDIUM-HIGH
-
-The architectural recommendations are high confidence. The calibration specifics (what goal-per-match distribution is "correct," what score range percentage triggers degeneracy warnings) are informed estimates. They are appropriate starting points but require empirical tuning against actual match output.
+**Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **Utility AI calibration thresholds:** The specific numerical targets (goals per match: mean 2.5, action domination cap: 40%) are literature-informed estimates, not empirically derived for this specific simulation. Treat as initial targets and adjust based on first-playable-match feedback. Add score range logging from day one to generate actual data.
-- **Preact vs. vanilla signals for management UI:** The recommendation is Preact + Preact Signals, but the project is early enough that deferring this choice until management screens are actually being built is valid. Vanilla TS reactive stores are ~30 lines and remove a dependency. Revisit when Phase 3 begins.
-- **Web Worker timing for simulation:** Whether the simulation needs to move to a Web Worker depends on main-thread performance at 22 agents. Profile in Phase 1 before deciding. The architecture supports it (pure TS, no DOM), but adding worker complexity may not be necessary.
-- **Pixel-art portrait generation approach:** No validated approach from research. Requires dedicated investigation before Phase 4 begins.
-- **AI manager heuristic complexity bounds:** Research does not establish how simple "simple heuristics" can be while still making league results feel realistic. This is a Phase 3 planning question.
-
----
+- **JWT vs sessions contradiction:** STACK.md recommends express-session (cookies), ARCHITECTURE.md proposes JWT with jsonwebtoken. Resolution: use express-session with cookie-based sessions. JWT adds unnecessary complexity for a same-origin single-player game. Sessions are simpler and do not require token management on the client.
+- **pm2 vs systemd contradiction:** STACK.md recommends systemd, ARCHITECTURE.md recommends pm2. Resolution: use systemd. The VPS already runs systemd, pm2 is an extra dependency, and a single Express process does not need pm2's cluster/monitoring features.
+- **bcrypt vs SHA-256 contradiction:** STACK.md says SHA-256 with salt (no dependency), PITFALLS.md and ARCHITECTURE.md say bcrypt. Resolution: use bcrypt (async). It is the standard for password hashing and the `bcrypt` package is tiny. SHA-256 is technically sufficient but bcrypt is the right habit.
+- **Save payload size with 25-man squads:** Estimated at 50-80KB but not measured. With 25 players x 20 teams x ~15 fields each, actual size may be larger. Measure during Phase 1 serialization work.
+- **Quick-sim performance with GameEventLog exposure:** Exposing the log from quick-sim adds ~10% overhead (FEATURES.md estimate). Not measured. Defer measurement to Phase 5 when stats are implemented.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- `.planning/PROJECT.md` — project design brief, match engine specification, personality vector design, architectural constraints
-- Craig Reynolds, "Steering Behaviors for Autonomous Characters" (1999) — canonical steering behavior implementations
-- Glenn Fiedler, "Fix Your Timestep!" (2004/Gaffer on Games) — fixed-timestep accumulator architecture
-- Dave Mark / Mike Lewis, GDC Utility AI presentations (2010+) — consideration architecture, score degeneracy patterns
+- Express npm registry -- v5.2.1 confirmed as latest
+- better-sqlite3 npm/GitHub -- v12.6.2, synchronous API design
+- randomuser.me documentation -- API v1.4, nationality filtering, seed support, 5000 results max
+- Codebase analysis -- `season.ts`, `teamGen.ts`, `nameGen.ts`, `gameLog.ts`, `quickSim.ts`, `main.ts`, `engine.ts`, `deploy.yml`, `vite.config.ts`
+- PROJECT.md -- milestone definition and explicit out-of-scope items
 
 ### Secondary (MEDIUM confidence)
-- Football Manager series (Sports Interactive, 2003-2025) — 2D match engine concepts, statistics model, feature precedent
-- Championship Manager series (Eidos, 1992-2007) — attribute vocabulary, squad building patterns
-- RoboCup research literature — ball clustering pathology documentation in multi-agent football simulations
-- Erin Catto, Box2D documentation — continuous collision detection and physics tunneling
-- V8 allocation documentation / Chrome DevTools team — browser JS GC pressure patterns
+- better-sqlite3-session-store npm -- evaluated and rejected (low adoption)
+- randomuser.me GitHub issues #42, #66 -- documented outages (502 errors)
+- Uptrends State of API Reliability 2025 -- API uptime trends
 
-### Tertiary (LOW confidence / training data inference)
-- Hattrick, New Star Manager, Sociable Soccer — browser delivery patterns, season structure precedent
-- bitecs, miniplex, yuka ecosystem knowledge — ECS and game AI library evaluation (version numbers should be verified on npm before use)
+### Tertiary (LOW confidence)
+- Save payload size estimate (50-80KB) -- not measured, based on field count extrapolation
 
 ---
-*Research completed: 2026-03-02*
+*Research completed: 2026-03-06*
 *Ready for roadmap: yes*

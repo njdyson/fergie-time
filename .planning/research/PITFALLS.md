@@ -1,402 +1,303 @@
-# Domain Pitfalls
+# Pitfalls Research
 
-**Domain:** Browser-based emergent football simulation with utility AI agents
-**Project:** Fergie Time
-**Researched:** 2026-03-02
-**Confidence:** HIGH (core pitfalls drawn from well-established game AI literature and browser JS performance fundamentals; verified against project design brief)
+**Domain:** Adding Express+SQLite backend to existing client-only browser game
+**Project:** Fergie Time v1.1 Data Layer
+**Researched:** 2026-03-06
+**Confidence:** HIGH (codebase-specific analysis + established backend patterns)
 
 ---
 
 ## Critical Pitfalls
 
-Mistakes that cause rewrites or fundamental engine redesign.
+Mistakes that cause data loss, broken saves, or deployment failures.
 
 ---
 
-### Pitfall 1: Utility Score Degeneracy — One Action Always Wins
+### Pitfall 1: SeasonState Contains Non-Serializable Types (Map)
 
 **What goes wrong:**
-A single utility action dominates all others across nearly all game states. The most common form in football simulations is "hold/shield" or "pass short" scoring higher than all alternatives in 90% of ticks, producing a simulation where all 22 agents endlessly pass sideways or the team in possession never takes a shot. The degenerate action becomes a local maximum that all agents fall into.
+`SeasonState.fatigueMap` is a `Map<string, number>` (see `src/season/season.ts` line 45). `JSON.stringify()` silently converts Maps to `{}`. If you persist season state by serializing to JSON and storing in SQLite, all fatigue data is silently lost. The game loads back with zero fatigue for every player, breaking the fatigue/recovery system. No error is thrown -- the data vanishes.
 
 **Why it happens:**
-Utility score formulas are calibrated in isolation. Developers tune `shoot` score on a clean-through, tune `pass` score with a nearby target, and tune `dribble` score against one defender. The formulas look correct independently. But when the full match context is active, one formula's range dominates. A `pass` formula returning 0.0–0.9 will almost never lose to a `shoot` formula returning 0.0–0.7. The ranges, not the logic, determine winner.
+The game was built as a client-only app where state lives in memory. Maps are natural for in-memory lookups but are invisible to `JSON.stringify()`. This is JavaScript's most common serialization trap and it hits hardest when retrofitting persistence onto existing code.
 
-The Fergie Time scoring example is a warning sign in embryonic form:
-```
-score = success_probability + forward_progress × directness − (1 − success_probability) × (1 − risk_appetite) − pressure × (1 − composure)
-```
-`success_probability` appears twice (once raw, once inverted) and has range 0.0–1.0. It will dominate `forward_progress × directness` unless `directness` is calibrated to punch the same numerical range. Before first match is playable, this isn't visible. After first match, the pitch is a sideways-passing fest.
+**How to avoid:**
+- Convert `fatigueMap` to `Record<string, number>` before serializing, or store fatigue as rows in a `player_fatigue` table keyed by `(game_id, player_id)`.
+- Better: refactor `SeasonState` to use `Record<string, number>` instead of `Map` throughout. Maps provide no meaningful advantage here (string keys, simple lookups) and create a serialization landmine.
+- Add a mandatory round-trip test: `deepEqual(deserialize(serialize(state)), state)` must pass before save/load is considered done.
 
-**Consequences:**
-The game produces no goals. Or it produces constant shots from everywhere. Or defenders never press, they just hold. The simulation stops feeling like football. Because the problem is in score calibration rather than logic, it's invisible to unit tests and only surfaces when watching a full match.
+**Warning signs:**
+- Fatigue values are always 0 after loading a saved game.
+- Tests pass but only exercise in-memory flow, never serialize/deserialize.
 
-**Prevention:**
-1. Build a **score range audit tool** early — for every action, log the distribution of scores over a 90-minute simulation. Plot histograms. No single action should dominate > 40% of all ticks across all 22 agents.
-2. Normalize all utility scores to the same reference range before summing terms. Use response curves (linear, logistic, exponential) rather than raw arithmetic — the curve shape is the calibration lever.
-3. Add a **minimum-frequency floor** during development: if any action is selected < 5% of the time over a full match (per role group), flag it. It's either miscalibrated or genuinely useless and should be removed.
-4. Test each formula's output range in isolation against realistic input distributions before integration.
-
-**Detection (warning signs):**
-- Watching a match and seeing the same animation repeat > 80% of the time
-- Shot counts per match < 2 or > 30 in early testing
-- Any agent attribute change (e.g., raising `directness` to 1.0) produces no visible match difference
-- "Passing speed" visually looks like agents are waiting for each other
-
-**Phase:** Address in Phase 1 (core engine). Build score range logging before the first playable match.
+**Phase to address:**
+Phase 1 (Database Schema + Save/Load). Must be caught during schema design before any persistence code is written.
 
 ---
 
-### Pitfall 2: Ball Clustering — All Agents Swarm the Ball
+### Pitfall 2: Dual State Ownership -- Client and Server Disagree on Truth
 
 **What goes wrong:**
-All outfield players gravitate to within a 20-30px radius of the ball regardless of their role or team shape. The match looks like an Under-8s Sunday league game: 20 players clumped in one area, 2 goalkeepers standing alone. Formation, roles, and tactical instructions become meaningless — the positional context effectively doesn't exist.
+The current game generates all state client-side: `createSeason()` builds 20 teams, 380 fixtures, a full league table, and a fatigue map entirely in the browser (see `src/season/season.ts` lines 94-147). If you add a backend but keep the client generating state while also having the server validate or transform it, you create two sources of truth. The client creates a season, the server persists a different version, and saves corrupt silently.
 
 **Why it happens:**
-In utility AI, "move to ball" or "support carrier" actions are assigned high scores because being near the ball is locally always useful — an agent near the ball can receive a pass, press, intercept, or shoot. Without a strong countervailing "maintain position" or "make run ahead" action, the myopic greedy utility maximizer collapses everyone toward the ball.
+The instinct when adding a backend is "the server should be authoritative." That is correct for multiplayer games. For a single-player game where all game logic already runs client-side, attempting to move authority to the server means duplicating the entire simulation engine on the server -- a massive scope expansion for zero user benefit.
 
-This is compounded by formation anchors: if agents only treat their anchor as a soft pull rather than a hard constraint, and ball-proximity scores are on the same numerical scale, ball-proximity wins every tick.
+**How to avoid:**
+- Explicitly decide: the client owns game logic and state, the server is a dumb persistence layer. Document this contract.
+- API design: `POST /api/games/:id/save` accepts the full serialized state blob. `GET /api/games/:id/load` returns it verbatim. No server-side validation of game logic.
+- The server validates only: auth (is this your save?), payload shape (is this valid JSON/meets size limits?), and schema version.
+- Do NOT try to make the server replay or validate match results -- that requires porting the simulation engine to the server.
 
-**Consequences:**
-- Tactical formation is irrelevant — 4-4-2 and 4-3-3 produce identical clustering behavior
-- Defensive shape collapses during opponent attacks, leaving space trivially
-- Physics-level crowding causes collision resolution to fire constantly, degrading performance
-- No natural space creation, no passing lanes — the entire tactical system is inert
+**Warning signs:**
+- You find yourself importing game logic modules into server code.
+- API endpoints accept partial state updates before full save/load works.
+- Bug reports where "my league table doesn't match my fixtures."
 
-**Prevention:**
-1. Treat formation anchor distance as a **multiplicative penalty** on all ball-approaching actions, not an additive term. An agent 60m from their anchor should have ball-approach scores suppressed by 0.3×, not reduced by 0.3.
-2. Implement **role-gated actions**: wingers cannot execute "press opposition midfielder" unless they're within their defensive third. Implement action availability masks, not just score penalties.
-3. Add a **space value** heuristic: agents actively score "move to open space" based on distance from teammates and proximity to optimal position for current phase of play. This creates natural spreading without scripting positions.
-4. Watch a 2-minute match segment specifically tracking XY positions of all 22 agents every 5 seconds. Visualize as a heat map. Expected pattern: distinct clusters by team and position, not one blob.
-
-**Detection (warning signs):**
-- The "average distance between players on same team" metric collapses to < 15m
-- Changing formation (4-3-3 vs 4-5-1) produces no visible spatial difference on pitch
-- Defensive midfielders are routinely the closest player to the opposition goal
-
-**Phase:** Address in Phase 1 (agent movement) before tactical system is layered on. Clustering compounds every subsequent system built on top of it.
+**Phase to address:**
+Phase 1 (API Design). The save/load contract must be defined before any endpoint is built.
 
 ---
 
-### Pitfall 3: Physics That Feels Wrong — Ball Behavior Disconnected from Expectation
+### Pitfall 3: Static-Site Deploy Becomes a Process Management Problem
 
 **What goes wrong:**
-The ball's physics are mathematically correct but perceptually wrong. Common manifestations in 2D football simulations:
-- Ball slides endlessly on "passes" that should have rolled to a stop
-- Ball bounces like a rubber ball on headers rather than dropping
-- Aerial ball (Z-axis) height has no visible correspondence to ground shadow, so players "head" balls that appear to be at ground level
-- Collision between ball and player triggers instantaneously, then ball teleports to new velocity — no "touch" feel
-- Ball passes through players when simulation tick rate is too low (tunneling)
+The current deploy (`deploy.yml`) is simple: SSH in, `git pull`, `npm run build`. This produces static files served by the web server at `ft.psybob.uk`. Adding Express means you now need: a Node.js process running permanently, a process manager (pm2 or systemd), a reverse proxy (nginx) routing `/api/*` to Express while serving static files directly, port management, log rotation, crash recovery, and environment variable management. The deployment pipeline triples in complexity.
 
 **Why it happens:**
-2D canvas simulations typically implement Euler integration: `position += velocity * dt`. This works for slow objects. For a football traveling at 30 m/s, a 33ms tick (30fps sim) advances 1 meter per tick — easily passing through a player hitbox (typical diameter 1.5m radius) without registering a collision.
+The operational gap between "serve static files" and "run a live process" is massive but invisible until deploy day. The existing `deploy.yml` has no concept of "restart the server" or "is the old process still running on port 3000?" The first deploy will fail because there is no mechanism to manage the Express lifecycle.
 
-The Z-axis/2.5D implementation is particularly fragile: height is conveyed through shadow offset and sprite scale, but if these aren't tightly coupled to the physics Z value, players will intercept aerial balls at wrong moments or stand under balls that should be over their heads.
+**How to avoid:**
+- Use pm2 for process management. Create an `ecosystem.config.cjs` defining the Express app, env vars, log paths, and restart policy.
+- Configure nginx as reverse proxy: static files from `dist/` served directly, `/api/*` proxied to Express on a local port.
+- Update `deploy.yml` to: `git pull && npm install --production && npm run build && pm2 restart ecosystem.config.cjs`.
+- Add `pm2 startup` and `pm2 save` on the VPS so the Express process survives server reboots.
+- Test the full deploy cycle manually before automating. The first deploy will fail at least once -- do it interactively via SSH.
+- Store the SQLite database file OUTSIDE the web root (e.g., `/var/data/fergie-time/game.db`), not in the project directory. The web server must never serve the `.db` file.
 
-**Consequences:**
-- Players attempt to tackle balls that are in the air and logically beyond their reach
-- Long passes roll off the pitch edge without slowing — no friction curve tuned
-- Headers happen at wrong times, breaking the football logic players expect
-- Feels like a janky toy, not a football simulation
+**Warning signs:**
+- 502 errors on the VPS after deploy.
+- Express process dies silently and nobody notices until the next play session.
+- "Port 3000 already in use" from a previous crashed process.
+- The `.db` file is downloadable via a direct URL.
 
-**Prevention:**
-1. Use **continuous collision detection** (CCD) for ball-player interactions. After each integration step, sweep the ball's trajectory segment and check for intersection with player hitboxes. At 30 ticks/sec this adds ~22 line-segment checks per tick — negligible cost.
-2. Implement **drag and friction curves** from real football physics: a rolling ball decelerates at ~1-2 m/s² on grass. A driven pass decelerates faster due to rolling resistance. These are three-line additions with massive perceptual impact.
-3. For 2.5D: the **shadow position** must be the authoritative ground position for collision purposes, not the rendered sprite position. All agent "can I reach this ball" calculations use shadow XY and current Z-height separately. If `z > agent.jumpHeight`, the agent cannot intercept.
-4. Validate physics by eye test: kick a ball diagonally across a 2/3-pitch pass. It should slow and stop naturally in ~3 seconds. Header height should produce a visible arc. Do this before attaching any AI.
-
-**Detection (warning signs):**
-- Ball stops instantly when it reaches the touchline instead of rolling off gradually
-- Players "head" the ball in situations that look like ground-level play
-- Changing the `friction` coefficient from 0.95 to 0.85 produces no visible change in gameplay feel
-- Ball tunnels through agents at high velocity
-
-**Phase:** Phase 1 (physics layer). Physics is the foundation — all agent behavior and collision resolution builds on it.
+**Phase to address:**
+Phase 2 (Deployment). But plan the deployment model in Phase 1 -- API design should match the deploy architecture.
 
 ---
 
-### Pitfall 4: Performance Death with 22 Agents — Frame Rate Collapse Mid-Match
+### Pitfall 4: randomuser.me Dependency Becomes a Game-Breaking Boot Blocker
 
 **What goes wrong:**
-The simulation runs at 60fps during initial development with a few agents. When all 22 agents are active with full utility evaluation, physics integration, and contact resolution, the frame rate collapses. Common causes in browser TypeScript simulations:
-
-1. **GC pressure from object allocation per tick**: Each utility evaluation creates temporary score objects or arrays. At 30 ticks/sec × 22 agents × 7 actions, this is 4,620 small object allocations per second. V8's minor GC fires every few hundred ms, causing perceptible hitches.
-2. **Spatial query O(n²)**: Each agent evaluates "nearest teammates," "nearest opponents," "distance to ball." If implemented as a naive loop over all 22 agents for each query, that's 22 × 22 = 484 distance calculations per tick, per query type. With 4 query types, 1,936 sqrt operations per tick.
-3. **Canvas state thrashing**: Calling `ctx.save()`/`ctx.restore()` or switching `fillStyle` per-agent per-frame instead of batching by visual state causes GPU pipeline flushes.
-4. **Simulation and rendering on same frame**: If `requestAnimationFrame` runs both the physics tick and the draw call, a slow physics tick delays rendering, causing jank.
+The plan is to replace the procedural `nameGen.ts` with realistic names from randomuser.me. If this API call happens during season creation (the critical path), a slow response or outage blocks the "new game" flow entirely. randomuser.me is a free community service with no SLA -- it has documented outages (502 Bad Gateway errors reported on GitHub issues #42 and #66). If the API is down when someone starts a new game, the game is broken.
 
 **Why it happens:**
-Developers write the clean version first ("it works, optimize later") then discover that "optimize later" requires architectural changes, not micro-optimizations. By Phase 3, refactoring the simulation loop is painful because everything depends on it.
+External API dependencies feel harmless during development because the API is almost always up when you are testing. The failure mode only appears in production at the worst possible time. Developers treat "fetch names from API" as a simple call without considering the unhappy path.
 
-**Consequences:**
-- 10fps match simulation is unplayable
-- GC hitches produce the sensation of "freezing" every 500ms
-- Forced to reduce tick rate, which causes ball tunneling (see Pitfall 3) and makes AI decisions feel sluggish
+**How to avoid:**
+- Never call randomuser.me on the critical path of game creation.
+- Pre-fetch and cache: create a `name_cache` table in SQLite. On server startup (or via a scheduled job), bulk-fetch names and store them. Draw from the cache when creating players.
+- Batch API calls efficiently: `https://randomuser.me/api/?results=50&nat=gb,es,fr,de,br` fetches 50 names in one request with nationality filtering that matches the existing weight distribution in `nameGen.ts`.
+- Keep the existing procedural `nameGen.ts` as a hard fallback. If the cache is empty AND the API is down, generate names locally. The game must always be playable.
+- Add a cache refill threshold: when the cache drops below 100 unused names, trigger a background refill. Never let it hit zero.
 
-**Prevention:**
-1. **Separate simulation from rendering from day one** — the PROJECT.md already specifies this, but it must be structural. The sim tick is a pure function: `SimState → SimState`. Rendering reads state, never writes it. This enables future headless runs.
-2. **Pre-allocate all score arrays at startup** and reuse them. A fixed `Float32Array[7]` per agent for action scores, reset each tick. Zero allocation in the hot path.
-3. **Spatial grid** from the start, not after profiling. Divide the pitch into a grid (e.g., 12×8 cells). Agent lookup is O(1) for nearby agents. Update the grid each tick by inserting agents into cells — ~22 operations, not 484.
-4. **Canvas batching**: Sort draw calls by sprite sheet region. Draw all player bodies in one batch, then all overlays, then ball, then UI. Minimize state changes.
-5. **Profile at target agent count from the first playable match**: Run Chrome DevTools Performance panel with all 22 agents. Find the hottest function before building the tactical system on top.
+**Warning signs:**
+- "New game" takes 3+ seconds (waiting for API response).
+- Intermittent failures creating new games that nobody can reproduce.
+- Tests mock the API and never exercise the fallback path.
 
-**Detection (warning signs):**
-- `performance.now()` delta between ticks starts exceeding 33ms (30fps budget)
-- Chrome Task Manager shows JS heap growing steadily during a match (GC not keeping up)
-- `console.time('sim-tick')` output climbs from 2ms at kickoff to 8ms at 30 minutes
-- Frame rate drops specifically during high-contact moments (collision resolution O(n²))
-
-**Phase:** Phase 1 architecture must establish the separated sim/render loop. Performance validation at full 22-agent count must be a Phase 1 exit criterion.
+**Phase to address:**
+Phase 3 (randomuser.me Integration). But the `name_cache` table schema should be designed in Phase 1.
 
 ---
 
-### Pitfall 5: Tactical Instructions That Don't Mechanically Differentiate
+### Pitfall 5: better-sqlite3 Synchronous Calls Blocking the Express Event Loop
 
 **What goes wrong:**
-The tactical system (formation, role assignments, per-player instructions like "press high," "sit deep," "overlap") exists in the UI and in the data model but produces no measurable spatial or behavioral difference in the simulation. A 4-3-3 pressing high and a 4-5-1 low block produce identical average player positions and identical goal counts over 20 matches.
+better-sqlite3 is fully synchronous by design. Every database call blocks the Node.js event loop until completion. For a single-player game this is generally fine, but if the save operation serializes the full season state (20 teams x 25 players = 500 player records, 380 fixtures, league table, fatigue map) and writes it in individual INSERT statements without a transaction, the synchronous write blocks all other requests for potentially hundreds of milliseconds.
 
 **Why it happens:**
-Tactical instructions are implemented as labels or flags in agent data. The utility AI reads these flags to adjust scores: `if (tactic.pressHigh) pressScore += 0.1`. But 0.1 on a utility scale of 0.0–1.0 is swamped by other terms. The instruction exists but doesn't create a genuine mechanical difference in agent behavior.
+better-sqlite3 is correctly recommended as "the best SQLite library for Node.js" -- it genuinely is faster than async alternatives for most patterns. But developers assume "fast" means "negligible." Without WAL mode and without wrapping bulk operations in transactions, the default rollback journal mode locks the entire database for every write, and individual inserts each incur fsync overhead.
 
-The deeper issue: tactical differentiation requires spatial consequences. A "high press" must mean agents are literally in different positions, defending from higher up the pitch. If the utility AI treats formation anchors as loose suggestions (see Pitfall 2), spatial differentiation is impossible regardless of the tactical flag values.
+**How to avoid:**
+- Enable WAL mode immediately after opening the database: `db.pragma('journal_mode = WAL')`. This allows concurrent reads during writes.
+- Wrap all bulk inserts in explicit transactions: `const insertMany = db.transaction((items) => { for (const item of items) insertStmt.run(item); })`. Transaction batching is 100x+ faster than individual inserts.
+- For Fergie Time's scale (1 concurrent user, <1000 rows total): store season state as a single JSON blob in a `saves` table column rather than normalizing into many tables. One INSERT is always faster than 500.
+- Normalize only what you need to query independently: player stats for leaderboards, name cache for lookup.
+- Use async bcrypt for password operations -- bcrypt is CPU-intensive and will block the event loop if used synchronously.
 
-**Consequences:**
-- Every tactic plays identically; the manager has no meaningful agency
-- "No single tactic should dominate" cannot be achieved — all tactics are equivalent
-- The core design promise ("tactics as real mechanical levers") fails
+**Warning signs:**
+- Save operation takes >200ms (measure with `console.time`).
+- API becomes unresponsive briefly during save.
+- Login feels sluggish (synchronous bcrypt).
 
-**Prevention:**
-1. For every tactical instruction, define a **measurable spatial test**: "High press should mean the defensive line's average Y position is > 55% of pitch length during opposition possession." Write this test before building the tactical instruction.
-2. Tactical instructions must modify **utility function weights** significantly (0.3–0.5 adjustments), not add marginal bonuses. A "direct play" instruction should multiply `forward_progress` weight by 2.0, not add 0.05.
-3. Implement a **"tactical fingerprint" report**: after a match, output average player positions per phase of play (in possession / out of possession), average pass length, territory coverage, and press intensity. Compare across tactics. If fingerprints are indistinguishable, the tactic has no mechanical effect.
-4. Run **head-to-head tactical validation**: simulate 100 matches of high-press 4-3-3 vs. low-block 4-5-1. The expected outcomes (more goals vs. fewer goals conceded) should be statistically distinguishable. If they aren't, the tactics aren't real.
-
-**Detection (warning signs):**
-- Changing formation from 4-4-2 to 3-5-2 produces no change in pass network graph
-- Setting "press intensity" to maximum vs. minimum produces < 5% difference in defensive line position
-- A player assigned as "defensive midfielder" has the same action frequency distribution as one assigned "attacking midfielder"
-
-**Phase:** Phase 2 (tactical system). Must be validated with quantitative spatial metrics before building the management UI on top.
+**Phase to address:**
+Phase 1 (Database Setup). WAL mode and transaction patterns from the first line of database code.
 
 ---
 
-## Moderate Pitfalls
-
-Mistakes that cause significant rework but not full rewrites.
-
----
-
-### Pitfall 6: Personality Vectors Losing Meaning Over Time — Attribute Erosion
+### Pitfall 6: Auth Scope Creep -- Overengineering Security for a Personal Project
 
 **What goes wrong:**
-The training system allows drills to shift personality weights. After a season of training, all players converge toward similar personality vectors. The "maverick" who started at `risk_appetite: 0.9` is now at `0.6` after a season of conservative drills. The "metronome" has drifted to `directness: 0.5`. All players become interchangeable. The emergent archetypes that are the game's core promise flatten out.
+The requirement is "simple login -- team name + password, create new game / continue existing." Developers instinctively reach for JWT, refresh tokens, OAuth, passport.js, CSRF protection, rate limiting, and session stores. A week of auth work produces an overengineered system for a single-player personal project that only needs "which save file is mine?"
 
 **Why it happens:**
-Training deltas are additive without bounding logic that preserves identity. If any drill can shift any attribute in any direction, and managers optimize for winning (which typically means being more conservative), the game's training system selects for convergence. There's no mechanical reason for a manager to maintain a maverick's wildness.
+Every auth tutorial teaches production-grade patterns. "Never roll your own auth" is good advice for commercial apps but inappropriate context for a personal game server. The threat model here is a personal VPS, not a banking application. Auth exists to separate save files, not protect sensitive data.
 
-**Consequences:**
-- Squad depth loses meaning after Season 2
-- The personality-vector system that distinguishes this game from lookup tables becomes invisible
-- Player retention decisions ("keep the maverick or sell him?") lose texture
+**How to avoid:**
+- Implement the minimum: team name + bcrypt-hashed password. Store in a `games` table with `(id, team_name, password_hash, created_at)`.
+- Use `express-session` with a cookie. No JWT -- sessions are simpler for same-origin apps.
+- No email, no password reset, no OAuth. If someone forgets their password, they start a new game. Acceptable for a personal project.
+- Do use bcrypt (salt rounds >= 12). Hashing passwords is trivial and non-negotiable, even for personal projects.
+- Use async `bcrypt.compare()` and `bcrypt.hash()` to avoid blocking the event loop.
+- Time-box auth implementation to 4 hours. If it takes longer, scope is wrong.
 
-**Prevention:**
-1. Implement **personality anchors**: each player has a `base_personality` vector set at generation. Training can move weights within ±0.3 of the anchor but cannot exceed it. The anchor represents who they fundamentally are.
-2. Fatigue-driven erosion (already in the design: "tired players get cautious") should be **temporary and recoverable**, not cumulative. If fatigue erosion is permanent, rest becomes a mandatory maintenance task rather than a strategic decision.
-3. Youth graduates should have **wild variance** in personality vectors, not regression-to-mean values. This ensures fresh archetypes enter the squad.
+**Warning signs:**
+- You are reading about refresh token rotation for a single-player game.
+- Auth implementation takes more than a day.
+- More auth middleware files than game logic endpoints.
 
-**Detection (warning signs):**
-- After 3 seasons, standard deviation of `risk_appetite` across squad is < 0.1 (all converged)
-- The "most direct passer" and "most cautious passer" have the same pass-length distribution in match replay
-
-**Phase:** Phase 3 (training system). Design personality bounds before implementing training deltas.
+**Phase to address:**
+Phase 2 (Auth + Login Screen). Keep it simple.
 
 ---
 
-### Pitfall 7: Emergent Behavior Debugging Is a Black Box
+### Pitfall 7: Hardcoded Squad Size of 16 Breaking with 25-Man Expansion
 
 **What goes wrong:**
-Something weird happens in a match — the striker stands still for 20 seconds, the goalkeeper walks into his own net, defenders all rush left simultaneously. The developer cannot determine why because there's no observability into agent decision-making. The only output is the visual behavior.
+The current codebase has squads of 16 players (`src/season/season.ts` line 28: `squad: PlayerState[] // 16 players`). The v1.1 goal is 25-man squads. If squad size assumptions are scattered throughout the codebase (slicing arrays at index 11 for starters and 11-16 for bench, validation expecting exactly 5 bench players), the expansion silently breaks selection logic, AI team simulation, and save/load.
 
 **Why it happens:**
-Emergent systems are correct-by-design assumptions: "if I tune the scores right, the right behavior emerges." There are no invariants to assert against. A unit test can verify that the `shoot` score formula returns 0.8 for a given input, but cannot verify that an agent correctly decides to shoot vs. pass in a live match context.
+Magic numbers are embedded throughout the game logic. `quickSimMatch` slices at index 11 for starters and uses `slice(11)` for bench. Validation expects `bench.length === 5`. These hardcoded values work for 16-man squads but break for 25.
 
-**Consequences:**
-- Tuning becomes trial-and-error without feedback loops
-- Bugs that look like "weird behavior" are often mistuned utility weights — but which weight?
-- Development velocity drops sharply after initial engine construction because every regression requires watching multiple full matches
+**How to avoid:**
+- Search the entire codebase for hardcoded `16`, `5` (bench size), and `slice(11)` patterns. Replace with named constants: `SQUAD_SIZE = 25`, `STARTING_XI = 11`, `BENCH_SIZE = 7` (matching PL rules for 25-man squads).
+- Update `validateSquadSelection` to accept the new bench size.
+- Update AI team simulation (`simOneAIFixture`) which currently does `homeSquad.slice(0, 11)` for starters and `slice(11)` for bench -- this will include 14 bench players with 25-man squads, which may or may not be intentional.
+- Add a test that generates a 25-man squad, saves it, loads it, and verifies all 25 players survive.
 
-**Prevention:**
-1. **Per-agent decision logging**: Every tick, each agent logs its top 3 scored actions and their scores to a ring buffer (last 300 ticks). This is cheap (pre-allocated) and can be read out on agent click during debug mode.
-2. **Match replay system with state scrubbing**: Store full sim state every 30 ticks (1 second at 30fps). Allow scrubbing backward to the moment before a weird event and inspecting each agent's score state.
-3. **Action frequency dashboard**: A live overlay (toggle-able in debug mode) showing a bar chart of action selection frequency per agent over the last 60 seconds. Degenerate strategies appear immediately.
-4. **"Why did X do that?" tool**: Click an agent, click a moment in the timeline, see the exact utility scores that produced that decision.
+**Warning signs:**
+- AI teams field different bench sizes than the player team.
+- Save files contain 16 players when they should contain 25.
+- `validateSquadSelection` rejects valid 25-man selections.
 
-**Detection (warning signs):**
-- Developers resort to `console.log` to understand individual agent decisions
-- "I watched 5 matches and couldn't figure out why strikers don't shoot" — no structured observability
-
-**Phase:** Phase 1. Observability tools must be built alongside the agent system, not bolted on later.
+**Phase to address:**
+Phase 1 (Schema Design). Squad size constants must be updated before the database schema encodes assumptions.
 
 ---
 
-### Pitfall 8: Contact Resolution Creating Exploitable Asymmetries
+## Technical Debt Patterns
 
-**What goes wrong:**
-The tackle and challenge system has an asymmetry: one resolution path (e.g., "aggressive challenge") almost always wins the ball regardless of the defender's `aggression` vs. attacker's `strength` comparison. All defenders quickly "learn" (via whoever is tuning them) to always use aggressive challenge, or the AI discovers it's the highest-utility action in any contest. Contact resolution degenerates to a single dominant strategy (see Pitfall 1, specialized to contact events).
+| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
+|----------|-------------------|----------------|-----------------|
+| Store full state as JSON blob instead of normalized tables | Fast to implement, matches existing in-memory structure | Cannot query individual records (e.g., "top scorers across all saves") | v1.1 -- normalize only what needs querying |
+| Skip input validation on save endpoint | Faster development | Corrupted saves if client sends malformed data | Never -- Zod is already a dependency, use it |
+| Hardcode API port and DB path | Works immediately | Breaks when deploy environment differs | Never -- use environment variables from day one |
+| Skip database migrations framework | No tooling to learn | Schema changes require manual SQL on the VPS | v1.1 with <5 tables -- add migrations before v1.2 |
+| No API versioning | Simpler URLs | Breaking API changes break existing client | Acceptable -- single client, personal project |
+| MemoryStore for sessions | No extra dependency | Sessions lost on server restart | Acceptable for v1.1 -- user re-enters password |
 
-A secondary issue: if tackle success is purely probabilistic (coin flip weighted by attributes), players will attempt tackles constantly because the expected value is positive. Overly frequent tackling breaks the spatial spacing system — defenders will leave their anchor position to chase tackle opportunities 30m away.
+## Integration Gotchas
 
-**Why it happens:**
-Challenge resolution is tuned in isolation (what's the right tackle success rate?) without considering the tactical context (should defenders pursue tackles at the cost of positional integrity?). The utility score for "press/challenge" doesn't account for the defender's distance from their formation anchor.
+| Integration | Common Mistake | Correct Approach |
+|-------------|----------------|------------------|
+| randomuser.me | Calling API during game creation (critical path) | Pre-fetch into cache table; fallback to local `nameGen.ts` |
+| randomuser.me | Not filtering by nationality | Use `?nat=gb,es,fr,de,br` to match existing nationality weights |
+| randomuser.me | Assuming API always returns 200 | Wrap in try/catch, retry once with 2s backoff, then fallback |
+| better-sqlite3 | Opening DB without WAL mode | First statement: `db.pragma('journal_mode = WAL')` |
+| better-sqlite3 | String concatenation in SQL queries | Always use parameterized statements with `?` placeholders |
+| express-session | Hardcoding session secret in source code | Use environment variable: `process.env.SESSION_SECRET` |
+| Vite dev server | API calls hit wrong origin in development | Configure `vite.config.ts` server proxy: `'/api': 'http://localhost:3000'` |
+| nginx | Serving project root instead of `dist/` only | Explicit `root /path/to/dist;` with no directory listing |
+| pm2 | Process not surviving server reboot | Run `pm2 startup` and `pm2 save` after first successful start |
 
-**Consequences:**
-- Defenders permanently out of position chasing tackles
-- Simulation produces 30+ fouls per match (unrealistic) or 0 fouls (challenge always cleanly won)
-- The attacker-vs-defender contest feels scripted rather than emergent
+## Performance Traps
 
-**Prevention:**
-1. Apply the same **anchor-distance penalty** to challenge/tackle actions as to "move to ball" actions (see Pitfall 2). A central defender 35m from their anchor should almost never score "challenge" high enough to pursue.
-2. Include **foul probability** as a cost term in the challenge utility score, scaled by `aggression` vs. opponent's `anticipation`. The agent genuinely weighs "worth the foul risk?"
-3. Implement a **sequential resolution model** for contacts: initiation → contest → resolution, each step adding a physics impulse. This prevents teleport-on-tackle artifacts and allows the attacker to shield, dodge, or ride the challenge as separate agent actions.
+| Trap | Symptoms | Prevention | When It Breaks |
+|------|----------|------------|----------------|
+| Individual INSERT per player (no transaction) | Save takes 500ms+ | Wrap in `db.transaction()` | Immediately with 500+ rows |
+| Loading full state on every page navigation | Slow transitions between screens | Load once on login, cache in memory, save on explicit action | Unlikely at this scale but wasteful |
+| Synchronous bcrypt on login | Login blocks event loop for ~100ms | Use async `bcrypt.compare()` | Multiple concurrent logins |
+| No indexes on lookup columns | Query time grows with saves | Add index on `games(team_name)` | >50 saved games |
+| Auto-saving on every user action | Constant write pressure | Save at matchday boundaries or explicit "save game" | Immediately noticeable as lag |
 
-**Phase:** Phase 2 (contact/challenge system).
+## Security Mistakes
 
----
+| Mistake | Risk | Prevention |
+|---------|------|------------|
+| Storing passwords in plain text | Anyone with VPS/DB access reads all passwords | `bcrypt.hash(password, 12)` -- non-negotiable |
+| No CORS configuration | Other sites make API calls to the game server | `cors({ origin: 'https://ft.psybob.uk' })` |
+| SQLite file in web-accessible directory | Database downloadable via direct URL | Store `.db` outside web root; nginx serves only `dist/` |
+| No session-based ownership check on save | Player A overwrites Player B's save | Verify session game_id matches save target on every write |
+| Secrets in source code or deploy.yml | Credentials in git history | GitHub Secrets for deploy; `.env` on VPS (gitignored) |
 
-### Pitfall 9: Canvas Rendering Falling Behind Simulation State
+## UX Pitfalls
 
-**What goes wrong:**
-The simulation is decoupled from rendering, but rendering always reads the "latest" simulation state. When the simulation runs faster than render (e.g., headless match at 10× speed), or when a GC pause delays a render frame, players visually jump/teleport rather than showing smooth interpolated movement.
+| Pitfall | User Impact | Better Approach |
+|---------|-------------|-----------------|
+| No loading indicator during save/load | User thinks game is frozen | Show "Saving..." overlay; saves should be <200ms but always indicate |
+| Silent save failure | User plays for hours, data lost | Show error toast on save failure; offer retry |
+| Login screen blocks all access | Friction before fun | Allow "play without saving" using existing client-only flow |
+| Losing in-progress match on refresh | Frustrating data loss | Save state at matchday boundaries; do not attempt mid-match saves (too complex for v1.1) |
+| API errors shown as raw text | Confusing for the player | Map errors to friendly messages: "Could not connect. Playing offline." |
+| Different player names on reload | randomuser.me returns different names | Cache names in DB and never re-fetch for existing players |
 
-**Why it happens:**
-A naive decoupled architecture reads current state for rendering. If three ticks happen between two render frames, the render sees only the final tick — the intermediate positions are lost. At 30 sim ticks / 60 render frames, this is normally fine (render is faster). But when sim runs faster or render drops frames, visual coherence breaks.
+## "Looks Done But Isn't" Checklist
 
-**Prevention:**
-1. Store **previous tick state alongside current state**. The renderer interpolates between `previousState` and `currentState` using `alpha = (timeSinceLastTick / tickDuration)`. This is standard fixed-timestep game loop practice.
-2. Cap simulation catchup to a maximum of 3 ticks per render frame. If the sim falls behind by 10 ticks, allow only 3 to catch up per frame — prevent the "spiral of death" where catchup attempts make things worse.
-3. The `requestAnimationFrame` loop structure:
-   ```typescript
-   let accumulator = 0;
-   const TICK_MS = 33.33; // 30fps sim
-   function loop(timestamp: number) {
-     accumulator += Math.min(deltaTime, 100); // cap at 100ms
-     while (accumulator >= TICK_MS) {
-       previousState = currentState;
-       currentState = tick(currentState);
-       accumulator -= TICK_MS;
-     }
-     const alpha = accumulator / TICK_MS;
-     render(interpolate(previousState, currentState, alpha));
-     requestAnimationFrame(loop);
-   }
-   ```
+- [ ] **Save/Load:** `fatigueMap` (Map type) round-trips correctly through serialize/deserialize -- test with non-zero fatigue values
+- [ ] **Save/Load:** Loading a corrupted/truncated JSON blob does not crash the client -- Zod validates loaded state, shows error message
+- [ ] **Save/Load:** All 25 players per team survive save/load -- not truncated to 16
+- [ ] **Auth:** Passwords are bcrypt hashes in the database -- query the DB and verify no plain text
+- [ ] **Deploy:** `pm2 restart` is in the deploy script AND the process survives a VPS reboot (`pm2 save && pm2 startup`)
+- [ ] **Deploy:** nginx routes `/api/*` to Express AND serves `dist/` for everything else -- test both paths
+- [ ] **Deploy:** The `.db` file is NOT downloadable via browser -- attempt direct URL access, must return 404
+- [ ] **Name cache:** Game creation works when randomuser.me is unreachable -- disable network adapter and test new game flow
+- [ ] **CORS:** Production build makes API calls to correct origin -- not `localhost:3000`
+- [ ] **Database:** WAL mode is active -- verify with `PRAGMA journal_mode` query
+- [ ] **Vite proxy:** Dev mode API calls reach the Express server -- test save/load in `npm run dev`
+- [ ] **Session:** Logging in, closing the browser tab, reopening -- session persists (or re-login works cleanly)
 
-**Phase:** Phase 1 (architecture). Getting the game loop right from the start avoids later visual artifacts.
+## Recovery Strategies
 
----
+| Pitfall | Recovery Cost | Recovery Steps |
+|---------|---------------|----------------|
+| Lost fatigue data from Map serialization | LOW | Fix serializer; re-initialize all fatigue to 0 (acceptable mid-season) |
+| Corrupted save file from malformed JSON | MEDIUM | Add Zod validation on load; if invalid, offer "start new season" not crash |
+| Express process dies on VPS | LOW | pm2 auto-restarts; `pm2 startup` for reboot survival |
+| randomuser.me goes down permanently | LOW | Fall back to `nameGen.ts`; cached names in DB still work for existing games |
+| Plain text passwords discovered | MEDIUM | One-time migration: hash all passwords with bcrypt |
+| Client/server state divergence | HIGH | Must pick one source of truth and rebuild saves; prevention far cheaper |
+| nginx exposes .db file | HIGH | Move DB outside web root immediately; assume data compromised |
+| Squad size mismatch (16 vs 25) | MEDIUM | Migration script to backfill missing players; update all hardcoded sizes |
 
-## Minor Pitfalls
+## Pitfall-to-Phase Mapping
 
----
-
-### Pitfall 10: Gaussian Noise Destroying Composure Differentiation
-
-**What goes wrong:**
-Gaussian noise is added to utility scores to simulate decision variance, scaled by composure. But the noise sigma values are too large, making even high-composure players feel erratic, or too small, making low-composure players feel robotic. The composure personality attribute stops differentiating player behavior.
-
-**Prevention:**
-Define expected variance per composure quintile. A composure-1.0 player should have < 5% action selection variance across similar situations. A composure-0.2 player should have > 30% variance. Test this quantitatively before tuning other personality attributes.
-
-**Phase:** Phase 1 (agent system).
-
----
-
-### Pitfall 11: Procedural Portrait Generation Accumulating Technical Debt
-
-**What goes wrong:**
-Portrait generation is treated as a cosmetic feature and implemented with magic numbers, hardcoded pixel coordinates, and no system architecture. By the time 500+ players exist (20 teams × 25 players), the portrait system is a mess of special cases, some portraits clip hair onto face pixels, color combinations are ugly, and the system can't be extended.
-
-**Prevention:**
-Model portraits as a **trait-to-layer mapping system** early: each visual trait (hair, skin, kit number, expression) is a layer with defined blend rules. Treat it as a mini data system. Test generation of 100 portraits and audit for collision/clip artifacts before building the squad screen.
-
-**Phase:** Phase 2 or 3 (player generation). Don't defer architecture until the last moment.
-
----
-
-### Pitfall 12: Single-League Structure Accidentally Precluding Future Expansion
-
-**What goes wrong:**
-The league table, fixture generation, and season cycle are implemented as singletons. `currentLeague.fixtures`, `currentLeague.table`. When expansion to multiple divisions or cups is considered later, the data model requires a full rewrite because it assumed one league.
-
-**Prevention:**
-Wrap league logic in a `League` class/object from the start, even if only one instance exists. `new League(teams, config)`. The fixture generator and table calculator operate on the League instance, not a global. Adding a second league is then instantiating a second object.
-
-**Phase:** Phase 3 (season/league system). One-line architectural decision with significant future leverage.
-
----
-
-## Phase-Specific Warnings
-
-| Phase Topic | Likely Pitfall | Mitigation |
-|-------------|---------------|------------|
-| Physics layer | Ball tunneling at high velocity; Z-axis collision at wrong height | CCD for ball; authoritative shadow position for aerials |
-| Agent utility system | Degeneracy (one action always wins); score range mismatch | Score range audit tool built alongside formulas |
-| Agent movement | Ball clustering; formation anchors ignored | Multiplicative anchor penalty; action availability masks per role |
-| Game loop architecture | Visual teleporting when sim/render decouple; GC pressure | Fixed-timestep loop with interpolation; pre-allocated score arrays |
-| Contact/challenge | Exploit asymmetry; defenders abandoning position | Anchor-distance penalty on challenge utility; cost-inclusive foul probability |
-| Tactical system | Instructions produce no measurable spatial difference | Quantitative spatial fingerprint tests per tactic before UI layer |
-| Training system | Personality vector convergence over seasons | Personality anchors; temporary vs. permanent erosion design |
-| Observability | Emergent bugs are undebuggable without tooling | Per-agent decision log ring buffer; click-to-inspect decision state |
-| Performance | Frame rate collapse at 22 agents; GC hitches | Profile at full agent count in Phase 1; spatial grid; pre-allocated arrays |
-| Portrait generation | Magic-number spaghetti; clip artifacts at scale | Layer-based trait mapping system; generate 100 and audit |
-| Season/league data model | Singleton model precludes expansion | League class from the start |
-
----
-
-## Testing Emergent Systems
-
-This deserves its own section because emergent behavior resists conventional testing.
-
-**The core problem:** Unit tests verify that `calculateShootScore(inputs) === 0.7`. They cannot verify that shooters shoot at the right moments in a live match. Emergent correctness is behavioral, not computable.
-
-### Testing Approaches That Work
-
-**1. Statistical behavioral tests (medium confidence)**
-Run 100 simulated matches. Assert distributional invariants:
-- Goals per match: mean 2.5, σ < 1.5 (not 0 goals, not 20)
-- Shots per match: mean 12, σ < 5
-- Pass completion rate: between 65% and 85%
-- Possession change events per minute: > 2
-
-These won't catch all bugs but will catch degenerate collapse immediately.
-
-**2. Controlled scenario tests**
-Set up a specific game state (agent positions, ball position, score state, fatigue) and run for 60 ticks. Assert behavioral expectation:
-- "Given a striker 12m from goal with no defenders in path, expect `shoot` to be selected in > 80% of runs" (accounting for Gaussian noise)
-- "Given a central defender 50m from their anchor, expect `challenge` to not be the top action"
-
-These are deterministic-ish tests using fixed seeds for noise.
-
-**3. Regression "golden match" tests**
-After the engine feels correct, record a full match outcome (final score, key events, player stats) with a fixed random seed. Future changes that break this output require deliberate review. Catches accidental regressions.
-
-**4. What doesn't work**
-- Snapshot testing of exact agent positions (too brittle to noise)
-- Expecting deterministic outcomes (noise is intentional)
-- Testing individual actions in isolation (degeneracy is a system property)
-
-**Phase:** Testing infrastructure for emergent behavior should be established by end of Phase 1.
-
----
+| Pitfall | Prevention Phase | Verification |
+|---------|------------------|--------------|
+| Map serialization | Phase 1: Schema + Save/Load | Round-trip test: `deepEqual(deserialize(serialize(state)), state)` |
+| Dual state ownership | Phase 1: API Design | Documented contract: "client is authority, server is storage" |
+| Squad size hardcoding | Phase 1: Schema Design | Grep for hardcoded 16/5; all replaced with constants; 25-man squad test passes |
+| WAL mode + transactions | Phase 1: Database Setup | `console.time` on save; completes in <200ms; `PRAGMA journal_mode` returns `wal` |
+| Deploy complexity | Phase 2: Deployment | Full deploy cycle: push to main, verify API responds, verify static files load |
+| Auth scope creep | Phase 2: Auth | Time-box to 4 hours; bcrypt hashing verified in DB |
+| CORS + DB exposure | Phase 2: Deployment | Test from production domain; attempt to download `.db` file |
+| randomuser.me dependency | Phase 3: Name Integration | Disable network, create new game -- must succeed with fallback names |
+| Vite dev proxy | Phase 1: Project Setup | Save/load works in `npm run dev` mode |
 
 ## Sources
 
-All findings are drawn from established game AI literature, browser JavaScript performance fundamentals, and analysis of the project design brief (`.planning/PROJECT.md`). The following areas are HIGH confidence based on well-documented game development practice:
+- [SQLite WAL mode documentation](https://sqlite.org/wal.html)
+- [SQLite file locking and concurrency](https://sqlite.org/lockingv3.html)
+- [better-sqlite3 GitHub](https://github.com/WiseLibs/better-sqlite3) -- synchronous design rationale and performance claims
+- [randomuser.me API documentation](https://randomuser.me/documentation)
+- [randomuser.me downtime -- GitHub Issue #42](https://github.com/RandomAPI/Randomuser.me-old-source/issues/42)
+- [randomuser.me downtime -- GitHub Issue #66](https://github.com/RandomAPI/Randomuser.me-old-source/issues/66) -- 502 Bad Gateway, Feb 2020
+- [Node.js built-in SQLite module documentation](https://nodejs.org/api/sqlite.html)
+- [better-sqlite3 concurrency discussion](https://github.com/TryGhost/node-sqlite3/issues/1761) -- unsafe with multiple async scopes
+- [Poor Express authentication patterns](https://lirantal.com/blog/poor-express-authentication-patterns-nodejs)
+- [Uptrends State of API Reliability 2025](https://www.uptrends.com/state-of-api-reliability-2025) -- API uptime fell from 99.66% to 99.46% industry-wide
+- Existing codebase analysis: `src/season/season.ts` (Map usage, squad size), `src/season/nameGen.ts` (fallback names), `.github/workflows/deploy.yml` (static deploy)
 
-- Utility AI score degeneracy: documented in the GDC Utility AI talks (Dave Mark / Mike Lewis, 2010 onwards) and replicated independently in every utility AI implementation
-- Ball clustering in football sims: a well-known pathology in multi-agent football simulations, documented in RoboCup research literature
-- 2D physics tunneling: standard continuous collision detection literature; O'Brien et al., Erin Catto's Box2D documentation
-- Browser JS GC pressure: V8 allocation documentation, Chrome DevTools team posts on minor GC behavior
-- Fixed-timestep game loop: Glenn Fiedler "Fix Your Timestep!" (2004, still canonical)
-- Tactical differentiation failure: documented pattern in football simulation game post-mortems (Football Manager, Sensible Soccer engine retrospectives)
-
-**Confidence note:** External web research tools were unavailable during this session. All pitfalls are grounded in well-established principles. Specific numerical thresholds (e.g., "< 40% action domination," "mean 2.5 goals") are informed estimates appropriate for initial calibration targets, not empirically derived — they should be tuned against actual match output.
+---
+*Pitfalls research for: Fergie Time v1.1 Data Layer*
+*Researched: 2026-03-06*

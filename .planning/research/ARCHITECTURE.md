@@ -1,577 +1,580 @@
 # Architecture Patterns
 
-**Domain:** Browser-based 2D football simulation with autonomous AI agents
-**Researched:** 2026-03-02
-**Confidence:** HIGH (fixed timestep, ECS, simulation/render separation are canonical patterns); MEDIUM (utility AI agent loop specifics, tactical system structure — well-documented but application to football is extrapolated from general game AI literature)
+**Domain:** Backend integration for existing browser-based football management game
+**Researched:** 2026-03-06
+**Confidence:** HIGH -- standard Express+SQLite patterns applied to well-understood existing codebase
 
 ---
 
-## Recommended Architecture
-
-The system decomposes into five distinct layers. Information flows strictly downward: Simulation writes state, Renderer reads it, UI reads it. No layer reaches upward.
+## Current Architecture (Before v1.1)
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    MANAGER INTERFACE                     │
-│  Tactics Board | Squad Screen | Season | Training       │
-└────────────────────────┬────────────────────────────────┘
-                         │ Commands (formation, subs, roles)
-                         ▼
-┌─────────────────────────────────────────────────────────┐
-│                   GAME LOOP COORDINATOR                  │
-│  Fixed-timestep accumulator — owns the clock            │
-│  Dispatches: simulate(dt) | render(alpha) | ui events   │
-└───────────┬─────────────────────────┬───────────────────┘
-            │                         │
-            ▼                         ▼
-┌───────────────────────┐  ┌─────────────────────────────┐
-│   SIMULATION ENGINE   │  │       CANVAS RENDERER        │
-│  (headless, pure TS)  │  │  (reads SimState, no logic) │
-│                       │  │                             │
-│  ┌─────────────────┐  │  │  pitch, players, ball,      │
-│  │  Physics World  │  │  │  shadows, UI overlays        │
-│  │  ball, forces,  │  │  │                             │
-│  │  collisions     │  │  │  Interpolates between       │
-│  └────────┬────────┘  │  │  prev/curr state via alpha  │
-│           │           │  └─────────────────────────────┘
-│  ┌────────▼────────┐  │
-│  │  Agent System   │  │
-│  │  22× Utility AI │  │
-│  │  evaluators     │  │
-│  └────────┬────────┘  │
-│           │           │
-│  ┌────────▼────────┐  │
-│  │ Tactical System │  │
-│  │ formation anchors│ │
-│  │ role assignments │ │
-│  └────────┬────────┘  │
-│           │           │
-│  ┌────────▼────────┐  │
-│  │   Match State   │  │
-│  │  SimSnapshot[]  │  │
-│  └───────────────--┘  │
-└───────────────────────┘
+[Browser]
+  main.ts (monolithic ~1200 lines)
+    - Creates SeasonState in module-level `let` variable
+    - Runs SimulationEngine in browser at 30Hz
+    - Renders via CanvasRenderer at 60fps
+    - UI screens: Hub, Squad, Fixtures, Table
+    - Season state LOST on page refresh
+    - Tactics saved in localStorage (survives refresh)
+    - Tuning settings saved in localStorage (survives refresh)
+
+[VPS: 185.230.218.116]
+  nginx serves static files from /var/www/vhosts/psybob.uk/ft.psybob.uk/dist
+  GitHub Actions: SSH -> git pull -> npm run build
+  No backend process running
 ```
+
+**The core problem:** `SeasonState` lives in a module-level variable. Refreshing the browser destroys the season -- 38 matchdays of progress gone. The simulation engine, rendering, and all game logic stay client-side. The backend exists solely to persist state across sessions and authenticate save slots.
+
+---
+
+## Recommended Architecture (v1.1)
+
+```
+[Browser - Vite Dev / Static Build]
+  main.ts
+    |-- Still creates SeasonState in memory during play
+    |-- Still runs SimulationEngine in browser
+    |-- NEW: Login screen gates access to hub
+    |-- NEW: "Save Game" / "Load Game" buttons in hub
+    |-- NEW: api/client.ts handles all HTTP calls
+    |
+  src/api/
+    client.ts       -- fetch wrapper (login, register, save, load, fetchNames)
+  src/season/
+    season.ts       -- NEW: serializeSeason() / deserializeSeason() functions
+
+[VPS: 185.230.218.116]
+  nginx
+    |-- Serves /dist as static files (unchanged)
+    |-- NEW: reverse proxy /api/* -> localhost:3001
+    |
+  NEW: Express server (port 3001)
+    |-- POST /api/auth/register
+    |-- POST /api/auth/login
+    |-- POST /api/games/save
+    |-- GET  /api/games/load
+    |-- GET  /api/names/batch
+    |
+  NEW: SQLite database
+    |-- ./data/games.db (auto-created on first run)
+    |-- Managed by better-sqlite3 (synchronous API)
+    |
+  NEW: pm2 daemon manager
+    |-- Runs Express as background process
+    |-- Auto-restarts on crash
+```
+
+### Why This Shape
+
+The simulation MUST stay in the browser. It runs 22 autonomous agents at 30Hz with real-time Canvas rendering -- moving it server-side would require WebSocket streaming and eliminate the direct Canvas interaction. The backend is a "filing cabinet": it receives serialized game state blobs and hands them back. This is the thinnest possible backend that solves the persistence problem.
 
 ---
 
 ## Component Boundaries
 
-| Component | Responsibility | Inputs | Outputs | Must NOT |
-|-----------|---------------|--------|---------|----------|
-| **Game Loop** | Clock, frame pacing, accumulator | `performance.now()`, user events | `simulate(dt)` calls, `render(alpha)` calls | Hold game state |
-| **Physics World** | Ball trajectory (2.5D), player position integration, collision detection | Agent move intentions, ball kick forces | Updated positions, contact events | Know about tactics or AI |
-| **Agent System** | Per-player utility AI evaluation, action selection | World state snapshot, player personality/attributes, tactical context | Action intentions (move target, kick intent, tackle intent) | Move entities directly |
-| **Tactical System** | Formation anchor computation, role context, team shape analysis | Formation config, current player positions | Per-player tactical context (anchor, role, nearby threats) | Evaluate individual decisions |
-| **Match State** | Authoritative game state, event log | Physics/AI outputs | SimSnapshot (immutable read view), match events | Be mutated from outside engine |
-| **Canvas Renderer** | Visual representation | Current + previous SimSnapshot, alpha | Drawn frame | Contain any game logic |
-| **Manager Interface** | User input for squad/tactics/training | User gestures, clicks | Commands to simulation (formation changes, substitutions) | Read internal simulation state directly |
+| Component | Responsibility | Communicates With | New/Modified |
+|-----------|---------------|-------------------|-------------|
+| **Frontend game** (existing) | Simulation, rendering, UI | API client | Modified (login + save/load UI) |
+| **API client** (`src/api/client.ts`) | HTTP calls, auth token storage | Express API | **New** |
+| **Serialization** (`src/season/season.ts`) | Convert SeasonState to/from JSON-safe format | Frontend game | **Modified** |
+| **Express server** (`server/`) | REST endpoints, auth, validation | SQLite, randomuser.me | **New** |
+| **SQLite database** (`data/games.db`) | Persistent storage | Express only | **New** |
+| **nginx** (existing) | Static files + reverse proxy | Browser, Express | **Modified** (add `/api` proxy) |
+| **pm2** | Process management for Express | Express | **New** |
+
+---
+
+## New Files to Create
+
+```
+server/
+  index.ts              # Express app, middleware, listen on 3001
+  db.ts                 # SQLite init, schema migration, connection singleton
+  routes/
+    auth.ts             # register + login endpoints
+    games.ts            # save + load endpoints
+    names.ts            # randomuser.me cache proxy
+  middleware/
+    auth.ts             # JWT verification middleware
+
+src/api/
+  client.ts             # Typed fetch wrapper for all API calls
+
+src/ui/screens/
+  loginScreen.ts        # Login/register UI (new screen)
+```
+
+## Existing Files to Modify
+
+| File | Change | Impact |
+|------|--------|--------|
+| `src/season/season.ts` | Add `serializeSeason()` / `deserializeSeason()` | Small -- handle Map<->Object conversion for fatigueMap |
+| `src/main.ts` | Add login flow at startup, save/load button wiring, auth state | Medium -- ~60 new lines, no structural changes |
+| `vite.config.ts` | Add `server.proxy` for `/api` -> `localhost:3001` | 3 lines |
+| `package.json` | Add server deps + scripts | Small |
+| `.github/workflows/deploy.yml` | Add `pm2 restart` after build | Small |
+| `index.html` | Add login screen container div | Small |
 
 ---
 
 ## Data Flow
 
-### Per-Tick Simulation Flow (fixed ~30Hz)
+### Registration Flow
 
 ```
-1. ACCUMULATOR fires simulate(dt=33ms)
-   │
-   ▼
-2. TACTICAL SYSTEM computes formation anchors
-   - For each player: anchor = f(formation, role, ball position, phase of play)
-   - Outputs: TacticalContext per player
-   │
-   ▼
-3. AGENT SYSTEM evaluates each of 22 players
-   - Build WorldPercept from SimSnapshot (nearby players, ball, space)
-   - Score each action:
-       score(action) = base_utility(action, percept)
-                     × personality_weights
-                     + gaussian_noise(σ=1-composure)
-   - Select max-scoring action
-   - Outputs: ActionIntent[] (one per player)
-   │
-   ▼
-4. PHYSICS WORLD integrates intentions
-   - Apply steering forces (arrive, pursue, evade, separation)
-   - Clamp velocity by physical attributes × fatigue
-   - Ball: projectile motion for Z, friction for XY, spin
-   - Resolve contacts (tackles, shielding, aerial)
-   - Outputs: Updated positions, ball state, contact events
-   │
-   ▼
-5. MATCH STATE updates
-   - Write new SimSnapshot (immutable)
-   - Append match events (goal, foul, out of play)
-   - Retain previous snapshot for render interpolation
-   │
-   ▼
-6. RENDERER reads (next rAF, independent of tick rate)
-   - Interpolate: display_pos = lerp(prev.pos, curr.pos, alpha)
-   - Draw pitch, shadows, players, ball, overlays
+User enters team name + password
+  -> POST /api/auth/register { teamName, password }
+  -> Express: hash password (bcrypt), INSERT into users table
+  -> Return { token: JWT }
+  -> Frontend: store token in localStorage, proceed to createSeason()
 ```
 
-### Render Flow (60fps via requestAnimationFrame)
+### Login + Load Flow
 
 ```
-rAF fires
-  │
-  ▼
-Compute alpha = accumulatedTime / fixedDt  (0..1)
-  │
-  ▼
-Renderer reads (prevSnapshot, currSnapshot, alpha)
-  │
-  ▼
-For each entity: lerpPosition(prev, curr, alpha)
-  │
-  ▼
-Canvas drawCalls: pitch → shadows → players → ball → UI overlays
+User enters team name + password
+  -> POST /api/auth/login { teamName, password }
+  -> Express: verify bcrypt hash, generate JWT, check for saved game
+  -> Return { token, hasSave: true/false }
+  -> If hasSave: GET /api/games/load (with Bearer token)
+    -> Express: SELECT season_data FROM saves WHERE user_id = ?
+    -> Return { seasonData: SerializedSeasonState, playerStats: [...] }
+    -> Frontend: deserializeSeason(data) -> SeasonState
+    -> Set module-level seasonState, show hub screen
+  -> If !hasSave: proceed to createSeason(), show hub screen
 ```
 
-### Command Flow (User → Simulation)
+### Save Flow
 
 ```
-User drags player on tactics board
-  │
-  ▼
-Manager Interface builds FormationCommand
-  │
-  ▼
-Command Queue (simple array, consumed at tick start)
-  │
-  ▼
-Tactical System applies updated formation anchors next tick
+User clicks "Save Game" in hub
+  -> serializeSeason(seasonState) -> JSON-safe object
+  -> POST /api/games/save { seasonData, playerStats }
+    (with Bearer token)
+  -> Express: validate token, UPSERT into saves table
+  -> Return { success: true }
+  -> Frontend: show "Game Saved" toast
 ```
+
+### Auto-Save (Recommended)
+
+Trigger save automatically after each matchday completes (after `finalizeMatchday()` returns). This prevents data loss without requiring the user to remember to save. Keep the manual "Save Game" button as well.
+
+### Name Fetch Flow
+
+```
+Season creation needs 19 teams x 25 players = 475 names
+  -> GET /api/names/batch?count=500&nat=gb
+  -> Express: check name_cache table
+    -> If enough cached names: return from cache
+    -> If not: fetch from randomuser.me, cache results, return
+  -> Frontend: use names for player generation
+```
+
+---
+
+## SeasonState Serialization
+
+The `SeasonState` interface uses `Map<string, number>` for `fatigueMap`. JavaScript Maps do not survive `JSON.stringify()`. This is the single serialization challenge.
+
+**Solution: Explicit conversion at the boundary.**
+
+```typescript
+// In season.ts
+
+export interface SerializedSeasonState {
+  readonly seasonNumber: number;
+  readonly playerTeamId: string;
+  teams: SeasonTeam[];
+  fixtures: Fixture[];
+  table: TeamRecord[];
+  currentMatchday: number;
+  fatigueMap: Record<string, number>;  // Object, not Map
+  readonly seed: string;
+}
+
+export function serializeSeason(state: SeasonState): SerializedSeasonState {
+  return {
+    ...state,
+    fatigueMap: Object.fromEntries(state.fatigueMap),
+  };
+}
+
+export function deserializeSeason(data: SerializedSeasonState): SeasonState {
+  return {
+    ...data,
+    fatigueMap: new Map(Object.entries(data.fatigueMap)),
+  };
+}
+```
+
+**Critical: Write round-trip tests.** Create a season, serialize it, deserialize it, verify every field matches. The fatigueMap conversion is the obvious risk, but also verify that `readonly` fields, nested arrays (fixtures, teams), and the table array survive intact. Zod validation on the deserialized shape adds a safety net.
+
+---
+
+## Database Schema
+
+```sql
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  team_name TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS saves (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  season_data TEXT NOT NULL,          -- Full SeasonState as JSON blob
+  saved_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(user_id)                     -- One save per user
+);
+
+CREATE TABLE IF NOT EXISTS name_cache (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nationality TEXT NOT NULL,
+  first_name TEXT NOT NULL,
+  last_name TEXT NOT NULL,
+  fetched_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS player_stats (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  save_id INTEGER NOT NULL REFERENCES saves(id) ON DELETE CASCADE,
+  player_id TEXT NOT NULL,
+  season_number INTEGER NOT NULL,
+  appearances INTEGER DEFAULT 0,
+  goals INTEGER DEFAULT 0,
+  assists INTEGER DEFAULT 0,
+  clean_sheets INTEGER DEFAULT 0,
+  UNIQUE(save_id, player_id, season_number)
+);
+```
+
+### Why JSON Blob for SeasonState
+
+The alternative -- normalizing teams, fixtures, and table records into relational tables -- would mean 5+ tables, complex JOINs for load, and multi-table transactions for save. For a single-player game with one save slot per user, this is pure overhead. The entire SeasonState is roughly 50-80KB of JSON (20 teams x 25 players + 380 fixtures + 20 table rows + fatigue entries). SQLite handles this trivially.
+
+Player stats get their own table because they accumulate across seasons and benefit from queries (career totals, season leaderboards).
+
+---
+
+## API Design
+
+### Endpoints
+
+| Method | Path | Auth | Request Body | Response |
+|--------|------|------|-------------|----------|
+| POST | `/api/auth/register` | No | `{ teamName: string, password: string }` | `{ token: string }` |
+| POST | `/api/auth/login` | No | `{ teamName: string, password: string }` | `{ token: string, hasSave: boolean }` |
+| POST | `/api/games/save` | JWT | `{ seasonData: SerializedSeasonState, playerStats?: PlayerStatRow[] }` | `{ success: true }` |
+| GET | `/api/games/load` | JWT | -- | `{ seasonData: SerializedSeasonState, playerStats: PlayerStatRow[] }` |
+| GET | `/api/names/batch` | No | Query: `?count=50&nat=gb` | `{ names: Array<{first: string, last: string}> }` |
+
+### Auth: JWT
+
+Use `jsonwebtoken`. Token payload: `{ userId: number, teamName: string }`. Expiry: 30 days. Stored in `localStorage` on the client. No refresh tokens -- if expired, user logs in again.
+
+**Why JWT over sessions:** No server-side session store. Express can restart without losing sessions. For a personal single-player game, this is the right simplicity level.
+
+### Validation
+
+Use `zod` (already in the project's dependencies) for request body validation on the server. The game state blob needs only shallow validation (is it valid JSON? does it have the expected top-level keys?). Deep validation of the SeasonState structure happens in `deserializeSeason()` on the client.
 
 ---
 
 ## Patterns to Follow
 
-### Pattern 1: Fixed-Timestep Accumulator (Gaffer on Games)
+### Pattern 1: Vite Dev Proxy
 
-**What:** Simulation runs at a fixed dt (e.g. 33ms = ~30Hz). Real time accumulates; simulation steps consume it in fixed chunks. Render interpolates between last two simulation states using the leftover fraction (alpha).
-
-**When:** Always — this is non-negotiable for deterministic, frame-rate-independent simulation.
-
-**Why:** Without fixed timestep, simulation behavior varies with frame rate. Agents make decisions at inconsistent intervals. Physics becomes unstable at high frame rates.
+During development, Vite runs on port 5173 and Express on port 3001. Configure Vite to proxy `/api` so the frontend uses relative URLs that work identically in dev and production.
 
 ```typescript
-// Game loop core
-const FIXED_DT = 1000 / 30; // 33.33ms per tick
-let accumulator = 0;
-let previousTime = performance.now();
-let prevSnapshot: SimSnapshot;
-let currSnapshot: SimSnapshot;
+// vite.config.ts
+import { defineConfig } from 'vite';
 
-function gameLoop(currentTime: number) {
-  const elapsed = currentTime - previousTime;
-  previousTime = currentTime;
-  accumulator += Math.min(elapsed, 200); // spiral of death guard: cap at 200ms
+export default defineConfig({
+  server: {
+    proxy: {
+      '/api': 'http://localhost:3001',
+    },
+  },
+  build: { target: 'es2022' },
+});
+```
 
-  while (accumulator >= FIXED_DT) {
-    prevSnapshot = currSnapshot;
-    currSnapshot = simulationEngine.tick(FIXED_DT);
-    accumulator -= FIXED_DT;
+In production, nginx handles the same `/api` routing. Zero code changes between environments.
+
+### Pattern 2: Separate TypeScript Configs
+
+The server runs in Node (no DOM, needs `node:` built-ins). The frontend runs in the browser (DOM types, bundler resolution). They need separate configs.
+
+```
+tsconfig.json              # Frontend (existing -- DOM, noEmit, bundler resolution)
+server/tsconfig.json       # Server (NodeNext, node types, emit or use tsx)
+```
+
+**Use `tsx` to run the server** in both development and production. The server is trivially small (5 route handlers). The JIT overhead of tsx is negligible. This avoids maintaining a server build step entirely.
+
+### Pattern 3: better-sqlite3
+
+Use `better-sqlite3` because:
+- **Synchronous API** -- no callbacks/promises for simple queries, matches the project's style
+- **Fastest Node SQLite binding** -- native C++ addon
+- **WAL mode** -- enables concurrent reads (though this game is single-user, it's free)
+
+Do NOT use `sqlite3` (callback-based, slower), `sql.js` (WASM, meant for browser), or Prisma/Drizzle (ORM overhead for 4 tables is absurd).
+
+### Pattern 4: Thin API Client
+
+Create `src/api/client.ts` as pure async functions. No classes, no state management, no caching. Just fetch wrappers that return typed results.
+
+```typescript
+// src/api/client.ts
+const BASE = '/api';
+
+let authToken: string | null = localStorage.getItem('fergie-token');
+
+export function setToken(token: string): void {
+  authToken = token;
+  localStorage.setItem('fergie-token', token);
+}
+
+export function clearToken(): void {
+  authToken = null;
+  localStorage.removeItem('fergie-token');
+}
+
+export function hasToken(): boolean {
+  return authToken !== null;
+}
+
+async function apiFetch<T>(path: string, opts: RequestInit = {}): Promise<T> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+  };
+  const res = await fetch(`${BASE}${path}`, { ...opts, headers });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `API error ${res.status}`);
   }
+  return res.json();
+}
 
-  const alpha = accumulator / FIXED_DT;
-  renderer.draw(prevSnapshot, currSnapshot, alpha);
+export function login(teamName: string, password: string) {
+  return apiFetch<{ token: string; hasSave: boolean }>('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ teamName, password }),
+  });
+}
 
-  requestAnimationFrame(gameLoop);
+export function register(teamName: string, password: string) {
+  return apiFetch<{ token: string }>('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({ teamName, password }),
+  });
+}
+
+export function saveGame(seasonData: SerializedSeasonState) {
+  return apiFetch<{ success: boolean }>('/games/save', {
+    method: 'POST',
+    body: JSON.stringify({ seasonData }),
+  });
+}
+
+export function loadGame() {
+  return apiFetch<{ seasonData: SerializedSeasonState }>('/games/load');
 }
 ```
 
-**Key rule:** Cap accumulated time at ~200ms. If the tab goes to background and returns, you do not want hundreds of simulation steps firing at once (spiral of death).
+### Pattern 5: Database Migration on Startup
 
----
-
-### Pattern 2: Immutable Simulation Snapshots
-
-**What:** Each tick produces a new `SimSnapshot` value object. The previous snapshot is retained. Neither is mutated after creation.
-
-**When:** Always — this is what enables render interpolation, replay, and headless simulation.
-
-**Why:** Mutable shared state between sim and renderer leads to rendering half-updated state (tearing). Immutable snapshots mean the renderer always has a consistent view.
+Run `CREATE TABLE IF NOT EXISTS` statements when the server starts. No migration framework needed for 4 tables. If the schema needs to change later, add versioned migration files.
 
 ```typescript
-interface SimSnapshot {
-  readonly tick: number;
-  readonly timestamp: number;
-  readonly ball: BallState;
-  readonly players: readonly PlayerState[];
-  readonly matchPhase: MatchPhase;
-  readonly score: [number, number];
-  readonly events: readonly MatchEvent[]; // events since last tick
-}
+// server/db.ts
+import Database from 'better-sqlite3';
+import path from 'node:path';
+import fs from 'node:fs';
 
-interface PlayerState {
-  readonly id: PlayerId;
-  readonly teamId: TeamId;
-  readonly position: Vec2;
-  readonly velocity: Vec2;
-  readonly facingAngle: number;
-  readonly hasBall: boolean;
-  readonly fatigue: number;   // 0..1
-  readonly lastAction: ActionType;
-}
-```
+const DB_PATH = path.join(process.cwd(), 'data', 'games.db');
 
----
+// Ensure data directory exists
+fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 
-### Pattern 3: Utility AI with Consideration Architecture
+const db = new Database(DB_PATH);
 
-**What:** Each agent has a fixed set of actions. Each action has a set of considerations (input curves). The action score is the weighted product/sum of consideration scores, multiplied by personality weights.
+// Performance settings
+db.pragma('journal_mode = WAL');
+db.pragma('foreign_keys = ON');
 
-**When:** For all 22 player agents — this is the core emergent AI mechanism.
+// Schema init
+db.exec(`
+  CREATE TABLE IF NOT EXISTS users ( ... );
+  CREATE TABLE IF NOT EXISTS saves ( ... );
+  CREATE TABLE IF NOT EXISTS name_cache ( ... );
+  CREATE TABLE IF NOT EXISTS player_stats ( ... );
+`);
 
-**Why:** Utility AI scales better than behavior trees for this use case. Adding a new action or consideration does not restructure a tree. Personality is a natural multiplicative weight. Emergent behavior arises from the interaction of scores.
-
-```typescript
-type ConsiderationFn = (context: AgentContext) => number; // 0..1
-
-interface Action {
-  id: ActionType;
-  considerations: ConsiderationFn[];
-  combine: 'product' | 'sum' | 'weighted-sum';
-}
-
-function evaluateAction(
-  action: Action,
-  context: AgentContext,
-  personality: PersonalityVector
-): number {
-  const rawScores = action.considerations.map(c => c(context));
-
-  let baseScore: number;
-  if (action.combine === 'product') {
-    // Product: any zero consideration kills the action
-    baseScore = rawScores.reduce((acc, s) => acc * s, 1.0);
-  } else {
-    baseScore = rawScores.reduce((acc, s) => acc + s, 0) / rawScores.length;
-  }
-
-  // Apply personality weights (personality is WHO the player IS)
-  const personalityMod = applyPersonalityWeights(action.id, personality);
-
-  // Gaussian noise scaled by composure (tired/anxious players decide less clearly)
-  const noise = gaussianNoise(0, (1 - personality.composure) * 0.1);
-
-  return baseScore * personalityMod + noise;
-}
-
-function selectAction(
-  actions: Action[],
-  context: AgentContext,
-  personality: PersonalityVector
-): ActionType {
-  const scores = actions.map(a => ({
-    id: a.id,
-    score: evaluateAction(a, context, personality)
-  }));
-  return scores.reduce((best, s) => s.score > best.score ? s : best).id;
-}
-```
-
-**Critical implementation note:** The consideration functions must return values on comparable scales (0..1 normalized). Raw distances, velocities, etc. need input curves (linear ramps, S-curves) to map them to 0..1. This is where tuning lives.
-
----
-
-### Pattern 4: Steering Behaviors for Movement
-
-**What:** Player movement is handled by steering forces (arrive, pursue, evade, seek, separation) that combine into a net force, then integrate with Euler integration.
-
-**When:** For all player movement — this replaces direct position assignment with physically plausible locomotion.
-
-**Why:** Direct position teleporting breaks the emergent quality. Steering behaviors give natural acceleration, deceleration, collision avoidance, and group dynamics without scripting them.
-
-```typescript
-function computeSteeringForce(
-  player: PlayerState,
-  intent: MoveIntent,
-  nearby: PlayerState[],
-  attributes: PhysicalAttributes,
-  fatigue: number
-): Vec2 {
-  const maxSpeed = attributes.pace * (1 - fatigue * 0.4); // fatigue slows players
-  const maxForce = attributes.strength * 0.5;
-
-  let steering = Vec2.zero();
-
-  // Primary: arrive at tactical target with slow-down radius
-  steering = steering.add(arrive(player.position, intent.target, maxSpeed));
-
-  // Separation: avoid overlapping teammates
-  steering = steering.add(separation(player.position, nearby, 2.0)); // 2m radius
-
-  // Clamp to physical limits
-  return steering.clamp(maxForce);
-}
-```
-
----
-
-### Pattern 5: Tactical System as Context Provider
-
-**What:** The tactical system does not make decisions — it provides context that informs agent decisions. It computes formation anchors, identifies the current phase of play (buildup, transition, defensive shape), and assigns role-specific context per player.
-
-**When:** At the start of each tick, before agent evaluation.
-
-**Why:** Separating tactical intelligence from individual decision-making is critical. The agent decides HOW to execute (which specific action to take). The tactical system provides WHAT is tactically appropriate (where to be, what your role demands). This separation lets you tune tactics without rewriting agents.
-
-```typescript
-interface TacticalContext {
-  formationAnchor: Vec2;       // where this player should be positionally
-  roleInstruction: RoleInstruction; // press high / sit deep / make runs / etc.
-  phaseOfPlay: PhaseOfPlay;    // attacking / defensive / transition
-  teamShape: TeamShape;        // compact / stretched / balanced
-  nearestOpponent: PlayerState | null;
-  ballZone: PitchZone;
-}
-
-function computeTacticalContext(
-  player: PlayerState,
-  formation: Formation,
-  worldState: SimSnapshot,
-  teamInstructions: TeamInstructions
-): TacticalContext {
-  const phase = detectPhaseOfPlay(worldState);
-  const anchor = computeFormationAnchor(
-    player.role,
-    formation,
-    worldState.ball.position,
-    phase,
-    teamInstructions
-  );
-  // ... role instruction from per-player settings
-  return { formationAnchor: anchor, phaseOfPlay: phase, ... };
-}
-```
-
----
-
-### Pattern 6: Separation of Simulation and Renderer
-
-**What:** The simulation engine is a pure TypeScript module with no DOM or Canvas dependencies. The renderer is a separate module that reads `SimSnapshot` objects and draws to Canvas. They share only the snapshot interface.
-
-**When:** From the first line of code — retrofit is painful.
-
-**Why:** Enables headless simulation (run a full season without rendering), enables testing the engine in Node.js, enables swapping the renderer, enables future web worker execution of the simulation.
-
-```typescript
-// simulation/index.ts — no DOM imports, ever
-export class SimulationEngine {
-  tick(dt: number): SimSnapshot { ... }
-  applyCommand(cmd: SimCommand): void { ... }
-}
-
-// renderer/CanvasRenderer.ts — all Canvas code lives here
-export class CanvasRenderer {
-  draw(prev: SimSnapshot, curr: SimSnapshot, alpha: number): void { ... }
-}
-
-// main.ts — wires them together
-const engine = new SimulationEngine(matchConfig);
-const renderer = new CanvasRenderer(canvas);
-gameLoop(engine, renderer);
+export default db;
 ```
 
 ---
 
 ## Anti-Patterns to Avoid
 
-### Anti-Pattern 1: Variable Timestep Simulation
+### Anti-Pattern 1: Moving Simulation Server-Side
 
-**What:** Passing the actual elapsed frame time directly to the physics/AI update.
+**What:** Running the match engine on Express and streaming results to the client.
+**Why bad:** The entire game is built around real-time Canvas rendering of a simulation running at 30Hz in the browser. Moving it server-side would require WebSocket streaming, a complete rewrite of the rendering pipeline, and eliminate the direct Canvas interaction. The match engine handles 22 agents evaluating utility functions every tick -- this works well in the browser.
+**Instead:** Keep simulation client-side. The server is only a persistence layer.
 
-**Why bad:** At 30fps, `dt=33ms`. At 60fps, `dt=16ms`. Agents evaluate twice as often at 60fps, changing their behavior. Physics integration accumulates error differently. Simulation is non-deterministic and frame-rate dependent. Replay becomes impossible.
+### Anti-Pattern 2: Normalizing Game State into Relational Tables
 
-**Instead:** Fixed timestep accumulator. Render interpolation for smooth visuals at any frame rate.
+**What:** Separate tables for teams, players, fixtures, table_records with JOINs to reconstruct SeasonState.
+**Why bad:** The game has one save slot per user. The entire state is ~50-80KB JSON. Five-table JOINs and multi-table transactions add complexity for zero benefit. If you need to query individual player data, that is what the separate `player_stats` table is for.
+**Instead:** One `saves` row per user with a `season_data TEXT` column.
 
----
+### Anti-Pattern 3: Overengineered Auth
 
-### Anti-Pattern 2: Renderer Calling into Simulation Logic
+**What:** OAuth providers, email verification, password reset flows, session stores with Redis.
+**Why bad:** This is a personal single-player game. Auth exists to associate a save file with a name+password pair. Nothing more.
+**Instead:** Simple JWT + bcrypt. No email, no OAuth, no password reset. If a user forgets their password, reset it at the database level.
 
-**What:** Canvas draw code that computes positions, checks game rules, or queries agent state beyond what is in the snapshot.
+### Anti-Pattern 4: Shared Monorepo Tooling
 
-**Why bad:** Creates bidirectional coupling. Renderer now has side effects on simulation. Moving to a web worker becomes impossible. Testing breaks.
+**What:** Turborepo, Nx, or Lerna to share types between frontend and server.
+**Why bad:** You are sharing approximately 3 type definitions (SerializedSeasonState, request schemas, response shapes). Monorepo tooling adds CI complexity, workspace config, and hoisted dependency headaches for a solo project.
+**Instead:** Duplicate the small number of shared types. Or create a `shared/` directory and manually include it in both tsconfigs.
 
-**Instead:** Everything the renderer needs must be in `SimSnapshot`. If the renderer needs something, add it to the snapshot interface, not a call into the engine.
+### Anti-Pattern 5: ORM for 4 Tables
 
----
-
-### Anti-Pattern 3: Agent Actions Mutating World State Directly
-
-**What:** An agent's `decide()` function directly mutates player positions, ball state, or game score.
-
-**Why bad:** Agent decisions run in sequence for 22 players. If agent #1 moves the ball, agent #2 evaluates with a ball position that is already half-resolved. Order dependency creates chaotic, order-sensitive behavior.
-
-**Instead:** Agents produce `ActionIntent` objects. A separate integration step applies all intents to physics simultaneously, then produces the new snapshot.
-
----
-
-### Anti-Pattern 4: God Object Match Manager
-
-**What:** A single class that owns physics, AI, tactics, state, rendering, and UI event handling.
-
-**Why bad:** Impossible to test individual components. Adding features requires understanding the whole system. No clear place to put new functionality.
-
-**Instead:** Separate modules with explicit interfaces. The game loop coordinator is a thin wiring layer, not a logic container.
+**What:** Prisma, Drizzle, or TypeORM for the database layer.
+**Why bad:** The entire database has 4 tables. The most complex query is `SELECT season_data FROM saves WHERE user_id = ?`. An ORM adds schema generation, migration tooling, client generation, and dependency weight for queries that are one-liners in raw SQL.
+**Instead:** `better-sqlite3` with raw SQL. Wrap queries in typed functions in `db.ts`.
 
 ---
 
-### Anti-Pattern 5: Scalar Personality Application
+## Deployment Changes
 
-**What:** Applying personality as a single global multiplier to all action scores.
+### nginx Addition
 
-**Why bad:** A single multiplier cannot express that a player with high `directness` prefers forward passes but not necessarily long shots. Personality must be action-specific to create genuine archetypes.
+Add to the existing server block for `ft.psybob.uk`:
 
-**Instead:** A personality weight matrix — each personality trait has a defined contribution to each action type. This is what creates genuine "maverick" vs "metronome" differentiation from the same agent code.
+```nginx
+location /api/ {
+    proxy_pass http://127.0.0.1:3001;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
 
-```typescript
-// BAD: scalar personality
-score *= player.personality.overall_modifier;
+### Updated deploy.yml
 
-// GOOD: action-specific personality weights
-const weights: PersonalityWeightMatrix = {
-  'pass-forward':  { directness: +0.4, risk_appetite: +0.2, creativity: +0.1 },
-  'dribble':       { flair: +0.5, risk_appetite: +0.3, directness: +0.2 },
-  'hold-position': { composure: +0.3, work_rate: -0.1, risk_appetite: -0.2 },
-  // ...
+```yaml
+script: |
+  cd /var/www/vhosts/psybob.uk/ft.psybob.uk
+  git pull
+  export NVM_DIR="$HOME/.nvm"
+  [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+  npm install
+  npm run build
+  npx pm2 restart fergie-api 2>/dev/null || npx pm2 start server/index.ts --name fergie-api --interpreter $(which npx) --interpreter-args tsx
+```
+
+### pm2 Ecosystem File (Recommended)
+
+```javascript
+// ecosystem.config.cjs
+module.exports = {
+  apps: [{
+    name: 'fergie-api',
+    script: 'server/index.ts',
+    interpreter: 'npx',
+    interpreter_args: 'tsx',
+    env: {
+      NODE_ENV: 'production',
+      PORT: 3001,
+      JWT_SECRET: 'generate-a-real-secret-here',
+    },
+  }],
 };
-score += dotProduct(weights[action.id], player.personality);
+```
+
+### SQLite Backup
+
+Add a daily cron on the VPS:
+
+```bash
+0 3 * * * cp /var/www/vhosts/psybob.uk/ft.psybob.uk/data/games.db /var/www/vhosts/psybob.uk/ft.psybob.uk/data/backups/games-$(date +\%Y\%m\%d).db
 ```
 
 ---
 
-### Anti-Pattern 6: Synchronous Full-Team AI in One Frame
+## Suggested Build Order
 
-**What:** Running all 22 agents' full utility evaluation synchronously in a single rAF frame alongside rendering.
+Order minimizes risk and provides testable checkpoints. Each step can be deployed and verified before starting the next.
 
-**Why bad:** On slow machines or complex situations, this can exceed 16ms, causing frame drops. Even if fast normally, it creates unpredictable frame timing.
+### Step 1: SeasonState Serialization + Tests
 
-**Instead:** The fixed-timestep pattern naturally decouples simulation from rendering. If simulation performance becomes a bottleneck (unlikely at 22 agents), move the simulation to a Web Worker with snapshot messages posted back via `postMessage`.
+Add `serializeSeason()` / `deserializeSeason()` to `season.ts`. Write round-trip tests verifying Map<->Object conversion, nested arrays, all fields. This is the riskiest piece -- if serialization loses data, everything downstream breaks.
 
----
+**Deliverable:** Proven serialization with passing tests.
+**Risk:** LOW but must be verified. The only non-trivial conversion is `Map<string, number>` -> `Record<string, number>`.
 
-## Scalability Considerations
+### Step 2: Express Skeleton + Database + Health Check
 
-| Concern | At v1 (main thread) | If performance issues arise | Future |
-|---------|--------------------|-----------------------------|--------|
-| AI evaluation (22 agents × 30Hz) | Main thread fine (~2-5ms) | Move engine to Web Worker | Multiple matches parallel |
-| Physics (22 bodies + ball) | Main thread fine | Optimize with spatial grid | No change needed |
-| Rendering (Canvas 2D) | 60fps achievable | Canvas layers / dirty rects | OffscreenCanvas in worker |
-| State history (replay) | Snapshot array, cap at N | Cap + compress | IndexedDB persistence |
-| Match simulation (headless season) | Loop without rAF | Already headless if separated | Node.js server-side |
+Create `server/` directory with Express app, better-sqlite3 connection, schema creation, and `GET /api/health` endpoint. Run locally with `tsx`.
 
----
+**Deliverable:** Express starts, creates SQLite file, responds to health check.
 
-## Suggested Build Order (Dependency Sequence)
+### Step 3: Auth Endpoints
 
-This order respects component dependencies and allows testing each layer before building on top of it.
+Add register and login with bcrypt + JWT. Test with curl. No frontend changes.
 
-```
-1. Core Types & SimSnapshot interface
-   → Defines the contract everything else adheres to
-   → No dependencies
+**Deliverable:** Can create account and receive JWT via API.
 
-2. Physics World (ball + player position integration)
-   → Can be tested with dummy inputs
-   → Depends on: Core Types
+### Step 4: Save/Load Endpoints
 
-3. Match State (snapshot production, event log)
-   → Depends on: Core Types, Physics World
+Add save and load endpoints accepting JWT auth. Store/retrieve JSON blobs.
 
-4. Game Loop (fixed-timestep accumulator)
-   → Wire physics and state, no AI yet
-   → Milestone: ball bounces around pitch realistically
+**Deliverable:** Can POST serialized SeasonState and GET it back via API.
 
-5. Canvas Renderer (reads snapshots)
-   → Depends on: Core Types, Game Loop
-   → Milestone: can see the ball moving
+### Step 5: Frontend Integration
 
-6. Tactical System (formation anchors, phase detection)
-   → Depends on: Core Types, Match State
-   → No dependency on Agent System
+Add API client module. Add login screen. Wire save/load into hub screen. Add Vite dev proxy. Add auto-save after matchday completion.
 
-7. Agent System (utility AI evaluator)
-   → Depends on: Core Types, Tactical System, Physics World
-   → Milestone: players move to positions and chase ball
+**Deliverable:** Full save/load flow working in browser during development.
 
-8. Steering Behaviors (within Agent System or Physics)
-   → Depends on: Physics World, Agent System
-   → Milestone: natural-looking player movement
+### Step 6: Deploy to VPS
 
-9. Contact Resolution (tackles, shielding, aerials)
-   → Depends on: Physics World, Agent System
-   → Milestone: possession changes realistically
+Update deploy.yml. Configure nginx reverse proxy. Set up pm2. Verify end-to-end on production VPS.
 
-10. Personality Vector System
-    → Layered on top of Agent System
-    → Milestone: same code, different player characters visible
+**Deliverable:** Game persistence working on ft.psybob.uk.
 
-11. Fatigue System
-    → Layered on top of Physics + Personality
-    → Milestone: behavior changes in second half
+### Step 7: Name Cache
 
-12. Manager Interface (tactics board, squad screen)
-    → Depends on: Game Loop, Tactical System
-    → Milestone: can set formation, watch changes take effect
+Add `/api/names/batch` endpoint that proxies randomuser.me and caches results in SQLite. Modify team generation to use cached names instead of the procedural name generator.
 
-13. Training System
-    → Depends on: Manager Interface, Personality vectors
-    → Milestone: attribute/personality drift from drills
+**Deliverable:** Realistic player names from randomuser.me.
 
-14. Season/League System
-    → Depends on: Match State, Training
-    → Milestone: fixtures, results, table
-```
+### Step 8: Player Stats Table
 
-**Key insight:** Steps 1-9 are the match engine. Steps 10-14 are the management game that wraps it. The PROJECT.md is correct that the engine must be proven first — it is also the most technically uncertain part.
+Add player_stats recording after each match. Add stats display to squad screen. Stats accumulate across seasons within a save.
 
----
-
-## State Management Pattern
-
-The system uses a layered state model:
-
-```
-┌──────────────────────────────────────────────────────────┐
-│ PERSISTENT STATE (localStorage / IndexedDB)              │
-│ Club, squad, attributes, personality, season progress    │
-│ Mutated only by: season events, training, user actions   │
-└───────────────────────────┬──────────────────────────────┘
-                            │ loaded at match start
-                            ▼
-┌──────────────────────────────────────────────────────────┐
-│ MATCH CONFIG (immutable for match duration)              │
-│ Formation, team instructions, player starting attributes │
-│ Mutated only by: half-time, substitutions               │
-└───────────────────────────┬──────────────────────────────┘
-                            │ input to simulation
-                            ▼
-┌──────────────────────────────────────────────────────────┐
-│ SIMULATION STATE (SimSnapshot, produced each tick)       │
-│ Positions, velocities, ball state, fatigue, match events │
-│ NEVER mutated — each tick produces a new snapshot        │
-└───────────────────────────┬──────────────────────────────┘
-                            │ read by
-                            ▼
-┌──────────────────────────────────────────────────────────┐
-│ RENDER STATE (ephemeral, not stored)                     │
-│ Interpolated positions, animation frames, visual effects │
-│ Computed per frame from prev/curr SimSnapshot + alpha    │
-└──────────────────────────────────────────────────────────┘
-```
-
-Commands flow upward: renderer/UI sends commands to the simulation engine, never writes to state directly.
+**Deliverable:** Career stats visible in squad screen.
 
 ---
 
 ## Sources
 
-- Gaffer on Games "Fix Your Timestep" — canonical fixed-timestep accumulator pattern (https://gafferongames.com/post/fix_your_timestep/) — HIGH confidence (well-established, widely implemented)
-- "Utility AI in Games" — Dave Mark & Kevin Dill, GDC presentations on utility AI considerations architecture — HIGH confidence (standard pattern)
-- Reynolds, Craig (1987) "Flocks, Herds, and Schools" — steering behaviors foundation — HIGH confidence
-- Project design brief (match-engine-design-brief.docx) — project-specific AI scoring formula and personality vector specifications — HIGH confidence
-- ECS vs plain objects debate: for 22 entities, plain TypeScript classes with composition outperform a full ECS framework in ergonomics — MEDIUM confidence (based on scale reasoning, not benchmarks)
+- Codebase analysis: `src/main.ts`, `src/season/season.ts`, `src/ui/tacticStore.ts`, `vite.config.ts`, `package.json`, `.github/workflows/deploy.yml`, `tsconfig.json`
+- Deployment target: `deploy.yml` shows VPS at 185.230.218.116, path `/var/www/vhosts/psybob.uk/ft.psybob.uk`, nginx serving static files
+- Architecture decisions driven by existing constraints: single VPS, solo developer, static frontend, browser-based simulation engine, existing localStorage patterns for tactics/tuning
+- Confidence: HIGH -- Express+SQLite+nginx reverse proxy is a standard, well-documented pattern. The only project-specific risk is SeasonState serialization fidelity (Map conversion), which is mitigated by tests in Step 1.

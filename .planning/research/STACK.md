@@ -1,352 +1,347 @@
-# Technology Stack
+# Stack Research: v1.1 Data Layer Additions
 
-**Project:** Fergie Time — Browser-Based Emergent Football Simulation
-**Researched:** 2026-03-02
-**Confidence:** MEDIUM (WebSearch/WebFetch unavailable; based on training data through Aug 2025 + project constraints)
+**Domain:** Backend data layer for existing browser-based game
+**Researched:** 2026-03-06
+**Confidence:** HIGH
 
----
+## Scope
 
-## Recommended Stack
+This research covers ONLY the new dependencies needed for the v1.1 Data Layer milestone. The existing frontend stack (TypeScript 5.9, Vite 7.3, Vitest 3.2, Zod 3.24, seedrandom 3.0) is validated and unchanged.
 
-### Build & Tooling
+## Existing Stack (Do Not Change)
 
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| TypeScript | 5.x (latest) | Primary language | Project constraint; strong typing for agent/physics systems is essential for correctness at this complexity level |
-| Vite | 5.x | Dev server, bundler, HMR | Fastest DX for browser TypeScript in 2025; native ESM; ~10x faster than webpack for rebuild speed; built-in canvas/worker support |
-| Vitest | 1.x | Unit + headless simulation testing | Co-located with Vite config; near-zero setup; critical for testing agent logic and physics determinism headlessly |
-
-**Not:** webpack (slow), Parcel (less control), Rollup standalone (Vite wraps it better), esbuild standalone (no dev server).
-
----
-
-### Physics Engine
-
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| **Custom lightweight physics** | — | Ball trajectory, 2.5D height simulation, collision resolution | **Recommended** — see rationale below |
-| Matter.js | 0.19.x | 2D rigid body (fallback/prototype) | Mature, well-documented, zero-config, browser-native JS |
-| Planck.js | 1.0.x | Box2D port for JS | More accurate than Matter.js, better suited for sports simulation |
-| Rapier (rapier2d-compat) | 0.12.x | WASM-based physics | Most accurate; WASM bundle adds 2-4MB; overkill for this use case |
-
-**Recommendation: Custom physics for the ball; no library.**
-
-Rationale: This simulation's physics requirements are narrow and specific:
-- Ball: Newtonian projectile (X/Y + Z arc), friction, bounce. ~100 lines.
-- Players: Steering behaviors (seek, arrive, pursuit, evade) — not rigid body physics. Craig Reynolds steering model is the industry standard for this.
-- Contact: Tackle/shield resolution is a discrete event system, not continuous collision detection.
-
-Full physics engines (Matter.js, Rapier) solve rigid-body simulation with constraints — rotational dynamics, hinges, stacking. None of that is needed. Using Matter.js for football players would fight the library constantly (agents need velocity override every tick; physics engines resist this).
-
-**Confidence:** HIGH — this is a well-established pattern in football sim development (see Championship Manager, FM engine design).
+| Technology | Version | Purpose |
+|------------|---------|---------|
+| TypeScript | ~5.9.3 | Language |
+| Vite | ^7.3.1 | Frontend bundler + dev server |
+| Vitest | ^3.2.3 | Testing |
+| Zod | ^3.24.2 | Schema validation (reuse for API request/response validation) |
+| seedrandom | ^3.0.5 | Deterministic RNG |
 
 ---
 
-### Steering Behaviors (Player Movement)
+## New Dependencies
 
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| **Custom implementation** | — | Seek, arrive, pursuit, evade, separation, obstacle avoidance | No JS library worth using; Craig Reynolds' paper is 40 lines per behavior; custom gives attribute-capped velocities and fatigue integration |
+### Core Server
 
-**Not:** Any steering library (too abstract; don't integrate with personality vectors cleanly).
+| Technology | Version | Purpose | Why Recommended |
+|------------|---------|---------|-----------------|
+| Express | ^5.2.1 | HTTP server + API routes | v5 is now the npm default (March 2025). Native promise support in middleware -- rejected promises are caught by the router as errors, eliminating the old `express-async-errors` hack. Mature, minimal surface area. Perfect thin API layer over SQLite. |
+| better-sqlite3 | ^12.6.2 | SQLite driver | Synchronous API is dramatically simpler than async alternatives -- no callback/promise ceremony for what is fundamentally a single-process, single-user game server. Fastest Node SQLite driver. Single `.db` file on VPS, zero external services. |
+| @types/better-sqlite3 | ^7.6.14 | TypeScript types | better-sqlite3 ships no built-in types. |
+| express-session | ^1.19.0 | Session middleware | Standard Express session management. Simple cookie-based sessions are all a single-player game needs -- no JWT complexity, no token refresh logic. |
 
-The canonical reference is Craig Reynolds' 1999 paper "Steering Behaviors for Autonomous Characters." Every behavior needed is well-documented:
-- `seek(target)` — move toward target
-- `arrive(target, slowingRadius)` — decelerate near target
-- `pursuit(movingTarget)` — lead the target
-- `separation(neighbors)` — avoid crowding teammates
-- `wander()` — off-ball movement
-
-All player velocities are capped by `pace * (1 - fatigue_curve)`. This is a trivial computation per-tick.
-
----
-
-### Agent AI Architecture
-
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| **Custom utility AI** | — | Per-agent action scoring every tick | No library needed; utility AI is ~200 lines of scoring functions + a selector |
-| yuka | 1.0.x | JS game AI library with utility AI support | Exists, but overkill; adds abstractions that obscure the personality vector system |
-
-**Recommendation: Custom utility AI — do not use a library.**
-
-Rationale: The personality vector system (directness, risk_appetite, composure, etc.) threads through EVERY score calculation. A library would require adapters around adapters. The core loop is:
-
-```typescript
-function selectAction(agent: Agent, worldState: WorldState): Action {
-  const scores = ACTIONS.map(action => ({
-    action,
-    score: action.evaluate(agent, worldState) + gaussian(0, 1 - agent.composure) * NOISE_SCALE
-  }));
-  return maxBy(scores, s => s.score).action;
-}
-```
-
-This is 20 lines. Libraries add no value here; they add surface area to maintain.
-
-**Confidence:** HIGH — utility AI is fundamentally a scoring pattern, not a framework problem.
-
----
-
-### Rendering
-
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| **Raw HTML5 Canvas 2D API** | — | Match rendering, pitch, players, ball | Project constraint; no overhead, full control, sufficient for 2D top-down at 60fps |
-| PixiJS | 8.x | WebGL-accelerated 2D renderer | Appropriate IF Canvas 2D proves too slow (unlikely for 22 sprites) |
-
-**Recommendation: Raw Canvas 2D API, with PixiJS as a known escape hatch.**
-
-Rationale: 22 player sprites + 1 ball + pitch lines at 60fps is trivially achievable with the Canvas 2D API. PixiJS becomes relevant at 500+ sprites or when complex effects (particle systems, shaders) are needed. The overhead of PixiJS (WebGL context, scene graph, texture management) is not justified for this scale.
-
-Rendering loop pattern to follow:
-```typescript
-function render(ctx: CanvasRenderingContext2D, state: SimulationState) {
-  ctx.clearRect(0, 0, WIDTH, HEIGHT);
-  drawPitch(ctx);
-  drawBall(ctx, state.ball);        // scale sprite by Z height, offset shadow
-  state.players.forEach(p => drawPlayer(ctx, p));
-  drawUI(ctx, state);
-}
-```
-
-Ball height rendering: scale the ball sprite by `1 + (z / MAX_Z) * 0.5` and draw a shadow at the ground position — the project already specifies this approach.
-
-**Confidence:** HIGH — Canvas 2D at this scale is standard and well-benchmarked.
-
----
-
-### Entity-Component System (ECS)
-
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| **Structured plain objects (no ECS library)** | — | Player and ball state representation | **Recommended** — see rationale |
-| bitecs | 0.3.x | High-performance ECS (ArrayBuffer-based) | Appropriate for thousands of entities; overkill for 23 entities |
-| miniplex | 2.x | Lightweight TypeScript-first ECS | Better fit than bitecs; still adds abstraction overhead |
-
-**Recommendation: No ECS library — use typed plain objects.**
-
-Rationale: ECS libraries are designed for worlds with thousands of heterogeneous entities where cache-locality of component arrays matters. This simulation has exactly 23 entities (22 players + 1 ball), all of the same fundamental structure. The performance benefit of an ECS is zero. The cognitive overhead is real.
-
-Recommended data model:
-
-```typescript
-interface Player {
-  id: string;
-  position: Vec2;
-  velocity: Vec2;
-  // Physical attributes
-  pace: number;
-  stamina: number;
-  strength: number;
-  // Technical attributes
-  passing: number;
-  shooting: number;
-  dribbling: number;
-  // Personality vector
-  directness: number;
-  risk_appetite: number;
-  composure: number;
-  creativity: number;
-  work_rate: number;
-  aggression: number;
-  anticipation: number;
-  flair: number;
-  // Runtime state
-  fatigue: number;
-  role: Role;
-  tacticalAnchor: Vec2;
-}
-
-interface Ball {
-  position: Vec2;
-  velocity: Vec2;
-  z: number;        // height
-  vz: number;       // vertical velocity
-  carrier: string | null;
-}
-```
-
-This is plain TypeScript. Zero dependencies. Fully typed. Directly debuggable.
-
-**Confidence:** HIGH — over-engineering with ECS for 23 entities is a well-documented mistake in game dev.
-
----
-
-### Simulation Architecture
-
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| **Dedicated simulation loop + requestAnimationFrame decoupling** | — | Separate sim ticks from render frames | Project requirement; enables headless simulation and future speed-up/replay |
-| Web Workers | — | Offload simulation from main thread (optional, Phase 2+) | Keeps UI responsive; worth adding if main thread jank appears |
-
-**Recommended architecture:**
-
-```
-SimulationEngine (pure functions, no DOM)
-  ├── tick(state, dt): SimulationState  — deterministic state machine
-  ├── Ball physics
-  ├── Player steering
-  ├── Utility AI evaluation
-  └── Contact resolution
-
-MatchRenderer (Canvas 2D, reads state only)
-  └── render(ctx, state): void
-
-GameLoop (coordinates the two)
-  ├── Simulation: fixed 30Hz tick (33ms)
-  └── Render: 60fps via requestAnimationFrame with interpolation
-```
-
-Fixed-step simulation with render interpolation is the standard pattern for deterministic game engines. The simulation state at t and t+1 is lerped for smooth rendering at 60fps even when sim runs at 30Hz.
-
-**Confidence:** HIGH — this architecture is the textbook approach for deterministic simulations.
-
----
-
-### State Management (Management Screens)
-
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| **Vanilla TypeScript signals/reactive stores** | — | Squad, tactics, league table state outside match | No framework needed for a personal project; reactive stores are ~30 lines |
-| Preact + Preact Signals | 10.x + 1.x | UI components for management screens | Lightweight (3KB), fast, React-compatible API, signals are perfect for game state |
-
-**Recommendation: Preact + Preact Signals for management screens.**
-
-Rationale: The match itself is Canvas-rendered. The management screens (squad view, tactics board, league table, training) are standard UI. Preact is 3KB vs React's 45KB, has a simpler mental model, and Preact Signals (fine-grained reactivity) are a natural fit for game state that changes frequently and partially. No need for Redux/Zustand — signals handle this cleanly.
-
-**Not:** React (too heavy for a personal browser game), Vue (different paradigm, no benefit here), Svelte (build complexity without payoff at this scale).
-
----
-
-### Procedural Generation
-
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| **Custom pixel art generator** | — | Player portraits from trait combinations | Project requirement: no external API |
-| seedrandom | 3.x | Seeded PRNG for reproducible generation | Needed so the same player always generates the same portrait |
-
-Player name generation: use a small bundled dataset of first/last names by nationality — no library needed. ~200 names per nationality × 10 nationalities = 2000-entry JSON file, loaded once.
-
----
-
-### Supporting Utilities
+### Supporting Libraries
 
 | Library | Version | Purpose | When to Use |
 |---------|---------|---------|-------------|
-| `gl-matrix` or custom `Vec2` | — | 2D vector math | Custom Vec2 is 50 lines and avoids any import overhead; use if you want `add`, `scale`, `normalize`, `dot`, `length` typed and tree-shakeable |
-| `seedrandom` | 3.x | Seeded PRNG | Reproducible match replays, portrait generation |
-| `zod` | 3.x | Runtime validation of save/load data | Parse season save files safely |
-| `@vitest/coverage-v8` | 1.x | Test coverage | Use from day one for physics and agent logic |
+| helmet | ^8.1.0 | Security headers | Always -- one line to set Content-Security-Policy, X-Frame-Options, etc. No config needed. |
+| compression | ^1.8.0 | Gzip responses | Always -- match engine state and squad data payloads can be large JSON blobs. |
 
-**Vec2 recommendation: Write a minimal custom class.**
+### Development Tools
 
-```typescript
-class Vec2 {
-  constructor(public x: number, public y: number) {}
-  add(v: Vec2): Vec2 { return new Vec2(this.x + v.x, this.y + v.y); }
-  scale(s: number): Vec2 { return new Vec2(this.x * s, this.y * s); }
-  length(): number { return Math.sqrt(this.x * this.x + this.y * this.y); }
-  normalize(): Vec2 { const l = this.length(); return l > 0 ? this.scale(1/l) : new Vec2(0, 0); }
-  dot(v: Vec2): number { return this.x * v.x + this.y * v.y; }
-  distanceTo(v: Vec2): number { return this.add(v.scale(-1)).length(); }
-}
-```
-
-This is 10 lines. `gl-matrix` is optimized for WebGL matrix operations — the API is awkward for 2D game logic.
+| Tool | Version | Purpose | Notes |
+|------|---------|---------|-------|
+| tsx | ^4.21.0 | Run TypeScript server without compile step | `tsx watch server/index.ts` for dev with auto-restart. Uses esbuild internally -- sub-second restarts. Replaces the old ts-node + nodemon combo entirely. |
+| @types/express | ^5.0.0 | Express TypeScript types | Required for Express 5 type coverage. |
+| @types/express-session | ^1.18.0 | Session types | TypeScript types for express-session. |
+| @types/compression | ^1.7.5 | Compression types | TypeScript types for compression middleware. |
 
 ---
 
-## Alternatives Considered
+## What Does NOT Need a Dependency
 
-| Category | Recommended | Alternative | Why Not |
-|----------|-------------|-------------|---------|
-| Physics engine | Custom | Matter.js | Over-engineered for steering-based agents; fights velocity overrides |
-| Physics engine | Custom | Rapier (WASM) | 2-4MB WASM bundle; accurate rigid-body physics not needed |
-| Physics engine | Custom | Planck.js | Box2D port; contact constraints irrelevant for steering agents |
-| Rendering | Canvas 2D | PixiJS 8 | WebGL overhead unjustified for 23 entities; reach for this at 500+ entities |
-| Rendering | Canvas 2D | Three.js | 3D library; project constraint is 2D |
-| Rendering | Canvas 2D | Phaser 3 | Full game framework; ~1MB bundle; manages its own loop, camera, physics — fights simulation/render separation |
-| AI | Custom | Yuka | Adds unnecessary abstraction over utility scoring; personality vectors don't fit library's data model |
-| ECS | Plain objects | bitecs | Designed for 10K+ entities; 23 entities need no cache optimization |
-| ECS | Plain objects | miniplex | Better fit than bitecs but still adds API surface for no benefit |
-| UI | Preact | React | 15x larger bundle for same capability |
-| UI | Preact | Svelte | Compilation step adds complexity; Svelte's reactivity is great but Preact Signals match it for this use case |
-| Build | Vite | Webpack | 10-100x slower rebuild; no benefit |
-| Build | Vite | Parcel | Less control over chunking; Vite is more ecosystem-standard |
-| State | Preact Signals | Zustand | No benefit without React; Signals are native to Preact |
-| State | Preact Signals | Redux | Massively over-engineered for a personal game project |
+| Capability | Why No Package |
+|------------|----------------|
+| HTTP client for randomuser.me | Node 18+ has global `fetch()`. Native fetch handles simple GET requests. |
+| Password hashing | `crypto.createHash('sha256')` is built into Node. This is game-save protection for a personal project, not banking auth. SHA-256 with a per-game salt is sufficient. |
+| Session store | Write a ~40-line custom store using better-sqlite3 implementing `get/set/destroy/touch`. Existing packages (`better-sqlite3-session-store`, `connect-sqlite3`) have low download counts and uncertain compatibility with better-sqlite3 v12. Rolling your own is trivial and fully under your control. |
+| CORS middleware | In production, Express serves both API and static files from the same origin -- no CORS needed. In dev, Vite's proxy handles it. |
+| dotenv | Node 20+ supports `--env-file .env` natively. But for a personal project, hardcoding the port in the server file is fine. |
+| Migration library | ~5 tables. Use `CREATE TABLE IF NOT EXISTS` in a schema init function. Track schema version with SQLite's `PRAGMA user_version`. |
+| Process manager (PM2) | One Node process. Use a systemd service file -- already available on the VPS. |
 
 ---
 
-## Critical "Do Not Use" List
+## TypeScript Configuration for Server
 
-| Tool/Library | Reason |
-|-------------|--------|
-| **Phaser 3** | Monolithic game framework that owns the game loop, physics, and rendering. Directly conflicts with the project's core architectural requirement: separate simulation from rendering. Using Phaser means fighting it to run headless. |
-| **Three.js** | 3D library. Project is 2D. |
-| **Unity/WebGL export** | Not browser-native TypeScript. |
-| **Box2D (direct)** | C++ port; Planck.js is the JS port and even that is overkill. |
-| **Any game engine that owns the loop** | BabylonJS, PlayCanvas, Construct — all take over rendering architecture. Non-starters. |
+The existing `tsconfig.json` targets the browser (includes `DOM` libs, uses `bundler` moduleResolution, sets `noEmit`). The server needs a separate config for IDE type-checking.
 
----
+**Create `tsconfig.server.json`:**
 
-## Installation
-
-```bash
-# Initialize project
-npm create vite@latest fergie-time -- --template vanilla-ts
-cd fergie-time
-
-# Dev dependencies
-npm install -D vitest @vitest/coverage-v8 typescript
-
-# Runtime dependencies (minimal)
-npm install preact @preact/signals seedrandom zod
-npm install -D @types/seedrandom
-
-# Type-check
-npx tsc --noEmit
-```
-
-**Recommended `tsconfig.json` settings:**
 ```json
 {
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "lib": ["ES2022"],
     "strict": true,
-    "noUncheckedIndexedAccess": true,
-    "exactOptionalPropertyTypes": true
+    "noEmit": true,
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "esModuleInterop": true,
+    "noUncheckedIndexedAccess": true
+  },
+  "include": ["server"]
+}
+```
+
+tsx handles actual execution -- this config is for IDE type-checking and `tsc --noEmit` validation only.
+
+---
+
+## Project Structure Addition
+
+```
+fergie-time/
+  server/                  <-- NEW: all backend code lives here
+    index.ts               <-- Express app entry, static file serving
+    db.ts                  <-- SQLite connection + schema init (CREATE TABLE IF NOT EXISTS)
+    routes/
+      auth.ts              <-- POST /api/auth/create, POST /api/auth/login
+      game.ts              <-- POST /api/game/save, GET /api/game/load
+      players.ts           <-- GET /api/players/names (triggers cache fill if needed)
+    services/
+      nameCache.ts         <-- Fetch from randomuser.me, write to SQLite cache
+      sessionStore.ts      <-- Custom express-session store (~40 lines)
+  src/                     <-- EXISTING: frontend code (unchanged)
+  data/                    <-- NEW: runtime data (gitignored)
+    fergie-time.db         <-- Created at first startup
+  tsconfig.server.json     <-- NEW: server-specific TS config
+```
+
+Add to `.gitignore`:
+```
+data/
+*.db
+```
+
+---
+
+## Vite Dev Proxy Configuration
+
+During development, Vite proxies `/api` calls to the Express dev server. No CORS needed.
+
+```typescript
+// vite.config.ts -- add server.proxy
+import { defineConfig } from 'vite';
+
+export default defineConfig({
+  build: {
+    target: 'es2022',
+  },
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
+    },
+  },
+});
+```
+
+---
+
+## Production Serving Strategy
+
+Express serves everything in production. No nginx reverse proxy needed for a single-site personal project.
+
+```typescript
+// server/index.ts -- production static serving
+import express from 'express';
+import path from 'path';
+
+const app = express();
+
+// API routes first
+app.use('/api/auth', authRouter);
+app.use('/api/game', gameRouter);
+app.use('/api/players', playersRouter);
+
+// Serve Vite build output
+app.use(express.static(path.join(import.meta.dirname, '../dist')));
+
+// SPA fallback -- all non-API routes serve index.html
+app.get('*', (_req, res) => {
+  res.sendFile(path.join(import.meta.dirname, '../dist/index.html'));
+});
+
+app.listen(3001);
+```
+
+---
+
+## randomuser.me Integration Details
+
+**API endpoint:** `https://randomuser.me/api/1.4/`
+**Auth:** None required (no API key).
+**Rate limit:** Not documented. Treat as generous but don't abuse.
+**Max per request:** 5,000 results.
+
+**Fetch strategy:** Bulk-fetch at game creation time, cache in SQLite, never hit the API during gameplay.
+
+```
+GET https://randomuser.me/api/1.4/?results=100&nat=gb&inc=name,nat&noinfo
+```
+
+Relevant nationalities for a football game: GB, IE, FR, DE, ES, NL, DK, NO, FI, BR, MX, TR, RS.
+
+**Caching approach:**
+1. On game creation, fetch 500+ names across relevant nationalities (5 requests of 100, varied `nat` params).
+2. Store in a `player_names` table: `id, first_name, last_name, nationality, used (boolean)`.
+3. When generating a player, draw an unused name matching the desired nationality, mark as used.
+4. If cache runs low for a nationality, fetch another batch in background.
+5. The `seed` parameter enables reproducible results for tests.
+
+**Fallback:** If randomuser.me is down during game creation, fall back to the existing procedural name generator (already in codebase). Names are cosmetic, not gameplay-critical.
+
+---
+
+## Session / Auth Strategy
+
+This is a single-player personal project. "Auth" is game-save identification, not security.
+
+**Flow:**
+1. Landing page: "Create New Game" or "Continue Game"
+2. Create: Pick team name + set password. Server creates game record, sets session cookie.
+3. Continue: Enter team name + password. Server verifies, sets session cookie.
+4. Session cookie identifies which game save to load for all subsequent API calls.
+
+**Implementation:**
+- express-session with a custom SQLite-backed store (see `server/services/sessionStore.ts`).
+- Password stored as `SHA-256(password + game_id)` using Node's built-in `crypto` module.
+- No registration flow, no email, no OAuth, no password reset. If you forget your password, start a new game.
+
+---
+
+## Installation
+
+```bash
+# Core server dependencies
+npm install express better-sqlite3 express-session helmet compression
+
+# Type definitions (dev only)
+npm install -D tsx @types/express @types/better-sqlite3 @types/express-session @types/compression
+```
+
+## Package.json Script Additions
+
+```json
+{
+  "scripts": {
+    "dev": "vite",
+    "dev:server": "tsx watch server/index.ts",
+    "build": "tsc && vite build",
+    "start": "NODE_ENV=production tsx server/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   }
 }
 ```
 
-Enable `noUncheckedIndexedAccess` from day one — array accesses in agent logic must be bounds-checked. Agent AI bugs from undefined array access are hard to debug mid-match.
+For development: run `npm run dev:server` and `npm run dev` in two terminals. The Vite proxy connects them. Solo dev, two terminal tabs is simpler than a `concurrently` dependency.
+
+For production: `npm run build && npm run start` -- Express serves the built static files and the API from one process.
 
 ---
 
-## Confidence Assessment by Area
+## Deployment Changes
 
-| Area | Confidence | Notes |
-|------|------------|-------|
-| Build tooling (Vite + Vitest) | HIGH | Vite is the clear standard for TS browser projects as of 2025 |
-| Physics: custom over library | HIGH | Pattern well-established for steering-agent simulations |
-| Steering behaviors: custom | HIGH | Reynolds model is decades-proven; no JS library improves on direct implementation |
-| Utility AI: custom | HIGH | Scoring pattern, not a framework problem; verified by project design brief |
-| Canvas 2D rendering | HIGH | Sufficient for 23 entities at 60fps; well-benchmarked |
-| ECS: plain objects | HIGH | 23 entities need no cache optimization |
-| Preact for management screens | MEDIUM | Good fit but project is early; could defer UI framework choice to when screens are built |
-| Vec2: custom class | MEDIUM | Alternative is importing gl-matrix; both are valid |
-| Web Workers for simulation | LOW | May not be needed; profile first before adding worker complexity |
-| Pixel art procedural generator | LOW | No standard library; implementation approach needs Phase-specific research |
+Current deploy workflow (`deploy.yml`) does `git pull && npm run build`. It needs to become:
+
+1. `git pull`
+2. `npm ci` (install production deps -- Express, better-sqlite3, etc.)
+3. `npm run build` (Vite builds the frontend)
+4. `systemctl restart fergie-time` (restart the Express server)
+
+**better-sqlite3 note:** It's a native addon. The VPS needs build tools installed: `apt install python3 make g++`. This is a one-time setup. After that, `npm ci` handles compilation automatically.
+
+**SQLite file location:** Store at `/var/www/vhosts/psybob.uk/ft.psybob.uk/data/fergie-time.db`. This directory is gitignored, so `git pull` never touches it. The database persists across deployments.
+
+**systemd service:**
+```ini
+[Unit]
+Description=Fergie Time Game Server
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/vhosts/psybob.uk/ft.psybob.uk
+ExecStart=/root/.nvm/versions/node/v22/bin/npx tsx server/index.ts
+Restart=always
+Environment=NODE_ENV=production
+Environment=PORT=3001
+
+[Install]
+WantedBy=multi-user.target
+```
+
+If other sites share the VPS, nginx reverse-proxies to port 3001. If this is the only site, Express can listen on port 80 directly.
+
+---
+
+## Alternatives Considered
+
+| Recommended | Alternative | Why Not |
+|-------------|-------------|---------|
+| Express 5 | Fastify | Fastify is marginally faster but Express has broader middleware ecosystem. Performance difference is irrelevant for a single-user game server. Project already decided on Express. |
+| Express 5 | Hono | Excellent for edge/Cloudflare Workers but adds unnecessary abstraction for a VPS deployment. |
+| better-sqlite3 (raw SQL) | Drizzle ORM | ORM adds abstraction over ~5 tables. Raw SQL with prepared statements is clearer and faster. Zod already handles runtime validation. |
+| better-sqlite3 | PocketBase | External service, separate process, its own auth system. More complexity than a direct SQLite driver for this use case. |
+| better-sqlite3 | libsql / Turso | Cloud-hosted SQLite. No benefit for a single-VPS deployment. Adds network latency to what should be a local file read. |
+| express-session (cookies) | JWT tokens | JWTs solve stateless auth across multiple services. This is one server, one user. Cookie sessions are simpler. |
+| Custom session store | better-sqlite3-session-store npm | Low download count, uncertain compatibility with better-sqlite3 v12. The store interface is 4 methods. |
+| tsx | Node --experimental-strip-types | Node's native TS stripping is still experimental, doesn't support all TS features (enums, decorators). tsx is stable and proven. |
+| Native fetch | axios | Node 18+ includes global fetch. Zero reason to add a dependency for GET requests. |
+| SHA-256 | bcrypt | bcrypt is correct for real auth. This is game-save protection. SHA-256 with salt requires zero additional dependencies. |
+
+---
+
+## What NOT to Add
+
+| Avoid | Why | Do Instead |
+|-------|-----|------------|
+| Prisma / TypeORM / Drizzle ORM | Massive overkill for 5 tables. Adds build steps, generated types, migration tooling. | Raw SQL with better-sqlite3 prepared statements. Zod for validation. |
+| Socket.IO / WebSockets | No real-time requirements. Game state is request/response. | Standard REST endpoints. |
+| Redis | Session/cache store for a single-user game is absurd. | SQLite stores sessions directly. |
+| Passport.js | Auth framework for "team name + password" is extreme over-engineering. | Two endpoints, ~30 lines of code total. |
+| PM2 | Process manager for one Node process. | systemd service file. |
+| concurrently / npm-run-all | Package to run two dev commands together. | Two terminal tabs. |
+| knex / umzug migrations | Migration framework for ~5 tables with one developer. | `CREATE TABLE IF NOT EXISTS` + `PRAGMA user_version`. |
+| cors middleware | Same-origin in production (Express serves everything). Vite proxy in dev. | No CORS needed at all. |
+
+---
+
+## Version Compatibility
+
+| Package | Requires | Notes |
+|---------|----------|-------|
+| Express ^5.2.1 | Node 18+ | v5 dropped support for Node <18 |
+| better-sqlite3 ^12.6.2 | Node 18+, build tools (python3, make, g++) | Native addon, compiled on install |
+| tsx ^4.21.0 | Node 18+ | Based on esbuild |
+| express-session ^1.19.0 | Express 4.x or 5.x | Compatible with both |
+| Existing Vite ^7.3.1 | Node 18+ | Already in use |
+
+The VPS deployment workflow already uses nvm -- ensure Node 22 LTS is installed. All packages are compatible.
 
 ---
 
 ## Sources
 
-- Project design brief (`.planning/PROJECT.md`) — match engine spec, personality vector design
-- Craig Reynolds, "Steering Behaviors for Autonomous Characters" (1999) — canonical steering behavior reference
-- Training data knowledge of ecosystem (cutoff: August 2025) — Vite 5, Vitest 1, Preact 10, PixiJS 8, Matter.js 0.19, bitecs 0.3, Rapier 0.12
-- Note: WebSearch and WebFetch were unavailable during this research session. Version numbers should be verified against npm before use. Core architectural recommendations are high-confidence from first principles and are not version-dependent.
+- [Express npm](https://www.npmjs.com/package/express) -- v5.2.1 confirmed as latest (HIGH confidence)
+- [Express 5.1.0 now default on npm](https://expressjs.com/2025/03/31/v5-1-latest-release.html) -- v5 transition details (HIGH confidence)
+- [better-sqlite3 npm](https://www.npmjs.com/package/better-sqlite3) -- v12.6.2 confirmed (HIGH confidence)
+- [better-sqlite3 GitHub](https://github.com/JoshuaWise/better-sqlite3) -- synchronous API design (HIGH confidence)
+- [randomuser.me documentation](https://randomuser.me/documentation) -- API v1.4, 21 nationalities, seed support, up to 5000 results per request (HIGH confidence)
+- [tsx npm](https://www.npmjs.com/package/tsx) -- v4.21.0, watch mode (HIGH confidence)
+- [Vite backend integration](https://vite.dev/guide/backend-integration) -- proxy configuration (HIGH confidence)
+- [express-session npm](https://www.npmjs.com/package/express-session) -- v1.19.0 (HIGH confidence)
+- [better-sqlite3-session-store npm](https://www.npmjs.com/package/better-sqlite3-session-store) -- evaluated and rejected due to low adoption; custom store recommended (MEDIUM confidence)
+
+---
+*Stack research for: Fergie Time v1.1 Data Layer*
+*Researched: 2026-03-06*
