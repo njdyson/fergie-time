@@ -191,6 +191,8 @@ export interface PlayerState {
   readonly duty: Duty;              // tactical duty (default: SUPPORT)
   readonly formationAnchor: Vec2;   // tactical home position
   readonly name?: string;           // display name (optional)
+  readonly age?: number;            // player age (17..34)
+  readonly height?: number;         // player height in cm (165..200)
 }
 
 // Match events
