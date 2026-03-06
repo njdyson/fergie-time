@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createInitialTable, updateTable, sortTable } from './leagueTable.ts';
-import type { TeamRecord } from './leagueTable.ts';
+import type { TeamRecord as _TeamRecord } from './leagueTable.ts';
 
 const TEAMS = [
   { id: 'a', name: 'Team A' },

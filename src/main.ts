@@ -145,12 +145,10 @@ function updateCurrentScreen(): void {
   if (currentScreen === ScreenId.TABLE) tableScreenView.update(seasonState, seasonState.playerTeamId);
 }
 
-const tacticsScreenEl = document.getElementById('tactics-screen')!;
 const tacticsCenterEl = document.getElementById('tactics-center')!;
 const tacticsLeftContentEl = document.getElementById('tactics-left-content')!;
 const tacticsRightEl = document.getElementById('tactics-right')!;
 const canvasWrapperEl = document.getElementById('canvas-wrapper')!;
-const pitchCenterEl = document.getElementById('pitch-center')!;
 // Original parent for canvas wrapper (pitch-center inside pitch-area)
 const canvasWrapperParent = canvasWrapperEl.parentElement!;
 // Original parent for right panel (pitch-area)

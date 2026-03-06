@@ -3,9 +3,9 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import seedrandom from 'seedrandom';
 import type { PlayerState } from '../simulation/types.ts';
 import { Duty } from '../simulation/types.ts';
+import { Vec2 } from '../simulation/math/vec2.ts';
 
 // Mock quickSimMatch to avoid running real engine in season unit tests
 vi.mock('./quickSim.ts', () => ({
@@ -21,7 +21,7 @@ import {
   startNewSeason,
   recoverFatigue,
 } from './season.ts';
-import type { SeasonState, SquadSelection, SeasonTeam } from './season.ts';
+import type { SquadSelection } from './season.ts';
 
 // --- helpers ---
 
@@ -29,8 +29,8 @@ function makePlayer(overrides: Partial<PlayerState> = {}): PlayerState {
   return {
     id: overrides.id ?? 'p-0',
     teamId: overrides.teamId ?? 'home',
-    position: { x: 0, y: 0 },
-    velocity: { x: 0, y: 0 },
+    position: Vec2.zero(),
+    velocity: Vec2.zero(),
     attributes: {
       pace: 0.6, strength: 0.6, stamina: 0.6, dribbling: 0.6,
       passing: 0.6, shooting: 0.6, tackling: 0.6, aerial: 0.6,
@@ -43,7 +43,7 @@ function makePlayer(overrides: Partial<PlayerState> = {}): PlayerState {
     fatigue: 0,
     role: overrides.role ?? 'CM',
     duty: Duty.SUPPORT,
-    formationAnchor: { x: 0, y: 0 },
+    formationAnchor: Vec2.zero(),
     name: overrides.name ?? 'Test Player',
     ...overrides,
   };

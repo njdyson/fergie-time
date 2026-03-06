@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { generateFixtures } from './fixtures.ts';
-import type { Fixture } from './fixtures.ts';
+import type { Fixture as _Fixture } from './fixtures.ts';
 
 function makeTeamIds(count: number): string[] {
   return Array.from({ length: count }, (_, i) => `team-${i}`);

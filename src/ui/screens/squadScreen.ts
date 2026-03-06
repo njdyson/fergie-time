@@ -333,7 +333,7 @@ export class SquadScreen {
     document.body.appendChild(popup);
   }
 
-  private startShirtNumberEdit(playerId: string, cellEl: HTMLElement): void {
+  private startShirtNumberEdit(playerId: string, _cellEl: HTMLElement): void {
     // Close any existing picker
     this.container.querySelector('.shirt-picker-popup')?.remove();
 
