@@ -118,10 +118,19 @@ export function show(
       <button id="ft-continue-btn" style="display:block; margin:16px auto 0; padding:10px 32px; background:#60a5fa; color:#0f172a; border:none; border-radius:4px; font:bold 13px/1 monospace; cursor:pointer; text-transform:uppercase; letter-spacing:0.05em;">Continue</button>
     </div>`;
 
-  // Wire the Continue button
+  // Wire the Continue button — show "Simulating..." state while AI batch runs
   overlay.querySelector('#ft-continue-btn')?.addEventListener('click', () => {
-    hide();
-    onContinue?.();
+    const btn = overlay.querySelector('#ft-continue-btn') as HTMLButtonElement | null;
+    if (btn) {
+      btn.textContent = 'Simulating...';
+      btn.disabled = true;
+      btn.style.opacity = '0.6';
+    }
+    // Defer callback to allow UI repaint before synchronous AI sim batch
+    setTimeout(() => {
+      hide();
+      onContinue?.();
+    }, 50);
   });
 
   if (!overlay.parentElement) {
