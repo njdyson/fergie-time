@@ -115,7 +115,7 @@ export function show(
         ${homeTable}
         ${awayTable}
       </div>
-      <button id="ft-continue-btn" style="display:block; margin:16px auto 0; padding:10px 32px; background:#60a5fa; color:#0f172a; border:none; border-radius:4px; font:bold 13px/1 monospace; cursor:pointer; text-transform:uppercase; letter-spacing:0.05em;">Continue</button>
+      <button id="ft-continue-btn" style="display:block; margin:16px auto 0; padding:10px 32px; background:#60a5fa; color:#0f172a; border:none; border-radius:4px; font:bold 13px/1 'Segoe UI',system-ui,sans-serif; cursor:pointer; text-transform:uppercase; letter-spacing:0.05em;">Continue</button>
     </div>`;
 
   // Wire the Continue button — show "Simulating..." state while AI batch runs

@@ -165,116 +165,146 @@ export function validateSquadSelection(
   return { valid: true };
 }
 
+/** Result of recording the player's match before AI sims run. */
+export interface MatchdayProgress {
+  state: SeasonState;
+  aiFixtures: Fixture[];
+}
+
+/** Info emitted after each AI fixture is simulated. */
+export interface AIFixtureResult {
+  homeName: string;
+  awayName: string;
+  homeGoals: number;
+  awayGoals: number;
+}
+
+/**
+ * Step 1: Record the player's result and return the list of AI fixtures to sim.
+ */
+export function recordPlayerResult(
+  state: SeasonState,
+  playerResult: { homeGoals: number; awayGoals: number },
+  playerWasHome: boolean,
+): MatchdayProgress {
+  const md = state.currentMatchday;
+  const mdFixtures = state.fixtures.filter(f => f.matchday === md);
+
+  let updatedTable = [...state.table.map(r => ({ ...r }))];
+  const updatedFixtures = [...state.fixtures];
+
+  const fixtureIndex = updatedFixtures.findIndex(
+    f => f.matchday === md &&
+      (f.homeTeamId === state.playerTeamId || f.awayTeamId === state.playerTeamId)
+  );
+
+  if (fixtureIndex >= 0) {
+    const homeGoals = playerWasHome ? playerResult.homeGoals : playerResult.awayGoals;
+    const awayGoals = playerWasHome ? playerResult.awayGoals : playerResult.homeGoals;
+
+    updatedFixtures[fixtureIndex] = {
+      ...updatedFixtures[fixtureIndex]!,
+      result: { homeGoals, awayGoals },
+    };
+
+    updatedTable = updateTable(
+      updatedTable,
+      updatedFixtures[fixtureIndex]!.homeTeamId,
+      updatedFixtures[fixtureIndex]!.awayTeamId,
+      homeGoals,
+      awayGoals,
+    );
+  }
+
+  const aiFixtures = mdFixtures.filter(
+    f => f.homeTeamId !== state.playerTeamId && f.awayTeamId !== state.playerTeamId
+  );
+
+  return {
+    state: { ...state, fixtures: updatedFixtures, table: updatedTable },
+    aiFixtures,
+  };
+}
+
+/**
+ * Step 2: Simulate a single AI fixture and return the updated state + result info.
+ */
+export function simOneAIFixture(
+  state: SeasonState,
+  fixture: Fixture,
+): { state: SeasonState; result: AIFixtureResult } {
+  const md = state.currentMatchday;
+  const homeTeam = state.teams.find(t => t.id === fixture.homeTeamId);
+  const awayTeam = state.teams.find(t => t.id === fixture.awayTeamId);
+
+  if (!homeTeam || !awayTeam) return { state, result: { homeName: '', awayName: '', homeGoals: 0, awayGoals: 0 } };
+
+  const homeSquad = homeTeam.squad.map(p => ({
+    ...p, fatigue: state.fatigueMap.get(p.id) ?? 0,
+  }));
+  const awaySquad = awayTeam.squad.map(p => ({
+    ...p, fatigue: state.fatigueMap.get(p.id) ?? 0,
+  }));
+
+  const matchConfig: MatchConfig = {
+    seed: `${state.seed}-md-${md}-${fixture.homeTeamId}-${fixture.awayTeamId}`,
+    homeRoster: homeSquad.slice(0, 11),
+    awayRoster: awaySquad.slice(0, 11),
+    homeBench: homeSquad.slice(11),
+    awayBench: awaySquad.slice(11),
+  };
+  const simResult = quickSimMatch(matchConfig);
+
+  const updatedFixtures = [...state.fixtures];
+  const fixtureIndex = updatedFixtures.findIndex(
+    f => f.matchday === md && f.homeTeamId === fixture.homeTeamId && f.awayTeamId === fixture.awayTeamId
+  );
+  if (fixtureIndex >= 0) {
+    updatedFixtures[fixtureIndex] = { ...updatedFixtures[fixtureIndex]!, result: simResult };
+  }
+
+  const updatedTable = updateTable(
+    [...state.table.map(r => ({ ...r }))],
+    fixture.homeTeamId, fixture.awayTeamId,
+    simResult.homeGoals, simResult.awayGoals,
+  );
+
+  return {
+    state: { ...state, fixtures: updatedFixtures, table: updatedTable },
+    result: {
+      homeName: homeTeam.name,
+      awayName: awayTeam.name,
+      homeGoals: simResult.homeGoals,
+      awayGoals: simResult.awayGoals,
+    },
+  };
+}
+
+/**
+ * Step 3: Finalize the matchday — apply fatigue recovery and advance.
+ */
+export function finalizeMatchday(state: SeasonState): SeasonState {
+  const updatedFatigueMap = new Map<string, number>();
+  for (const [playerId, currentFatigue] of state.fatigueMap) {
+    updatedFatigueMap.set(playerId, recoverFatigue(currentFatigue, 7));
+  }
+  return { ...state, currentMatchday: state.currentMatchday + 1, fatigueMap: updatedFatigueMap };
+}
+
+/**
+ * Legacy all-in-one advanceMatchday (used by tests).
+ */
 export function advanceMatchday(
   state: SeasonState,
   playerResult: { homeGoals: number; awayGoals: number },
   playerWasHome: boolean,
 ): SeasonState {
-  const md = state.currentMatchday;
-
-  // Get all fixtures for this matchday
-  const mdFixtures = state.fixtures.filter(f => f.matchday === md);
-
-  // Find the player's fixture
-  const playerFixture = mdFixtures.find(
-    f => f.homeTeamId === state.playerTeamId || f.awayTeamId === state.playerTeamId
-  );
-
-  let updatedTable = [...state.table.map(r => ({ ...r }))];
-  const updatedFixtures = [...state.fixtures];
-
-  // Record player result
-  if (playerFixture) {
-    const fixtureIndex = updatedFixtures.indexOf(
-      updatedFixtures.find(f =>
-        f.matchday === md &&
-        (f.homeTeamId === state.playerTeamId || f.awayTeamId === state.playerTeamId)
-      )!
-    );
-
-    if (fixtureIndex >= 0) {
-      // Determine correct home/away goals based on whether player was home
-      const homeGoals = playerWasHome ? playerResult.homeGoals : playerResult.awayGoals;
-      const awayGoals = playerWasHome ? playerResult.awayGoals : playerResult.homeGoals;
-
-      updatedFixtures[fixtureIndex] = {
-        ...updatedFixtures[fixtureIndex]!,
-        result: { homeGoals, awayGoals },
-      };
-
-      updatedTable = updateTable(
-        updatedTable,
-        updatedFixtures[fixtureIndex]!.homeTeamId,
-        updatedFixtures[fixtureIndex]!.awayTeamId,
-        homeGoals,
-        awayGoals,
-      );
-    }
-  }
-
-  // Simulate AI fixtures
-  const aiFixtures = mdFixtures.filter(
-    f => f.homeTeamId !== state.playerTeamId && f.awayTeamId !== state.playerTeamId
-  );
-
+  let { state: current, aiFixtures } = recordPlayerResult(state, playerResult, playerWasHome);
   for (const fixture of aiFixtures) {
-    const homeTeam = state.teams.find(t => t.id === fixture.homeTeamId);
-    const awayTeam = state.teams.find(t => t.id === fixture.awayTeamId);
-
-    if (homeTeam && awayTeam) {
-      // Apply fatigue from fatigueMap to squads for simulation
-      const homeSquad = homeTeam.squad.map(p => ({
-        ...p,
-        fatigue: state.fatigueMap.get(p.id) ?? 0,
-      }));
-      const awaySquad = awayTeam.squad.map(p => ({
-        ...p,
-        fatigue: state.fatigueMap.get(p.id) ?? 0,
-      }));
-
-      const matchConfig: MatchConfig = {
-        seed: `${state.seed}-md-${md}-${fixture.homeTeamId}-${fixture.awayTeamId}`,
-        homeRoster: homeSquad.slice(0, 11),
-        awayRoster: awaySquad.slice(0, 11),
-        homeBench: homeSquad.slice(11),
-        awayBench: awaySquad.slice(11),
-      };
-      const result = quickSimMatch(matchConfig);
-
-      // Record result on fixture
-      const fixtureIndex = updatedFixtures.findIndex(
-        f => f.matchday === md && f.homeTeamId === fixture.homeTeamId && f.awayTeamId === fixture.awayTeamId
-      );
-      if (fixtureIndex >= 0) {
-        updatedFixtures[fixtureIndex] = {
-          ...updatedFixtures[fixtureIndex]!,
-          result,
-        };
-      }
-
-      updatedTable = updateTable(
-        updatedTable,
-        fixture.homeTeamId,
-        fixture.awayTeamId,
-        result.homeGoals,
-        result.awayGoals,
-      );
-    }
+    const step = simOneAIFixture(current, fixture);
+    current = step.state;
   }
-
-  // Apply fatigue recovery (7 days between matchdays)
-  const updatedFatigueMap = new Map<string, number>();
-  for (const [playerId, currentFatigue] of state.fatigueMap) {
-    updatedFatigueMap.set(playerId, recoverFatigue(currentFatigue, 7));
-  }
-
-  return {
-    ...state,
-    fixtures: updatedFixtures,
-    table: updatedTable,
-    currentMatchday: md + 1,
-    fatigueMap: updatedFatigueMap,
-  };
+  return finalizeMatchday(current);
 }
 
 export function isSeasonComplete(state: SeasonState): boolean {

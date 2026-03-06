@@ -21,7 +21,7 @@ export class TableScreen {
     this.container = container;
     this.container.style.backgroundColor = BG;
     this.container.style.color = TEXT;
-    this.container.style.fontFamily = "'Courier New', monospace";
+    this.container.style.fontFamily = "'Segoe UI', system-ui, sans-serif";
     this.container.style.padding = '16px';
     this.container.style.boxSizing = 'border-box';
     this.container.style.overflowY = 'auto';

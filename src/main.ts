@@ -20,8 +20,8 @@ import { HubScreen } from './ui/screens/hubScreen.ts';
 import { FixturesScreen } from './ui/screens/fixturesScreen.ts';
 import { TableScreen } from './ui/screens/tableScreen.ts';
 import { SquadScreen } from './ui/screens/squadScreen.ts';
-import { createSeason, validateSquadSelection, isSeasonComplete, getChampion, startNewSeason, advanceMatchday } from './season/season.ts';
-import type { SeasonState } from './season/season.ts';
+import { createSeason, validateSquadSelection, isSeasonComplete, getChampion, startNewSeason, recordPlayerResult, simOneAIFixture, finalizeMatchday } from './season/season.ts';
+import type { SeasonState, AIFixtureResult } from './season/season.ts';
 
 // ============================================================
 // Canvas setup
@@ -112,7 +112,7 @@ function updateCurrentScreen(): void {
       championBanner.innerHTML = `
         <div style="color:#fbbf24; font-size:28px; font-weight:bold; margin-bottom:8px;">CHAMPION</div>
         <div style="color:#e2e8f0; font-size:22px; margin-bottom:16px;">${champion.teamName}</div>
-        <button id="btn-new-season" style="padding:10px 32px; background:#60a5fa; color:#0f172a; border:none; border-radius:4px; font:bold 13px/1 monospace; cursor:pointer; text-transform:uppercase; letter-spacing:0.05em;">New Season</button>
+        <button id="btn-new-season" style="padding:10px 32px; background:#60a5fa; color:#0f172a; border:none; border-radius:4px; font:bold 13px/1 'Segoe UI',system-ui,sans-serif; cursor:pointer; text-transform:uppercase; letter-spacing:0.05em;">New Season</button>
       `;
       hubScreenEl.appendChild(championBanner);
       document.getElementById('btn-new-season')?.addEventListener('click', () => {
@@ -142,6 +142,10 @@ function showScreen(screen: ScreenId): void {
     btn.classList.toggle('active', (btn as HTMLElement).dataset.screen === screen);
   });
   currentScreen = screen;
+  if (screen === ScreenId.MATCH) {
+    // Canvas was zero-sized while pitch-area was hidden; resize now that it's visible
+    requestAnimationFrame(() => syncCanvasSize());
+  }
   updateCurrentScreen();
 }
 
@@ -161,7 +165,7 @@ squadScreenEl.style.flexDirection = 'column';
 const squadKickoffBtn = document.createElement('button');
 squadKickoffBtn.id = 'squad-kickoff-btn';
 squadKickoffBtn.textContent = 'Kick Off';
-squadKickoffBtn.style.cssText = 'display:block; margin:16px auto; padding:10px 32px; background:#166534; color:#bbf7d0; border:2px solid #22c55e; border-radius:6px; font:bold 16px/1 monospace; cursor:pointer; text-transform:uppercase; flex-shrink:0;';
+squadKickoffBtn.style.cssText = 'display:block; margin:16px auto; padding:10px 32px; background:#166534; color:#bbf7d0; border:2px solid #22c55e; border-radius:6px; font:bold 16px/1 \'Segoe UI\',system-ui,sans-serif; cursor:pointer; text-transform:uppercase; flex-shrink:0;';
 
 // Reassign SquadScreen to use inner container
 const squadScreenViewInner = new SquadScreen(squadInnerEl);
@@ -581,18 +585,14 @@ function initMatchWithConfig(config: {
             }
           }
 
-          // 2. Record match result and run AI batch via advanceMatchday
+          // 2. Record player result, then sim AI fixtures one-by-one with vidiprinter
           const playerResult = { homeGoals: snap.score[0], awayGoals: snap.score[1] };
           const playerWasHome = currentMatchPlayerSide === 'home';
-          seasonState = advanceMatchday(seasonState, playerResult, playerWasHome);
+          const progress = recordPlayerResult(seasonState, playerResult, playerWasHome);
+          seasonState = progress.state;
 
-          // 3. Check season complete
-          if (isSeasonComplete(seasonState)) {
-            showScreen(ScreenId.HUB);
-            // Champion banner is rendered by updateCurrentScreen when it detects isSeasonComplete
-          } else {
-            showScreen(ScreenId.HUB);
-          }
+          // Show vidiprinter (manages its own screen visibility)
+          showVidiprinter(progress.aiFixtures);
         });
       }
     }
@@ -1216,6 +1216,102 @@ document.addEventListener('keydown', (e) => {
     renderer.showGhosts = !renderer.showGhosts;
   }
 });
+
+// ============================================================
+// Vidiprinter — show AI fixture results one-by-one
+// ============================================================
+
+function showVidiprinter(aiFixtures: import('./season/fixtures.ts').Fixture[]): void {
+  // Hide all screens and nav
+  for (const id of ['hub-screen', 'squad-screen', 'fixtures-screen', 'table-screen', 'pitch-area']) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  }
+  const navEl = document.getElementById('nav-tabs');
+  if (navEl) navEl.style.display = 'none';
+
+  // Create full-screen vidiprinter
+  const vidiEl = document.createElement('div');
+  vidiEl.id = 'vidiprinter';
+  vidiEl.style.cssText = `
+    background: #0a0a0a;
+    color: #fbbf24;
+    font-family: 'Courier New', monospace;
+    padding: 32px 24px;
+    height: 100%;
+    box-sizing: border-box;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  `;
+  vidiEl.innerHTML = `
+    <div style="max-width: 500px; width: 100%;">
+      <div style="color: #f59e0b; font-weight: bold; font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 6px;">
+        Matchday ${seasonState.currentMatchday}
+      </div>
+      <div style="color: #f59e0b; font-weight: bold; font-size: 13px; letter-spacing: 0.15em; margin-bottom: 20px; text-transform: uppercase; border-bottom: 1px solid #f59e0b; padding-bottom: 8px;" id="vidi-header">
+        ■ Results Coming In...
+      </div>
+      <div id="vidi-results"></div>
+    </div>
+  `;
+
+  // Insert into the app container (sibling of other screens)
+  const appContainer = document.getElementById('hub-screen')?.parentElement;
+  if (appContainer) {
+    appContainer.appendChild(vidiEl);
+  } else {
+    document.body.appendChild(vidiEl);
+  }
+
+  const resultsContainer = document.getElementById('vidi-results')!;
+  let i = 0;
+
+  function simNext(): void {
+    if (i >= aiFixtures.length) {
+      seasonState = finalizeMatchday(seasonState);
+
+      const header = document.getElementById('vidi-header')!;
+      header.textContent = '■ All Results In';
+      header.style.color = '#22c55e';
+      header.style.borderBottomColor = '#22c55e';
+
+      const btnRow = document.createElement('div');
+      btnRow.style.cssText = 'text-align: center; margin-top: 24px;';
+      const btn = document.createElement('button');
+      btn.textContent = 'Continue';
+      btn.style.cssText = 'padding: 10px 36px; background: #f59e0b; color: #0a0a0a; border: none; border-radius: 4px; font: bold 14px/1 \'Segoe UI\', system-ui, sans-serif; cursor: pointer; text-transform: uppercase; letter-spacing: 0.05em;';
+      btn.addEventListener('click', () => {
+        vidiEl.remove();
+        showScreen(ScreenId.HUB);
+      });
+      btnRow.appendChild(btn);
+      resultsContainer.parentElement!.appendChild(btnRow);
+      return;
+    }
+
+    const fixture = aiFixtures[i]!;
+    const step = simOneAIFixture(seasonState, fixture);
+    seasonState = step.state;
+    const r = step.result;
+
+    const row = document.createElement('div');
+    row.style.cssText = 'padding: 8px 0; opacity: 0; transition: opacity 0.3s; display: flex; align-items: center; border-bottom: 1px solid #1e293b;';
+    row.innerHTML = `
+      <span style="color: #e2e8f0; flex: 1; text-align: right; font-size: 14px;">${r.homeName}</span>
+      <span style="color: #fbbf24; font-weight: bold; width: 70px; text-align: center; font-size: 15px;">${r.homeGoals} - ${r.awayGoals}</span>
+      <span style="color: #e2e8f0; flex: 1; text-align: left; font-size: 14px;">${r.awayName}</span>
+    `;
+    resultsContainer.appendChild(row);
+    requestAnimationFrame(() => { row.style.opacity = '1'; });
+
+    i++;
+    setTimeout(simNext, 600 + Math.random() * 400);
+  }
+
+  setTimeout(simNext, 500);
+}
 
 // ============================================================
 // Squad Kick Off — start match from squad screen (season path)

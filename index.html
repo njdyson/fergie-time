@@ -16,6 +16,7 @@
         height: 100%;
         overflow: hidden;
         background: #111111;
+        font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
       }
 
       #app {
@@ -37,7 +38,7 @@
         color: #94a3b8;
         border: 1px solid #334155;
         border-radius: 3px;
-        font: bold 9px/1 monospace;
+        font: bold 9px/1 'Segoe UI', system-ui, sans-serif;
         cursor: pointer;
         text-align: center;
         user-select: none;
@@ -65,14 +66,14 @@
       }
 
       .bench-title {
-        font: bold 10px/1 monospace;
+        font: bold 10px/1 'Segoe UI', system-ui, sans-serif;
         color: #94a3b8;
         text-transform: uppercase;
         letter-spacing: 0.05em;
       }
 
       .bench-sub-counter {
-        font: bold 10px/1 monospace;
+        font: bold 10px/1 'Segoe UI', system-ui, sans-serif;
         color: #fb923c;
       }
 
@@ -98,18 +99,19 @@
       }
 
       .nav-tab {
-        padding: 6px 16px;
-        background: #1e293b;
-        color: #94a3b8;
-        border: 1px solid #334155;
-        border-radius: 3px;
-        font: bold 11px/1 monospace;
+        padding: 10px 24px;
+        background: transparent;
+        color: #64748b;
+        border: none;
+        border-bottom: 2px solid transparent;
+        font: 600 14px/1 'Segoe UI', system-ui, sans-serif;
         cursor: pointer;
         text-transform: uppercase;
-        letter-spacing: 0.05em;
+        letter-spacing: 0.08em;
+        transition: color 0.2s, border-color 0.2s;
       }
-      .nav-tab:hover { background: #334155; color: #f1f5f9; }
-      .nav-tab.active { background: #60a5fa; color: #0f172a; border-color: #60a5fa; }
+      .nav-tab:hover { color: #e2e8f0; border-bottom-color: #334155; }
+      .nav-tab.active { color: #f59e0b; border-bottom-color: #f59e0b; }
 
       .bench-player-btn:hover:not(:disabled) {
         background: #1e293b;
@@ -136,20 +138,20 @@
         border-radius: 50%;
         background: #334155;
         color: #e2e8f0;
-        font: bold 10px/20px monospace;
+        font: bold 10px/20px 'Segoe UI', system-ui, sans-serif;
         text-align: center;
         flex-shrink: 0;
       }
 
       .bench-player-role {
         color: #64748b;
-        font: 10px/1 monospace;
+        font: 10px/1 'Segoe UI', system-ui, sans-serif;
         min-width: 24px;
         text-align: right;
       }
 
       .bench-player-name {
-        font: 11px/1 monospace;
+        font: 11px/1 'Segoe UI', system-ui, sans-serif;
         color: #e2e8f0;
         flex: 1;
         overflow: hidden;
@@ -160,7 +162,7 @@
       /* ── Squad list ─────────────────────────────────────────── */
       .squad-list h4 {
         color: #94a3b8;
-        font: bold 10px/1 monospace;
+        font: bold 10px/1 'Segoe UI', system-ui, sans-serif;
         text-transform: uppercase;
         letter-spacing: 0.05em;
         margin: 0 0 6px;
@@ -205,7 +207,7 @@
         border-radius: 50%;
         background: #334155;
         color: #e2e8f0;
-        font: bold 10px/20px monospace;
+        font: bold 10px/20px 'Segoe UI', system-ui, sans-serif;
         text-align: center;
         flex-shrink: 0;
       }
@@ -217,7 +219,7 @@
       .squad-row-name {
         flex: 1;
         color: #e2e8f0;
-        font: 11px/1 monospace;
+        font: 11px/1 'Segoe UI', system-ui, sans-serif;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -225,7 +227,7 @@
 
       .squad-row-role {
         color: #64748b;
-        font: 10px/1 monospace;
+        font: 10px/1 'Segoe UI', system-ui, sans-serif;
         min-width: 24px;
         text-align: right;
       }
@@ -235,7 +237,7 @@
         height: 16px;
         border-radius: 2px;
         color: #fff;
-        font: bold 9px/16px monospace;
+        font: bold 9px/16px 'Segoe UI', system-ui, sans-serif;
         text-align: center;
         flex-shrink: 0;
       }
@@ -250,7 +252,7 @@
         border: 1px solid #334155;
         border-radius: 6px;
         padding: 8px 10px;
-        font: 11px/1.4 monospace;
+        font: 11px/1.4 'Segoe UI', system-ui, sans-serif;
         color: #e2e8f0;
         box-shadow: 0 4px 12px rgba(0,0,0,0.4);
       }
@@ -291,7 +293,7 @@
         font-size: 10px;
       }
       .squad-tooltip-section {
-        font: bold 9px/1 monospace;
+        font: bold 9px/1 'Segoe UI', system-ui, sans-serif;
         color: #64748b;
         text-transform: uppercase;
         letter-spacing: 0.05em;
@@ -315,7 +317,7 @@
         border: 1px solid #334155;
         border-radius: 3px;
         color: #94a3b8;
-        font: 11px/1 monospace;
+        font: 11px/1 'Segoe UI', system-ui, sans-serif;
         cursor: pointer;
         transition: background 0.1s, color 0.1s;
       }
@@ -378,14 +380,14 @@
         margin-bottom: 12px;
       }
       .ft-title {
-        font: bold 18px/1 monospace;
+        font: bold 18px/1 'Segoe UI', system-ui, sans-serif;
         color: #94a3b8;
         text-transform: uppercase;
         letter-spacing: 0.15em;
         margin-bottom: 4px;
       }
       .ft-score {
-        font: bold 32px/1 monospace;
+        font: bold 32px/1 'Segoe UI', system-ui, sans-serif;
         color: #f1f5f9;
       }
       .ft-tables {
@@ -397,7 +399,7 @@
         min-width: 0;
       }
       .ft-team-header {
-        font: bold 11px/1 monospace;
+        font: bold 11px/1 'Segoe UI', system-ui, sans-serif;
         text-transform: uppercase;
         letter-spacing: 0.1em;
         padding: 6px 8px;
@@ -415,7 +417,7 @@
       .ft-table {
         width: 100%;
         border-collapse: collapse;
-        font: 11px/1.4 monospace;
+        font: 11px/1.4 'Segoe UI', system-ui, sans-serif;
         color: #e2e8f0;
       }
       .ft-table thead th {
@@ -465,7 +467,7 @@
       .ft-dismiss {
         text-align: center;
         margin-top: 10px;
-        font: 10px/1 monospace;
+        font: 10px/1 'Segoe UI', system-ui, sans-serif;
         color: #475569;
       }
 
@@ -482,7 +484,7 @@
         color: #bbf7d0;
         border: 2px solid #22c55e;
         border-radius: 6px;
-        font: bold 16px/1 monospace;
+        font: bold 16px/1 'Segoe UI', system-ui, sans-serif;
         cursor: pointer;
         user-select: none;
         transition: background 0.1s;
@@ -503,7 +505,7 @@
         color: #ede9fe;
         border: 2px solid #a78bfa;
         border-radius: 6px;
-        font: bold 16px/1 monospace;
+        font: bold 16px/1 'Segoe UI', system-ui, sans-serif;
         cursor: pointer;
         user-select: none;
         transition: background 0.1s;
@@ -519,7 +521,7 @@
         color: #cbd5e1;
         border: 1px solid #334155;
         border-radius: 4px;
-        font: 13px/1 monospace;
+        font: 13px/1 'Segoe UI', system-ui, sans-serif;
         cursor: pointer;
         user-select: none;
         transition: background 0.1s, color 0.1s;
@@ -556,7 +558,7 @@
       #scoreboard {
         padding: 8px 10px 6px;
         border-bottom: 1px solid #334155;
-        font-family: monospace;
+        font-family: 'Segoe UI', system-ui, sans-serif;
       }
 
       .sb-main {
@@ -567,25 +569,25 @@
       }
 
       .sb-team {
-        font: bold 12px/1 monospace;
+        font: bold 12px/1 'Segoe UI', system-ui, sans-serif;
         color: #e2e8f0;
       }
 
       .sb-score {
-        font: bold 16px/1 monospace;
+        font: bold 16px/1 'Segoe UI', system-ui, sans-serif;
         color: #ffffff;
         letter-spacing: 2px;
       }
 
       .sb-time {
-        font: 11px/1 monospace;
+        font: 11px/1 'Segoe UI', system-ui, sans-serif;
         color: #7dd3fc;
         text-align: center;
         margin-top: 2px;
       }
 
       .sb-scorers {
-        font: 10px/1.4 monospace;
+        font: 10px/1.4 'Segoe UI', system-ui, sans-serif;
         color: #94a3b8;
         margin-top: 4px;
         border-top: 1px solid #334155;
@@ -628,13 +630,13 @@
       }
 
       .speed-control label {
-        font: 10px/1 monospace;
+        font: 10px/1 'Segoe UI', system-ui, sans-serif;
         color: #94a3b8;
         white-space: nowrap;
       }
 
       .speed-control .speed-value {
-        font: bold 11px/1 monospace;
+        font: bold 11px/1 'Segoe UI', system-ui, sans-serif;
         color: #60a5fa;
         min-width: 28px;
         text-align: right;
@@ -668,7 +670,7 @@
       /* ── Live stats (shown during play) ─────────────────── */
       #live-stats {
         padding: 8px 10px;
-        font: 12px/1.6 monospace;
+        font: 12px/1.6 'Segoe UI', system-ui, sans-serif;
         color: #cbd5e1;
         flex: 1;
       }
@@ -712,7 +714,7 @@
       }
 
       .stat-val {
-        font: bold 12px/1 monospace;
+        font: bold 12px/1 'Segoe UI', system-ui, sans-serif;
         min-width: 28px;
         text-align: right;
       }
@@ -723,7 +725,7 @@
 
       .stat-heading {
         color: #94a3b8;
-        font: bold 10px/1 monospace;
+        font: bold 10px/1 'Segoe UI', system-ui, sans-serif;
         text-transform: uppercase;
         letter-spacing: 0.05em;
         margin: 10px 0 4px;
@@ -748,12 +750,12 @@
       }
 
       .poss-header .stat-val {
-        font: bold 14px/1 monospace;
+        font: bold 14px/1 'Segoe UI', system-ui, sans-serif;
         color: #e2e8f0;
       }
 
       .poss-header .poss-label {
-        font: bold 10px/1 monospace;
+        font: bold 10px/1 'Segoe UI', system-ui, sans-serif;
         color: #94a3b8;
         text-transform: uppercase;
         letter-spacing: 0.05em;
@@ -818,7 +820,7 @@
 
       #right-panel h4, .tactics-section h4 {
         color: #94a3b8;
-        font: bold 10px/1 monospace;
+        font: bold 10px/1 'Segoe UI', system-ui, sans-serif;
         text-transform: uppercase;
         letter-spacing: 0.05em;
         margin: 10px 0 6px;
@@ -841,7 +843,7 @@
         display: flex;
         justify-content: space-between;
         color: #cbd5e1;
-        font: 11px monospace;
+        font: 11px 'Segoe UI', system-ui, sans-serif;
         margin-bottom: 3px;
       }
 
@@ -887,7 +889,7 @@
         background: #1e293b;
         color: #94a3b8;
         border: 1px solid #334155;
-        font: 11px/1 monospace;
+        font: 11px/1 'Segoe UI', system-ui, sans-serif;
         cursor: pointer;
         text-align: center;
         transition: background 0.1s, color 0.1s;
@@ -929,7 +931,7 @@
       }
 
       #tactic-selector .tactic-label {
-        font: bold 10px/1 monospace;
+        font: bold 10px/1 'Segoe UI', system-ui, sans-serif;
         color: #94a3b8;
         text-transform: uppercase;
         letter-spacing: 0.5px;
@@ -949,7 +951,7 @@
         color: #e2e8f0;
         border: 1px solid #334155;
         border-radius: 3px;
-        font: 11px/1 monospace;
+        font: 11px/1 'Segoe UI', system-ui, sans-serif;
         cursor: pointer;
       }
 
@@ -963,7 +965,7 @@
         color: #94a3b8;
         border: 1px solid #334155;
         border-radius: 3px;
-        font: 11px/1 monospace;
+        font: 11px/1 'Segoe UI', system-ui, sans-serif;
         cursor: pointer;
         transition: background 0.1s, color 0.1s;
       }
@@ -1006,7 +1008,7 @@
         background: #1e293b;
         color: #94a3b8;
         border: 1px solid #334155;
-        font: 11px/1 monospace;
+        font: 11px/1 'Segoe UI', system-ui, sans-serif;
         cursor: pointer;
         transition: background 0.1s, color 0.1s;
         text-align: center;
@@ -1039,7 +1041,7 @@
         display: none;
         flex-basis: 100%;
         text-align: center;
-        font: bold 11px monospace;
+        font: bold 11px 'Segoe UI', system-ui, sans-serif;
         color: #fbbf24;
         padding: 2px 0;
       }
@@ -1062,7 +1064,7 @@
         color: #94a3b8;
         border: 1px solid #334155;
         border-radius: 3px;
-        font: 10px/1 monospace;
+        font: 10px/1 'Segoe UI', system-ui, sans-serif;
         cursor: pointer;
         text-align: center;
         transition: background 0.1s;
@@ -1090,19 +1092,19 @@
         border-radius: 50%;
         background: #3366cc;
         color: white;
-        font: bold 11px/24px monospace;
+        font: bold 11px/24px 'Segoe UI', system-ui, sans-serif;
         text-align: center;
       }
 
       .player-header .player-name {
         color: #e2e8f0;
-        font: bold 12px monospace;
+        font: bold 12px 'Segoe UI', system-ui, sans-serif;
         flex: 1;
       }
 
       .player-header .player-role {
         color: #94a3b8;
-        font: 10px monospace;
+        font: 10px 'Segoe UI', system-ui, sans-serif;
       }
 
       /* ── Phase sub-tabs (in player panel) ────────────────────── */
@@ -1119,7 +1121,7 @@
         color: #64748b;
         border: 1px solid #334155;
         border-radius: 3px;
-        font: bold 9px/1 monospace;
+        font: bold 9px/1 'Segoe UI', system-ui, sans-serif;
         cursor: pointer;
         text-align: center;
       }
@@ -1143,7 +1145,7 @@
         background: #1a1a2eee;
         border-top: 2px solid #334155;
         padding: 4px 10px;
-        font: 13px/1.6 monospace;
+        font: 13px/1.6 'Segoe UI', system-ui, sans-serif;
         color: #e2e8f0;
         scroll-behavior: smooth;
         transition: background-color 0.6s ease;
@@ -1225,7 +1227,7 @@
 
       #tuning-panel h3 {
         color: #94a3b8;
-        font: bold 11px/1 monospace;
+        font: bold 11px/1 'Segoe UI', system-ui, sans-serif;
         text-transform: uppercase;
         letter-spacing: 0.05em;
         margin: 14px 0 6px;
@@ -1247,7 +1249,7 @@
         display: flex;
         justify-content: space-between;
         color: #cbd5e1;
-        font: 11px monospace;
+        font: 11px 'Segoe UI', system-ui, sans-serif;
         margin-bottom: 2px;
       }
 
@@ -1287,7 +1289,7 @@
     <div id="app">
 
       <!-- ── Nav tabs ──────────────────────────────────────────── -->
-      <nav id="nav-tabs" style="display:flex; gap:2px; padding:4px 8px; background:#0f172a; border-bottom:1px solid #1e293b;">
+      <nav id="nav-tabs" style="display:flex; justify-content:center; gap:8px; padding:0; background:#0a0a0a; border-bottom:1px solid #1e293b;">
         <button id="nav-hub"      class="nav-tab" data-screen="HUB">Hub</button>
         <button id="nav-squad"    class="nav-tab" data-screen="SQUAD">Squad</button>
         <button id="nav-fixtures" class="nav-tab" data-screen="FIXTURES">Fixtures</button>
