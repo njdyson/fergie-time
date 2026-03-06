@@ -32,4 +32,5 @@ jobs:
 
             # Build
             npm install
-            npx --yes tsc && npx --yes vite build
+            chmod +x node_modules/.bin/* 2>/dev/null || true
+            npm run build
