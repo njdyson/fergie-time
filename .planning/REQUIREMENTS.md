@@ -173,37 +173,37 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SQD-04 | Phase 3 | Complete |
 | SQD-05 | Phase 3 | Complete |
 | SQD-06 | Phase 3 | Complete |
-| PERS-01 | TBD | Pending |
-| PERS-02 | TBD | Pending |
-| PERS-03 | TBD | Pending |
-| PERS-04 | TBD | Pending |
-| AUTH-01 | TBD | Pending |
-| AUTH-02 | TBD | Pending |
-| AUTH-03 | TBD | Pending |
-| AUTH-04 | TBD | Pending |
-| SERV-01 | TBD | Pending |
-| SERV-02 | TBD | Pending |
-| SERV-03 | TBD | Pending |
-| SERV-04 | TBD | Pending |
-| SQD2-01 | TBD | Pending |
-| SQD2-02 | TBD | Pending |
-| SQD2-03 | TBD | Pending |
-| SQD2-04 | TBD | Pending |
-| NAME-01 | TBD | Pending |
-| NAME-02 | TBD | Pending |
-| NAME-03 | TBD | Pending |
-| STAT-01 | TBD | Pending |
-| STAT-02 | TBD | Pending |
-| STAT-03 | TBD | Pending |
-| STAT-04 | TBD | Pending |
-| STAT-05 | TBD | Pending |
+| PERS-03 | Phase 5 | Pending |
+| PERS-04 | Phase 5 | Pending |
+| SERV-01 | Phase 5 | Pending |
+| SERV-02 | Phase 5 | Pending |
+| SERV-04 | Phase 5 | Pending |
+| AUTH-01 | Phase 6 | Pending |
+| AUTH-02 | Phase 6 | Pending |
+| AUTH-03 | Phase 6 | Pending |
+| AUTH-04 | Phase 6 | Pending |
+| PERS-01 | Phase 6 | Pending |
+| PERS-02 | Phase 6 | Pending |
+| SQD2-01 | Phase 7 | Pending |
+| SQD2-02 | Phase 7 | Pending |
+| SQD2-03 | Phase 7 | Pending |
+| SQD2-04 | Phase 7 | Pending |
+| NAME-01 | Phase 7 | Pending |
+| NAME-02 | Phase 7 | Pending |
+| NAME-03 | Phase 7 | Pending |
+| STAT-01 | Phase 8 | Pending |
+| STAT-02 | Phase 8 | Pending |
+| STAT-03 | Phase 8 | Pending |
+| STAT-04 | Phase 8 | Pending |
+| STAT-05 | Phase 8 | Pending |
+| SERV-03 | Phase 8 | Pending |
 
 **Coverage:**
 - v1.0 requirements: 26 total (26 complete)
 - v1.1 requirements: 24 total
-- Mapped to phases: 0
-- Unmapped: 24
+- Mapped to phases: 24
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-02*
-*Last updated: 2026-03-06 after v1.1 milestone requirements*
+*Last updated: 2026-03-06 after v1.1 roadmap creation*
