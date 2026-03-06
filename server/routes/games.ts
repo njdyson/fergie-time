@@ -30,6 +30,26 @@ gamesRouter.post('/api/games/save', (req, res) => {
   res.json({ success: true });
 });
 
+gamesRouter.get('/api/games/list', (_req, res) => {
+  const db = getDb();
+  const rows = db
+    .prepare('SELECT team_name, updated_at FROM saves WHERE game_state != ? ORDER BY updated_at DESC')
+    .all('{}') as { team_name: string; updated_at: string }[];
+
+  res.json({ games: rows.map((r) => ({ teamName: r.team_name, updatedAt: r.updated_at })) });
+});
+
+gamesRouter.delete('/api/games/delete', (req, res) => {
+  const saveId = requireAuth(req, res);
+  if (saveId === null) return;
+
+  const db = getDb();
+  db.prepare('DELETE FROM saves WHERE id = ?').run(saveId);
+  req.session = null;
+
+  res.json({ success: true });
+});
+
 gamesRouter.get('/api/games/load', (req, res) => {
   const saveId = requireAuth(req, res);
   if (saveId === null) return;

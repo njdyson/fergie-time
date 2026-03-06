@@ -40,6 +40,18 @@ export async function logout(): Promise<void> {
 
 // --- Game persistence ---
 
+export async function listGames(): Promise<{ games: { teamName: string; updatedAt: string }[] }> {
+  const res = await fetch('/api/games/list', { credentials: 'same-origin' });
+  if (!res.ok) throw new Error(`listGames failed: ${res.status}`);
+  return res.json();
+}
+
+export async function deleteGame(): Promise<{ success: boolean }> {
+  const res = await fetch('/api/games/delete', { method: 'DELETE', credentials: 'same-origin' });
+  if (!res.ok) throw new Error(`deleteGame failed: ${res.status}`);
+  return res.json();
+}
+
 export async function saveGame(gameState: string, version: number): Promise<void> {
   try {
     const res = await fetch('/api/games/save', {

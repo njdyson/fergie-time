@@ -44,10 +44,10 @@ interface MultiplierDef {
 const MULTIPLIER_DEFS: MultiplierDef[] = [
   { key: 'risk', label: 'Risk', low: 'Safe', high: 'Ambitious',
     tooltip: 'Risk tolerance. Safe = simple passes and shots. Ambitious = creative through-balls and long-range efforts.',
-    phases: ['inPossession', 'outOfPossession', 'defensiveTransition', 'attackingTransition'] },
+    phases: ['inPossession', 'outOfPossession', 'attackingTransition'] },
   { key: 'directness', label: 'Directness', low: 'Recycle', high: 'Progress',
     tooltip: 'Ball progression preference. Recycle = retain and circulate. Progress = look for forward passes and runs.',
-    phases: ['inPossession', 'outOfPossession', 'defensiveTransition', 'attackingTransition'] },
+    phases: ['inPossession', 'outOfPossession', 'attackingTransition'] },
   { key: 'press', label: 'Press', low: 'Reluctant', high: 'Eager',
     tooltip: 'Individual pressing eagerness. Reluctant = hold position and conserve energy. Eager = close down the ball carrier.',
     phases: ['outOfPossession', 'defensiveTransition'] },
@@ -59,24 +59,17 @@ const MULTIPLIER_DEFS: MultiplierDef[] = [
     phases: ['inPossession', 'attackingTransition'] },
   { key: 'freedom', label: 'Freedom', low: 'Hold', high: 'Roam',
     tooltip: 'Positional freedom. Hold = strict discipline, stays near position. Roam = free to move and find space.',
-    phases: ['inPossession', 'outOfPossession', 'defensiveTransition', 'attackingTransition'] },
+    phases: ['inPossession', 'outOfPossession', 'attackingTransition'] },
   { key: 'decisionWindow', label: 'Tempo', low: 'Patient', high: 'Quick',
     tooltip: 'Personal decision speed. Patient = wait for the right moment. Quick = act on first instinct.',
     phases: ['inPossession', 'attackingTransition'] },
 ];
 
-const PHASE_LABELS: Record<TacticsPhase, string> = {
-  inPossession: 'In Possession',
-  outOfPossession: 'Out of Possession',
-  defensiveTransition: 'Defensive Transition',
-  attackingTransition: 'Attacking Transition',
-};
-
 /**
  * Right panel — per-player controls.
  * Shown when a player is selected on the pitch.
  * Base phase (In Poss / Out of Poss) is driven by the global phase bar.
- * Transition sub-tabs (Def Trans / Att Trans) let you edit transition multipliers.
+ * Transition sliders are shown inline below the base phase sliders.
  */
 export class PlayerPanel {
   private readonly el: HTMLElement;
@@ -87,8 +80,6 @@ export class PlayerPanel {
   private duty: Duty = 'SUPPORT';
   /** The base phase from the global phase bar (inPossession or outOfPossession) */
   private mainPhase: TacticsPhase = 'inPossession';
-  /** The currently displayed phase — equals mainPhase unless a transition tab is active */
-  private subPhase: TacticsPhase = 'inPossession';
 
   // Per-phase multipliers for the selected player
   private phaseMultipliers: Record<TacticsPhase, PlayerTacticalMultipliers> = {
@@ -100,7 +91,6 @@ export class PlayerPanel {
 
   private onMultChange: ((idx: number, mult: PlayerTacticalMultipliers, phase: TacticsPhase) => void) | null = null;
   private onDutyChange: ((idx: number, duty: Duty) => void) | null = null;
-  private onSubPhaseChangeCb: ((phase: TacticsPhase) => void) | null = null;
   private onBackCb: (() => void) | null = null;
 
   constructor(container: HTMLElement) {
@@ -129,7 +119,6 @@ export class PlayerPanel {
     };
     if (mainPhase !== undefined) {
       this.mainPhase = mainPhase;
-      this.subPhase = mainPhase;
     }
     this._build();
     this.show();
@@ -142,7 +131,6 @@ export class PlayerPanel {
 
   setPhase(phase: TacticsPhase): void {
     this.mainPhase = phase;
-    this.subPhase = phase;
     if (this.playerIndex >= 0) {
       this._build();
     }
@@ -151,13 +139,9 @@ export class PlayerPanel {
   /** Update multipliers for a specific phase (called when overlay loads phase data) */
   updatePhaseMultipliers(phase: TacticsPhase, mult: PlayerTacticalMultipliers): void {
     this.phaseMultipliers[phase] = { ...mult };
-    if (this.playerIndex >= 0 && this.subPhase === phase) {
+    if (this.playerIndex >= 0) {
       this._build();
     }
-  }
-
-  private get multipliers(): PlayerTacticalMultipliers {
-    return this.phaseMultipliers[this.subPhase];
   }
 
   private _build(): void {
@@ -199,55 +183,61 @@ export class PlayerPanel {
     }
     this.el.appendChild(dutySeg);
 
-    // Instructions phase tabs: base phase + transitions
-    const phaseSeg = document.createElement('div');
-    phaseSeg.className = 'segment-selector';
-    phaseSeg.title = 'Edit instructions for this phase. Transitions override behaviour during possession changes.';
-    const PHASE_TABS: { id: TacticsPhase; label: string }[] = [
-      { id: this.mainPhase, label: PHASE_LABELS[this.mainPhase] ?? 'Base' },
-      { id: 'defensiveTransition', label: 'Def Trans' },
-      { id: 'attackingTransition', label: 'Att Trans' },
-    ];
-    for (const tab of PHASE_TABS) {
+    const isGK = this.playerRole === 'GK';
+
+    // GK only gets distribution style (directness); skip everything else
+    if (isGK) {
+      const gkDef = MULTIPLIER_DEFS.find(d => d.key === 'directness');
+      if (gkDef) {
+        this._addMultiplierChip(
+          { ...gkDef, label: 'Distribution', low: 'Short', high: 'Long',
+            tooltip: 'Distribution preference. Short = play out from the back. Long = launch it forward.' },
+          this.mainPhase,
+        );
+      }
+      return;
+    }
+
+    // Determine which transition phase to show inline
+    const transPhase: TacticsPhase =
+      this.mainPhase === 'inPossession' ? 'attackingTransition' : 'defensiveTransition';
+    const transLabel =
+      this.mainPhase === 'inPossession' ? 'On Winning Ball' : 'On Losing Ball';
+
+    // Base phase sliders
+    const baseDefs = MULTIPLIER_DEFS.filter(def => def.phases.includes(this.mainPhase));
+    for (const def of baseDefs) {
+      this._addMultiplierChip(def, this.mainPhase);
+    }
+
+    // Role presets
+    this._addHeading('Presets');
+    const presetGrid = document.createElement('div');
+    presetGrid.className = 'preset-grid';
+    for (const preset of ROLE_PRESETS) {
       const btn = document.createElement('button');
-      btn.className = 'seg-btn' + (this.subPhase === tab.id ? ' active' : '');
-      btn.textContent = tab.label;
+      btn.className = 'preset-btn';
+      btn.textContent = preset.label;
+      btn.title = preset.tooltip;
       btn.addEventListener('click', () => {
-        this.subPhase = tab.id;
-        this.onSubPhaseChangeCb?.(this.subPhase);
+        this.phaseMultipliers[this.mainPhase] = {
+          ...this.phaseMultipliers[this.mainPhase],
+          ...preset.multipliers,
+        } as PlayerTacticalMultipliers;
+        this.onMultChange?.(this.playerIndex, this.phaseMultipliers[this.mainPhase], this.mainPhase);
         this._build();
       });
-      phaseSeg.appendChild(btn);
+      presetGrid.appendChild(btn);
     }
-    this.el.appendChild(phaseSeg);
+    this.el.appendChild(presetGrid);
 
-    // Multiplier chips — filtered by the active sub-phase
-    const visibleDefs = MULTIPLIER_DEFS.filter(def => def.phases.includes(this.subPhase));
-    for (const def of visibleDefs) {
-      this._addMultiplierChip(def);
-    }
+    // Transition section divider
+    this._addSectionDivider(transLabel);
 
-    // Role presets (only in-poss and out-of-poss sub-phases)
-    if (this.subPhase === 'inPossession' || this.subPhase === 'outOfPossession') {
-      this._addHeading('Presets');
-      const presetGrid = document.createElement('div');
-      presetGrid.className = 'preset-grid';
-      for (const preset of ROLE_PRESETS) {
-        const btn = document.createElement('button');
-        btn.className = 'preset-btn';
-        btn.textContent = preset.label;
-        btn.title = preset.tooltip;
-        btn.addEventListener('click', () => {
-          this.phaseMultipliers[this.subPhase] = {
-            ...this.phaseMultipliers[this.subPhase],
-            ...preset.multipliers,
-          } as PlayerTacticalMultipliers;
-          this.onMultChange?.(this.playerIndex, this.phaseMultipliers[this.subPhase], this.subPhase);
-          this._build();
-        });
-        presetGrid.appendChild(btn);
-      }
-      this.el.appendChild(presetGrid);
+    // Transition phase sliders
+    const transDefs = MULTIPLIER_DEFS.filter(def => def.phases.includes(transPhase));
+    for (const def of transDefs) {
+      this._addMultiplierChip(def, transPhase);
     }
   }
 
@@ -257,12 +247,30 @@ export class PlayerPanel {
     this.el.appendChild(h);
   }
 
-  private _addMultiplierChip(def: MultiplierDef): void {
+  private _addSectionDivider(text: string): void {
+    const div = document.createElement('div');
+    div.style.cssText =
+      "display:flex; align-items:center; gap:8px; margin:14px 0 8px; user-select:none;";
+    const line1 = document.createElement('span');
+    line1.style.cssText = 'flex:1; height:1px; background:#334155;';
+    const label = document.createElement('span');
+    label.style.cssText =
+      "color:#64748b; font:bold 9px/1 'Segoe UI',system-ui,sans-serif; text-transform:uppercase; letter-spacing:0.1em; white-space:nowrap;";
+    label.textContent = text;
+    const line2 = document.createElement('span');
+    line2.style.cssText = 'flex:1; height:1px; background:#334155;';
+    div.appendChild(line1);
+    div.appendChild(label);
+    div.appendChild(line2);
+    this.el.appendChild(div);
+  }
+
+  private _addMultiplierChip(def: MultiplierDef, phase: TacticsPhase): void {
     const wrapper = document.createElement('div');
     wrapper.className = 'notch-selector';
     wrapper.title = def.tooltip;
 
-    const value = this.multipliers[def.key];
+    const value = this.phaseMultipliers[phase][def.key];
     const idx = Math.round(value * 4);
     const labels = [def.low, '', '', '', def.high];
 
@@ -278,12 +286,12 @@ export class PlayerPanel {
       notch.className = 'notch' + (i === idx ? ' active' : '');
       notch.addEventListener('click', () => {
         const newVal = i / 4;
-        this.phaseMultipliers[this.subPhase] = { ...this.phaseMultipliers[this.subPhase], [def.key]: newVal };
+        this.phaseMultipliers[phase] = { ...this.phaseMultipliers[phase], [def.key]: newVal };
         for (const n of track.children) n.classList.remove('active');
         notch.classList.add('active');
         const valSpan = lbl.querySelector('.notch-value') as HTMLElement;
         if (valSpan) valSpan.textContent = labels[i] || '';
-        this.onMultChange?.(this.playerIndex, this.phaseMultipliers[this.subPhase], this.subPhase);
+        this.onMultChange?.(this.playerIndex, this.phaseMultipliers[phase], phase);
       });
       track.appendChild(notch);
     }
@@ -291,7 +299,7 @@ export class PlayerPanel {
     this.el.appendChild(wrapper);
   }
 
-  getMultipliers(): PlayerTacticalMultipliers { return this.multipliers; }
+  getMultipliers(): PlayerTacticalMultipliers { return this.phaseMultipliers[this.mainPhase]; }
   getDuty(): Duty { return this.duty; }
   getSelectedIndex(): number { return this.playerIndex; }
 
@@ -303,15 +311,15 @@ export class PlayerPanel {
     this.onDutyChange = cb;
   }
 
-  onSubPhaseChanged(cb: (phase: TacticsPhase) => void): void {
-    this.onSubPhaseChangeCb = cb;
+  onSubPhaseChanged(_cb: (phase: TacticsPhase) => void): void {
+    // No-op: sub-phase tabs removed, kept for API compatibility
   }
 
   onBack(cb: () => void): void {
     this.onBackCb = cb;
   }
 
-  getSubPhase(): TacticsPhase { return this.subPhase; }
+  getSubPhase(): TacticsPhase { return this.mainPhase; }
 
   show(): void { this.el.classList.add('open'); }
   hide(): void { this.el.classList.remove('open'); }

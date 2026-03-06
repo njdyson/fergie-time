@@ -73,8 +73,8 @@ export const TUNING = {
   cornerPauseTicks: 55,
   /** Ticks to pause for goal kick (~0.8s) */
   goalKickPauseTicks: 25,
-  /** Ticks to pause for a free kick (~0.9s) */
-  freeKickPauseTicks: 28,
+  /** Ticks to pause for a free kick (~1.3s) */
+  freeKickPauseTicks: 40,
 
   // ── Vision system ───────────────────────────────────────────────────
   /** Max teammate perception radius (metres) at vision=1.0 */

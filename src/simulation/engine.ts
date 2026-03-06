@@ -920,7 +920,7 @@ export class SimulationEngine {
         this.lastTouchTeamId = db.teamId;
         this.carrierKickLockoutUntil = nextTick + 5;
         // Protect taker from immediate tackles — opponents must be 10 yards away at restart
-        this.restartProtectionUntil = nextTick + 20;
+        this.restartProtectionUntil = nextTick + 30;
         this.recentRestartType = db.type;
         this.recentRestartUntil = nextTick + (db.type === RestartType.CORNER ? 18 : 10);
       } else {
@@ -955,6 +955,10 @@ export class SimulationEngine {
         }
       }
 
+      // Free kick / corner: enforce 9.15m exclusion zone for opponents
+      const exclusionRadius = 9.15; // ~10 yards in metres
+      const enforceExclusion = db.type === RestartType.FREE_KICK || db.type === RestartType.CORNER;
+
       let homeIdx = 0;
       let awayIdx = 0;
       players = players.map(p => {
@@ -962,7 +966,22 @@ export class SimulationEngine {
         const isHome = p.teamId === 'home';
         const anchors = isHome ? homeAnchors : awayAnchors;
         const idx = isHome ? homeIdx++ : awayIdx++;
-        const anchor = anchors[idx] ?? p.formationAnchor;
+        let anchor = anchors[idx] ?? p.formationAnchor;
+
+        // Push opponent anchors outside the exclusion zone
+        if (enforceExclusion && p.teamId !== db.teamId && p.id !== db.takerId) {
+          const distToRestart = anchor.distanceTo(db.position);
+          if (distToRestart < exclusionRadius) {
+            const away = anchor.subtract(db.position);
+            const len = away.length();
+            if (len > 0.1) {
+              anchor = db.position.add(away.scale(exclusionRadius / len));
+            } else {
+              // Directly on top — push away from goal
+              anchor = db.position.add(new Vec2(isHome ? -exclusionRadius : exclusionRadius, 0));
+            }
+          }
+        }
 
         // Move taker toward the restart position instead of their anchor
         const target = (p.id === db.takerId) ? db.position : anchor;

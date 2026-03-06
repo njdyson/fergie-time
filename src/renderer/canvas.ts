@@ -84,10 +84,6 @@ export class CanvasRenderer {
   selectedHomePlayerIndex: number = -1; // V1 overhaul: highlight selected player on pitch
   freedomValues: number[] = []; // Per-player freedom multiplier values (0..1) for radius overlay
 
-  // Transition phase visualization: show both in-poss and OOP anchors for selected player
-  editingTransitionPhase: 'defensiveTransition' | 'attackingTransition' | null = null;
-  inPossAnchors: { x: number; y: number }[] = [];
-  oopAnchors: { x: number; y: number }[] = [];
 
   /** Horizontal pixels reserved for side panels (subtracted from available width) */
   panelOffset: number = 0;
@@ -470,12 +466,6 @@ export class CanvasRenderer {
       }
     }
 
-    // Transition edit mode: when editing def/att trans with a player selected,
-    // fade non-selected players and show both phase positions for the selected one
-    const inTransEdit = this.editingTransitionPhase !== null
-      && this.selectedHomePlayerIndex >= 0
-      && this.inPossAnchors.length > 0;
-
     // Draw solid player circles at anchor positions
     for (let i = 0; i < homePlayers.length; i++) {
       const p = homePlayers[i]!;
@@ -486,26 +476,6 @@ export class CanvasRenderer {
       const fillColor = isSelected
         ? (isGK ? '#88eebb' : '#5599ee')
         : (isGK ? HOME_GK_COLOR : HOME_COLOR);
-
-      // In transition edit, fade non-selected players
-      if (inTransEdit && !isSelected) {
-        ctx.save();
-        ctx.globalAlpha = 0.15;
-        ctx.beginPath();
-        ctx.arc(anchor.x, anchor.y, PLAYER_RADIUS, 0, Math.PI * 2);
-        ctx.fillStyle = fillColor;
-        ctx.fill();
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-        ctx.font = SHIRT_FONT;
-        ctx.fillStyle = '#ffffff';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(String(i + 1), anchor.x, anchor.y + 1);
-        ctx.restore();
-        continue;
-      }
 
       // Selected player highlight ring
       if (isSelected) {
@@ -541,68 +511,6 @@ export class CanvasRenderer {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'bottom';
       ctx.fillText(surname, anchor.x, anchor.y + ROLE_LABEL_OFFSET_Y);
-
-      // Transition edit: draw "to" ghost + arrow from main circle
-      // The main circle already shows the "from" position (engine pushes the from-phase config)
-      if (inTransEdit && isSelected) {
-        const idx = this.selectedHomePlayerIndex;
-        // Def trans: player moves from in-poss → OOP
-        // Att trans: player moves from OOP → in-poss
-        const toAnchors = this.editingTransitionPhase === 'defensiveTransition'
-          ? this.oopAnchors : this.inPossAnchors;
-        const toPos = toAnchors[idx];
-
-        if (toPos) {
-          const to = this.pitchToCanvas(toPos);
-
-          // "To" ghost marker (where player moves to)
-          ctx.save();
-          ctx.globalAlpha = 0.75;
-          ctx.beginPath();
-          ctx.arc(to.x, to.y, PLAYER_RADIUS, 0, Math.PI * 2);
-          ctx.fillStyle = '#22c55e';
-          ctx.fill();
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 1.5;
-          ctx.setLineDash([3, 3]);
-          ctx.stroke();
-          ctx.setLineDash([]);
-          ctx.font = SHIRT_FONT;
-          ctx.fillStyle = '#ffffff';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(shirtNum, to.x, to.y + 1);
-          // Label
-          ctx.font = ROLE_FONT;
-          ctx.fillStyle = '#22c55e';
-          ctx.textBaseline = 'bottom';
-          const toLabel = this.editingTransitionPhase === 'defensiveTransition' ? 'OOP' : 'IN POSS';
-          ctx.fillText(toLabel, to.x, to.y + ROLE_LABEL_OFFSET_Y);
-          ctx.restore();
-
-          // Arrow from main circle → to ghost
-          ctx.save();
-          ctx.strokeStyle = 'rgba(250, 204, 21, 0.7)';
-          ctx.lineWidth = 2;
-          ctx.setLineDash([6, 4]);
-          ctx.beginPath();
-          ctx.moveTo(anchor.x, anchor.y);
-          ctx.lineTo(to.x, to.y);
-          ctx.stroke();
-          ctx.setLineDash([]);
-          // Arrow head
-          const angle = Math.atan2(to.y - anchor.y, to.x - anchor.x);
-          const headLen = 10;
-          ctx.fillStyle = 'rgba(250, 204, 21, 0.7)';
-          ctx.beginPath();
-          ctx.moveTo(to.x, to.y);
-          ctx.lineTo(to.x - headLen * Math.cos(angle - 0.4), to.y - headLen * Math.sin(angle - 0.4));
-          ctx.lineTo(to.x - headLen * Math.cos(angle + 0.4), to.y - headLen * Math.sin(angle + 0.4));
-          ctx.closePath();
-          ctx.fill();
-          ctx.restore();
-        }
-      }
     }
 
     // Structure lines from anchor positions (cluster-based grouping)

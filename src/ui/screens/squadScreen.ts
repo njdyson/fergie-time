@@ -6,7 +6,7 @@
 
 import type { PlayerState } from '../../simulation/types.ts';
 import { validateSquadSelection } from '../../season/season.ts';
-import type { SquadSelection } from '../../season/season.ts';
+import type { SquadSelection, SquadSlot } from '../../season/season.ts';
 
 // Re-export for consumer convenience
 export type { SquadSelection } from '../../season/season.ts';
@@ -117,16 +117,32 @@ export class SquadScreen {
   }
 
   /**
-   * Set players and reset selection to defaults.
+   * Set players and reset selection to defaults (or restore from saved selection).
    * Default: first 11 sorted by role are starters, next 7 are bench, rest not-selected.
    * GK sorted to top.
    */
-  setPlayers(players: PlayerState[], fatigueMap: Map<string, number>): void {
+  setPlayers(players: PlayerState[], fatigueMap: Map<string, number>, savedSelection?: Map<string, SquadSlot>): void {
     this.players = [...players].sort((a, b) => getRoleOrder(a.role) - getRoleOrder(b.role));
     this.fatigueMap = fatigueMap;
     this.selections.clear();
     this.slotIndices.clear();
     this.shirtNumbers.clear();
+
+    // Restore from saved selection if available
+    if (savedSelection && savedSelection.size > 0) {
+      for (const p of this.players) {
+        const slot = savedSelection.get(p.id);
+        if (slot) {
+          this.selections.set(p.id, slot.state);
+          if (slot.slotIndex != null) this.slotIndices.set(p.id, slot.slotIndex);
+        } else {
+          this.selections.set(p.id, 'not-selected');
+        }
+        if (p.shirtNumber != null) this.shirtNumbers.set(p.id, p.shirtNumber);
+      }
+      this.render();
+      return;
+    }
 
     // Default selection: assign formation roles to first 11, next 7 bench, rest not-selected
     // Build a pool of available role slots with their original indices
@@ -154,9 +170,21 @@ export class SquadScreen {
     this.render();
   }
 
-  /** Alias for setPlayers — updates display with new player data. */
-  update(players: PlayerState[], fatigueMap: Map<string, number>): void {
-    this.setPlayers(players, fatigueMap);
+  /** Update display with new player data, optionally restoring saved selection. */
+  update(players: PlayerState[], fatigueMap: Map<string, number>, savedSelection?: Map<string, SquadSlot>): void {
+    this.setPlayers(players, fatigueMap, savedSelection);
+  }
+
+  /** Get the current selection map for persistence. */
+  getSelectionMap(): Map<string, SquadSlot> {
+    const map = new Map<string, SquadSlot>();
+    for (const [playerId, state] of this.selections) {
+      const slot: SquadSlot = { state };
+      const idx = this.slotIndices.get(playerId);
+      if (idx != null) slot.slotIndex = idx;
+      map.set(playerId, slot);
+    }
+    return map;
   }
 
   /** Get current squad selection based on toggle states. */

@@ -14,7 +14,6 @@ import type { SimSnapshot } from './simulation/types.ts';
 import { generateCommentary } from './simulation/match/commentary.ts';
 import { TacticsBoard } from './ui/tacticsBoard.ts';
 import { TacticsOverlay } from './ui/tacticsOverlay.ts';
-import { computeFormationAnchors } from './simulation/tactical/formation.ts';
 import { showAttributeTooltip, scheduleHideTooltip } from './ui/tooltip.ts';
 import { show as showFullTimeOverlay } from './ui/fullTimeOverlay.ts';
 import { TacticSelector } from './ui/panels/tacticSelector.ts';
@@ -139,7 +138,7 @@ function updateCurrentScreen(): void {
   }
   if (currentScreen === ScreenId.SQUAD) {
     squadScreenViewInner.setFormationRoles(tacticsBoard.getPhaseRoles('inPossession'), tacticsBoard.getPhaseRoles('outOfPossession'));
-    squadScreenViewInner.update(playerTeam.squad, seasonState.fatigueMap);
+    squadScreenViewInner.update(playerTeam.squad, seasonState.fatigueMap, seasonState.squadSelectionMap);
   }
   if (currentScreen === ScreenId.FIXTURES) fixturesScreenView.update(seasonState, seasonState.playerTeamId);
   if (currentScreen === ScreenId.TABLE) tableScreenView.update(seasonState, seasonState.playerTeamId);
@@ -230,6 +229,13 @@ squadScreenEl.style.display = 'none';
 squadScreenEl.style.flexDirection = 'column';
 
 const squadScreenViewInner = new SquadScreen(squadScreenEl);
+
+// Persist squad selection changes into season state
+squadScreenViewInner.onSelectionChange(() => {
+  if (typeof seasonState !== 'undefined' && seasonState) {
+    seasonState.squadSelectionMap = squadScreenViewInner.getSelectionMap();
+  }
+});
 
 // ============================================================
 // Button references
@@ -456,7 +462,6 @@ tacticsOverlay.onQuickShape((formationId) => {
 tacticsBoard.onPlayerSelected((index) => {
   tacticsOverlay.selectPlayer(index);
   renderer.selectedHomePlayerIndex = index;
-  syncTransitionAnchors();
 });
 
 // Wire TacticsBoard config changes (drag complete) → push to engine
@@ -481,53 +486,8 @@ tacticsBoard._onSubstitutionQueued = () => {
 // Wire overlay player selection (from player panel clicks) → renderer highlight
 tacticsOverlay.onPlayerSelected((index) => {
   renderer.selectedHomePlayerIndex = index;
-  // Refresh transition anchors if in transition edit mode
-  syncTransitionAnchors();
 });
 
-// When the player panel sub-phase changes, update transition visualization
-tacticsOverlay.onPlayerSubPhaseChanged((phase) => {
-  if (!engine) return;
-  const baseInPoss = tacticsBoard.getTacticalConfig();
-  const baseOop = tacticsBoard.getOutOfPossessionConfig();
-
-  if (phase === 'defensiveTransition') {
-    // Def trans: player was in-poss → push in-poss config so main circle shows "from" position
-    renderer.editingTransitionPhase = phase;
-    engine.setHomeTactics(tacticsOverlay.getInPossConfig(baseInPoss));
-    tacticsOverlay.updatePlayers(engine.getCurrentSnapshot().players);
-    syncTransitionAnchors();
-  } else if (phase === 'attackingTransition') {
-    // Att trans: player was OOP → push OOP config so main circle shows "from" position
-    renderer.editingTransitionPhase = phase;
-    engine.setHomeTactics(tacticsOverlay.getOutOfPossConfig(baseOop));
-    tacticsOverlay.updatePlayers(engine.getCurrentSnapshot().players);
-    syncTransitionAnchors();
-  } else {
-    // Back to base phase — restore the current global phase's config
-    renderer.editingTransitionPhase = null;
-    const globalPhase = tacticsOverlay.getCurrentPhase();
-    const base = globalPhase === 'inPossession' ? baseInPoss : baseOop;
-    engine.setHomeTactics(tacticsOverlay.getActivePhaseConfig(base));
-    tacticsOverlay.updatePlayers(engine.getCurrentSnapshot().players);
-  }
-});
-
-/** Compute and push both in-poss and OOP anchor positions to the renderer */
-function syncTransitionAnchors(): void {
-  if (!engine) return;
-  const snap = engine.getCurrentSnapshot();
-  const baseInPoss = tacticsBoard.getTacticalConfig();
-  const baseOop = tacticsBoard.getOutOfPossessionConfig();
-  const inPossConfig = tacticsOverlay.getInPossConfig(baseInPoss);
-  const oopConfig = tacticsOverlay.getOutOfPossConfig(baseOop);
-  renderer.inPossAnchors = computeFormationAnchors(
-    inPossConfig.formation, 'home', snap.ball.position, true, inPossConfig.teamControls,
-  );
-  renderer.oopAnchors = computeFormationAnchors(
-    oopConfig.formation, 'home', snap.ball.position, false, oopConfig.teamControls,
-  );
-}
 
 // Wire substitution handling — when a bench player is pending and a
 // pitch player is clicked, the overlay fires this callback
@@ -1002,7 +962,6 @@ function updatePauseButton(): void {
       tacticsOverlay.close();
       tacticSelector.hide();
       renderer.showAnchors = false;
-      renderer.editingTransitionPhase = null;
       hideBenchPanel();
       if (liveStatsEl) liveStatsEl.style.display = '';
       return;
@@ -1081,7 +1040,6 @@ function updatePauseButton(): void {
     tacticsOverlay.close();
     tacticSelector.hide();
     renderer.showAnchors = false;
-    renderer.editingTransitionPhase = null;
   }
 }
 
@@ -1447,6 +1405,9 @@ function startMatchFromSquad(): void {
   const valid = validateSquadSelection(selection);
   if (!valid.valid) return;
 
+  // Persist squad selection into season state
+  seasonState.squadSelectionMap = squadScreenViewInner.getSelectionMap();
+
   // Find opponent for current matchday
   const playerFixture = seasonState.fixtures.find(f =>
     f.matchday === seasonState.currentMatchday &&
@@ -1496,7 +1457,7 @@ hubScreenView.onKickoff(() => {
   // Ensure squad screen has latest data for default selection
   const playerTeam = seasonState.teams.find(t => t.isPlayerTeam)!;
   squadScreenViewInner.setFormationRoles(tacticsBoard.getPhaseRoles('inPossession'), tacticsBoard.getPhaseRoles('outOfPossession'));
-  squadScreenViewInner.update(playerTeam.squad, seasonState.fatigueMap);
+  squadScreenViewInner.update(playerTeam.squad, seasonState.fatigueMap, seasonState.squadSelectionMap);
   startMatchFromSquad();
 });
 

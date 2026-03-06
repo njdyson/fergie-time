@@ -1,4 +1,4 @@
-import type { TeamControls, PressConfig, PressHeight, TacticsPhase, Mentality, AttackChannel, CornerRoutine, FreeKickRoutine, GKDistributionPref, ExtendedTeamControls } from '../../simulation/types.ts';
+import type { TeamControls, PressConfig, PressHeight, TacticsPhase, Mentality, AttackChannel, CornerRoutine, FreeKickRoutine, ExtendedTeamControls } from '../../simulation/types.ts';
 import { defaultTeamControls, defaultPressConfig, defaultExtendedTeamControls } from '../../simulation/types.ts';
 
 const QUICK_SHAPES = ['4-4-2', '4-3-3', '4-5-1', '3-5-2', '4-2-3-1'] as const;
@@ -80,14 +80,6 @@ export class TeamPanel {
       // V2: Time wasting toggle
       this._addToggle('Time Wasting', 'timeWasting', this.extended.timeWasting,
         'Slow tempo, hold ball, delay restarts. Use when protecting a lead.');
-
-      // V2: GK distribution
-      this._addHeading('GK Distribution');
-      this._addSegment<string>('Build-up', 'gkDistribution', this.extended.gkDistribution, [
-        { label: 'Short', value: 'short' },
-        { label: 'Mixed', value: 'mixed' },
-        { label: 'Long', value: 'long' },
-      ], 'How the goalkeeper distributes the ball after saves and goal kicks.');
 
       // V2: Set pieces
       this._addHeading('Set Pieces');
@@ -193,21 +185,24 @@ export class TeamPanel {
 
   private _addToggle(label: string, key: string, value: boolean, tooltip?: string): void {
     const wrapper = document.createElement('div');
-    wrapper.className = 'toggle-row';
+    wrapper.style.cssText = 'display:flex; align-items:center; justify-content:space-between; padding:4px 0;';
     if (tooltip) wrapper.title = tooltip;
 
     const lbl = document.createElement('span');
-    lbl.className = 'toggle-label';
+    lbl.style.cssText = "color:#94a3b8; font:13px/1.4 'Segoe UI',system-ui,sans-serif;";
     lbl.textContent = label;
     wrapper.appendChild(lbl);
 
     const btn = document.createElement('button');
-    btn.className = 'toggle-btn' + (value ? ' active' : '');
+    const applyToggleStyle = (on: boolean) => {
+      btn.style.cssText = `padding:4px 12px; border-radius:4px; border:1px solid ${on ? '#4ade80' : '#475569'}; background:${on ? '#166534' : '#1e293b'}; color:${on ? '#4ade80' : '#94a3b8'}; font:bold 11px/1 'Segoe UI',system-ui,sans-serif; cursor:pointer;`;
+    };
+    applyToggleStyle(value);
     btn.textContent = value ? 'ON' : 'OFF';
     btn.addEventListener('click', () => {
-      const newVal = !btn.classList.contains('active');
-      btn.classList.toggle('active', newVal);
+      const newVal = btn.textContent !== 'ON';
       btn.textContent = newVal ? 'ON' : 'OFF';
+      applyToggleStyle(newVal);
       this._setControlValue(key, newVal ? 1 : 0);
     });
     wrapper.appendChild(btn);
@@ -243,9 +238,6 @@ export class TeamPanel {
         break;
       case 'timeWasting':
         this.extended = { ...this.extended, timeWasting: value === 1 };
-        break;
-      case 'gkDistribution':
-        this.extended = { ...this.extended, gkDistribution: value as GKDistributionPref };
         break;
       case 'cornerRoutine':
         this.extended = { ...this.extended, setPieces: { ...this.extended.setPieces, cornerRoutine: value as CornerRoutine } };

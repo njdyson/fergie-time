@@ -36,6 +36,12 @@ export interface SeasonConfig {
   seed: string;
 }
 
+/** Per-player squad slot: role string (starter), 'bench', or 'not-selected', plus optional formation slot index. */
+export interface SquadSlot {
+  state: string;       // e.g. 'GK', 'CB', 'bench', 'not-selected'
+  slotIndex?: number;  // formation slot index (0-10) for starters
+}
+
 export interface SeasonState {
   readonly seasonNumber: number;
   readonly playerTeamId: string;
@@ -44,6 +50,7 @@ export interface SeasonState {
   table: TeamRecord[];
   currentMatchday: number;   // 1..38; > 38 means season complete
   fatigueMap: Map<string, number>;  // playerId -> current fatigue (0..1)
+  squadSelectionMap?: Map<string, SquadSlot>;  // playerId -> selection state (player team only)
   readonly seed: string;
 }
 
@@ -241,9 +248,15 @@ export function simOneAIFixture(
 
   if (!homeTeam || !awayTeam) return { state, result: { homeName: '', awayName: '', homeGoals: 0, awayGoals: 0 } };
 
-  const homeSquad = homeTeam.squad.map(p => ({
-    ...p, fatigue: state.fatigueMap.get(p.id) ?? 0,
-  }));
+  // Home advantage: small attribute boost for home team (~5%)
+  const HOME_BOOST = 0.05;
+  const homeSquad = homeTeam.squad.map(p => {
+    const boosted = { ...p.attributes };
+    for (const key of Object.keys(boosted) as (keyof typeof boosted)[]) {
+      boosted[key] = Math.min(1, boosted[key] + HOME_BOOST);
+    }
+    return { ...p, attributes: boosted, fatigue: state.fatigueMap.get(p.id) ?? 0 };
+  });
   const awaySquad = awayTeam.squad.map(p => ({
     ...p, fatigue: state.fatigueMap.get(p.id) ?? 0,
   }));

@@ -68,7 +68,6 @@ export class TacticsOverlay {
   // Bench substitution state
   private pendingBench: PlayerState | null = null;
   private onSubQueued: ((pitchIndex: number, benchPlayer: PlayerState) => void) | null = null;
-  private onPlayerSubPhaseChangeCb: ((phase: TacticsPhase) => void) | null = null;
 
   constructor(
     phaseBarEl: HTMLElement,
@@ -102,8 +101,6 @@ export class TacticsOverlay {
       this.currentPhase = phase;
       this._loadPhase(phase);
       this.onPhaseChange?.();
-      // Fire sub-phase change so renderer can toggle transition visualization
-      this.onPlayerSubPhaseChangeCb?.(phase);
       // Also fire config change so anchors update on canvas
       this.onConfigChange?.();
     });
@@ -129,9 +126,6 @@ export class TacticsOverlay {
       this.onConfigChange?.();
     });
 
-    this.playerPanel.onSubPhaseChanged((phase) => {
-      this.onPlayerSubPhaseChangeCb?.(phase);
-    });
   }
 
   /**
@@ -246,12 +240,6 @@ export class TacticsOverlay {
 
   /** Register callback for quick-shape preset selection */
   onQuickShape(cb: (formationId: string) => void): void { this.teamPanel.onQuickShape(cb); }
-
-  /** Register callback for player panel sub-phase changes (In Poss → Def Trans etc.) */
-  onPlayerSubPhaseChanged(cb: (phase: TacticsPhase) => void): void { this.onPlayerSubPhaseChangeCb = cb; }
-
-  /** Get the player panel's current sub-phase */
-  getPlayerSubPhase(): TacticsPhase { return this.playerPanel.getSubPhase(); }
 
   /** Register callback for substitution queued (bench player → pitch player) */
   onSubstitutionQueued(cb: (pitchIndex: number, benchPlayer: PlayerState) => void): void {
