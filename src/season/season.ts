@@ -11,6 +11,7 @@ import type { Fixture } from './fixtures.ts';
 import { generateFixtures } from './fixtures.ts';
 import type { TeamRecord } from './leagueTable.ts';
 import { createInitialTable, updateTable, sortTable } from './leagueTable.ts';
+import type { MatchConfig } from '../simulation/engine.ts';
 import { quickSimMatch } from './quickSim.ts';
 
 // --- Types ---
@@ -169,7 +170,6 @@ export function advanceMatchday(
   playerResult: { homeGoals: number; awayGoals: number },
   playerWasHome: boolean,
 ): SeasonState {
-  const rng = seedrandom(`${state.seed}-md-${state.currentMatchday}`);
   const md = state.currentMatchday;
 
   // Get all fixtures for this matchday
@@ -232,7 +232,14 @@ export function advanceMatchday(
         fatigue: state.fatigueMap.get(p.id) ?? 0,
       }));
 
-      const result = quickSimMatch(homeSquad, awaySquad, rng);
+      const matchConfig: MatchConfig = {
+        seed: `${state.seed}-md-${md}-${fixture.homeTeamId}-${fixture.awayTeamId}`,
+        homeRoster: homeSquad.slice(0, 11),
+        awayRoster: awaySquad.slice(0, 11),
+        homeBench: homeSquad.slice(11),
+        awayBench: awaySquad.slice(11),
+      };
+      const result = quickSimMatch(matchConfig);
 
       // Record result on fixture
       const fixtureIndex = updatedFixtures.findIndex(

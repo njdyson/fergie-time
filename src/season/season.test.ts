@@ -6,6 +6,12 @@ import { describe, it, expect, vi } from 'vitest';
 import seedrandom from 'seedrandom';
 import type { PlayerState } from '../simulation/types.ts';
 import { Duty } from '../simulation/types.ts';
+
+// Mock quickSimMatch to avoid running real engine in season unit tests
+vi.mock('./quickSim.ts', () => ({
+  quickSimMatch: () => ({ homeGoals: 1, awayGoals: 0 }),
+}));
+
 import {
   createSeason,
   validateSquadSelection,
