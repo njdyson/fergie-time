@@ -50,8 +50,12 @@ function makePlayer(overrides: Partial<PlayerState> = {}): PlayerState {
 }
 
 function makeSquad(teamId: string = 'player-team'): PlayerState[] {
-  // 16-man squad: GK, CB, CB, LB, RB, CDM, CM, LW, RW, ST, ST, GK, CB, CM, CM, ST
-  const roles = ['GK', 'CB', 'CB', 'LB', 'RB', 'CDM', 'CM', 'LW', 'RW', 'ST', 'ST', 'GK', 'CB', 'CM', 'CM', 'ST'];
+  // 25-man squad matching ROLES_25 distribution
+  const roles = [
+    'GK', 'CB', 'CB', 'LB', 'RB', 'CDM', 'CM', 'LW', 'RW', 'ST', 'ST',  // starters (11)
+    'GK', 'CB', 'CB', 'LB', 'CM', 'CAM', 'ST',                            // bench (7)
+    'CB', 'RB', 'CDM', 'CM', 'LW', 'RW', 'GK',                            // reserves (7)
+  ];
   return roles.map((role, i) => makePlayer({ id: `${teamId}-p${i}`, teamId: teamId as any, role }));
 }
 
@@ -59,7 +63,7 @@ function makeSelection(overrides?: Partial<{ starters: PlayerState[]; bench: Pla
   const squad = makeSquad();
   return {
     starters: overrides?.starters ?? squad.slice(0, 11),
-    bench: overrides?.bench ?? squad.slice(11, 16),
+    bench: overrides?.bench ?? squad.slice(11, 18),
   };
 }
 
@@ -142,7 +146,7 @@ describe('createSeason', () => {
 // --- validateSquadSelection ---
 
 describe('validateSquadSelection', () => {
-  it('returns valid for 11 starters (1+ GK) + 5 bench', () => {
+  it('returns valid for 11 starters (1+ GK) + 7 bench', () => {
     const result = validateSquadSelection(makeSelection());
     expect(result).toEqual({ valid: true });
   });
@@ -172,15 +176,15 @@ describe('validateSquadSelection', () => {
     expect(result.reason).toContain('GK');
   });
 
-  it('returns invalid when bench count != 5 (too few)', () => {
+  it('returns invalid when bench count != 7 (too few)', () => {
     const sel = makeSelection({ bench: makeSquad().slice(11, 14) });
     const result = validateSquadSelection(sel);
     expect(result.valid).toBe(false);
     expect(result.reason).toBeDefined();
   });
 
-  it('returns invalid when bench count != 5 (too many)', () => {
-    const bench = Array.from({ length: 6 }, (_, i) =>
+  it('returns invalid when bench count != 7 (too many)', () => {
+    const bench = Array.from({ length: 8 }, (_, i) =>
       makePlayer({ id: `extra-bench-${i}`, role: 'CM' })
     );
     const sel = makeSelection({ bench });

@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import seedrandom from 'seedrandom';
-import { createAITeam, TIER_CONFIGS, TeamTier } from './teamGen.ts';
-import type { PlayerState, PlayerAttributes, PersonalityVector } from '../simulation/types.ts';
+import { createAITeam, TIER_CONFIGS, TeamTier, ROLES_25 } from './teamGen.ts';
+import { Vec2 } from '../simulation/math/vec2.ts';
 
 describe('createAITeam', () => {
-  it('produces 16 PlayerState objects', () => {
+  it('produces 25 PlayerState objects', () => {
     const rng = seedrandom('strong-team');
     const squad = createAITeam('strong', 'team-a', 'Team A', rng);
-    expect(squad).toHaveLength(16);
+    expect(squad).toHaveLength(25);
   });
 
   it('each player has a generated name, unique id, age (17..34), height (165..200)', () => {
@@ -23,7 +23,7 @@ describe('createAITeam', () => {
       expect(p.height).toBeGreaterThanOrEqual(165);
       expect(p.height).toBeLessThanOrEqual(200);
     }
-    expect(ids.size).toBe(16);
+    expect(ids.size).toBe(25);
   });
 
   it('strong tier: all attribute values between 0.55 and 1.0', () => {
@@ -74,31 +74,56 @@ describe('createAITeam', () => {
     }
   });
 
-  it('roles distributed to form a valid 4-4-2 with bench', () => {
+  it('role distribution matches 25-man squad: 3 GK, 5 CB, 2 LB, 2 RB, 2 CDM, 3 CM, 1 CAM, 2 LW, 2 RW, 3 ST', () => {
     const rng = seedrandom('roles');
     const squad = createAITeam('mid', 'team-r', 'Roles FC', rng);
     const roles = squad.map(p => p.role);
 
-    // Count each role
     const roleCounts: Record<string, number> = {};
     for (const r of roles) {
       roleCounts[r] = (roleCounts[r] || 0) + 1;
     }
 
-    // 1 GK starters + 1 GK bench = 2 GK total
-    expect(roleCounts['GK']).toBe(2);
-    // DEF: 2 CB + 1 LB + 1 RB starters + 1 CB bench = 3 CB, 1 LB, 1 RB
-    expect(roleCounts['CB']).toBe(3);
-    expect(roleCounts['LB']).toBe(1);
-    expect(roleCounts['RB']).toBe(1);
-    // MID: 1 CDM + 2 CM starters + 1 CM bench = 1 CDM, 3 CM
-    expect(roleCounts['CDM']).toBe(1);
+    expect(roleCounts['GK']).toBe(3);
+    expect(roleCounts['CB']).toBe(5);
+    expect(roleCounts['LB']).toBe(2);
+    expect(roleCounts['RB']).toBe(2);
+    expect(roleCounts['CDM']).toBe(2);
     expect(roleCounts['CM']).toBe(3);
-    // Wide: 1 LW + 1 RW
-    expect(roleCounts['LW']).toBe(1);
-    expect(roleCounts['RW']).toBe(1);
-    // FWD: 2 ST starters + 1 ST bench = 3 ST
+    expect(roleCounts['CAM']).toBe(1);
+    expect(roleCounts['LW']).toBe(2);
+    expect(roleCounts['RW']).toBe(2);
     expect(roleCounts['ST']).toBe(3);
+  });
+
+  it('each player has shirtNumber 1..25, all unique', () => {
+    const rng = seedrandom('shirt-numbers');
+    const squad = createAITeam('mid', 'team-sn', 'Shirt FC', rng);
+    const shirtNumbers = squad.map(p => p.shirtNumber);
+    expect(shirtNumbers).toHaveLength(25);
+    const unique = new Set(shirtNumbers);
+    expect(unique.size).toBe(25);
+    for (const n of shirtNumbers) {
+      expect(n).toBeGreaterThanOrEqual(1);
+      expect(n).toBeLessThanOrEqual(25);
+    }
+  });
+
+  it('uses provided names array when given', () => {
+    const rng = seedrandom('names-param');
+    const names = Array.from({ length: 25 }, (_, i) => `Player ${i + 1} Surname`);
+    const squad = createAITeam('mid', 'team-n', 'Names FC', rng, names);
+    for (let i = 0; i < 25; i++) {
+      expect(squad[i]!.name).toBe(names[i]);
+    }
+  });
+
+  it('falls back to generatePlayerName when names not provided', () => {
+    const rng = seedrandom('no-names');
+    const squad = createAITeam('mid', 'team-fn', 'Fallback FC', rng);
+    for (const p of squad) {
+      expect(p.name).toMatch(/\S+ \S+/);
+    }
   });
 
   it('each player has fatigue 0 and duty SUPPORT', () => {
@@ -116,6 +141,22 @@ describe('createAITeam', () => {
     squad.forEach((p, i) => {
       expect(p.id).toBe(`my-team-player-${i}`);
     });
+  });
+
+  it('uses Vec2 instances for movement fields', () => {
+    const rng = seedrandom('vec2-fields');
+    const squad = createAITeam('mid', 'vec-team', 'Vec Team', rng);
+    for (const p of squad) {
+      expect(p.position).toBeInstanceOf(Vec2);
+      expect(p.velocity).toBeInstanceOf(Vec2);
+      expect(p.formationAnchor).toBeInstanceOf(Vec2);
+    }
+  });
+});
+
+describe('ROLES_25', () => {
+  it('has exactly 25 entries', () => {
+    expect(ROLES_25).toHaveLength(25);
   });
 });
 

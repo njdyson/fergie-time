@@ -1,10 +1,10 @@
-import type { SimSnapshot, PlayerState, PlayerAttributes, BallState, ActionIntent, AgentContext, TeamId, FormationId, Role, Duty, DeadBallInfo, PlayerTacticalMultipliers, TeamControls, PressConfig, TransitionConfig } from './types.ts';
+import type { SimSnapshot, PlayerState, PlayerAttributes, BallState, ActionIntent, AgentContext, TeamId, FormationId, Role, Duty, DeadBallInfo, PlayerTacticalMultipliers, TeamControls, PressConfig, TransitionConfig, PersonalityVector } from './types.ts';
 import { Vec2 } from './math/vec2.ts';
 import { createRng } from './math/random.ts';
 import { integrateBall } from './physics/ball.ts';
 import { advancePhase } from './match/phases.ts';
-import { checkGoal, createInitialSnapshot, applyGoal, getKickoffPositions, PITCH_WIDTH, PITCH_HEIGHT } from './match/state.ts';
-import { MatchPhase, ActionType, RestartType, defaultPlayerMultipliers, defaultTeamControls, defaultPressConfig, defaultTransitionConfig } from './types.ts';
+import { checkGoal, createInitialSnapshot, applyGoal, getKickoffPositions, PITCH_WIDTH, PITCH_HEIGHT, GOAL_WIDTH, CROSSBAR_HEIGHT } from './match/state.ts';
+import { MatchPhase, ActionType, RestartType, defaultMultipliers, defaultPlayerMultipliers, defaultTeamControls, defaultPressConfig, defaultTransitionConfig } from './types.ts';
 import { ACTIONS } from './ai/actions.ts';
 import { selectAction, evaluateAction } from './ai/agent.ts';
 import { PERSONALITY_WEIGHTS } from './ai/personality.ts';
@@ -63,9 +63,9 @@ export interface MatchConfig {
   readonly seed: string;
   readonly homeRoster: PlayerState[];
   readonly awayRoster: PlayerState[];
-  /** Optional bench players for home team (up to 5, not on pitch initially) */
+  /** Optional bench players for home team (up to 7, not on pitch initially) */
   readonly homeBench?: PlayerState[];
-  /** Optional bench players for away team (up to 5, not on pitch initially) */
+  /** Optional bench players for away team (up to 7, not on pitch initially) */
   readonly awayBench?: PlayerState[];
   /** Optional initial ball velocity (m/s) for testing and visual initialization */
   readonly initialBallVelocity?: { x: number; y: number };
@@ -182,8 +182,8 @@ function jitterAttributes(
 
 /**
  * Creates 32 players (11 starters + 5 bench per team) with varied archetypes for an interesting match.
- * Home team: maverick striker, metronome midfielder, aggressive defender + 5 bench players.
- * Away team: contrasting archetypes for visible behavioral differences + 5 bench players.
+ * Home team: maverick striker, metronome midfielder, aggressive defender + up to 7 bench players.
+ * Away team: contrasting archetypes for visible behavioral differences + up to 7 bench players.
  * Each player's attributes are individually randomised around their archetype base (±0.08).
  *
  * Returns: { home, away, homeBench, awayBench }
@@ -415,6 +415,7 @@ export class SimulationEngine {
   readonly gameLog: GameEventLog;
   private readonly grid: SpatialGrid;
   private readonly previousActions: Map<string, ActionType> = new Map();
+  private latestDebugIntents: ActionIntent[] = [];
   private readonly tackleCooldowns: Map<string, number> = new Map(); // agentId → tick when cooldown expires
   private lastKickerId: string | null = null;   // player who last kicked the ball
   private kickCooldownUntil: number = 0;          // tick until which lastKicker can't pick up the ball
@@ -435,6 +436,8 @@ export class SimulationEngine {
   private deadBall: DeadBallState | null = null;       // non-null during dead ball restarts
   private lastTouchTeamId: TeamId | null = null;       // team that last touched the ball
   private restartProtectionUntil: number = 0;          // tick until which tackles are blocked after a dead ball restart
+  private recentRestartType: RestartType | null = null; // last restart type after play resumed
+  private recentRestartUntil: number = 0;               // tick until restart-specific overrides apply
   private pendingPassPlayerId: string | null = null;   // player who last kicked a pass (for completion tracking)
   private pendingPassTeamId: TeamId | null = null;     // team of the pending pass
   private lastKickWasShot: boolean = false;            // true if last kick was a SHOOT (prevents double-counting on goal)
@@ -448,6 +451,7 @@ export class SimulationEngine {
   private offsideLineAtKick: number | null = null;   // x of offside line when pass was kicked
   private offsideKickTeam: TeamId | null = null;      // which team kicked (attackers)
   private offsideActive: boolean = false;             // true while a pass is in flight
+  private offsidePositionsAtKick: Map<string, number> = new Map(); // attacker x positions at pass release
 
   // ── Smooth adoption (V1 overhaul) ─────────────────────────────────────────
   private adoptionTicksRemaining: number = 0;            // ticks remaining in anchor lerp
@@ -459,7 +463,12 @@ export class SimulationEngine {
   private visionCacheTick: Map<string, number> = new Map();
 
   constructor(config: MatchConfig) {
-    let initialSnapshot = createInitialSnapshot(config.homeRoster, config.awayRoster);
+    const normalizedHomeRoster = config.homeRoster.map(normalizePlayerVectors);
+    const normalizedAwayRoster = config.awayRoster.map(normalizePlayerVectors);
+    const normalizedHomeBench = config.homeBench ? config.homeBench.map(normalizePlayerVectors) : [];
+    const normalizedAwayBench = config.awayBench ? config.awayBench.map(normalizePlayerVectors) : [];
+
+    let initialSnapshot = createInitialSnapshot(normalizedHomeRoster, normalizedAwayRoster);
 
     // Apply optional initial ball overrides (for testing and dev init)
     if (config.initialBallPosition || config.initialBallVelocity) {
@@ -487,8 +496,8 @@ export class SimulationEngine {
     this.awayTacticalConfigOOP = config.awayTacticalConfigOOP ?? this.awayTacticalConfig;
     this.homeTacticalConfigDefTrans = config.homeTacticalConfigDefTrans ?? this.homeTacticalConfigOOP;
     this.homeTacticalConfigAttTrans = config.homeTacticalConfigAttTrans ?? this.homeTacticalConfig;
-    this.homeBench = config.homeBench ? [...config.homeBench] : [];
-    this.awayBench = config.awayBench ? [...config.awayBench] : [];
+    this.homeBench = normalizedHomeBench;
+    this.awayBench = normalizedAwayBench;
 
     // Apply tactical config to initial snapshot so players start at correct
     // formation positions (not hard-coded 4-4-2 kickoff positions)
@@ -507,6 +516,25 @@ export class SimulationEngine {
         takerId: this._findTaker(RestartType.KICKOFF, 'home', center, this.snapshot.players as PlayerState[]),
       };
     }
+  }
+
+  private clearOffsideTracking(): void {
+    this.offsideActive = false;
+    this.offsideLineAtKick = null;
+    this.offsideKickTeam = null;
+    this.offsidePositionsAtKick.clear();
+  }
+
+  private snapshotOffsideState(players: readonly PlayerState[], attackingTeam: TeamId, ballX: number): void {
+    const defendingTeam: TeamId = attackingTeam === 'home' ? 'away' : 'home';
+    this.offsideLineAtKick = computeDefensiveLine(players, defendingTeam, ballX);
+    this.offsideKickTeam = attackingTeam;
+    this.offsideActive = true;
+    this.offsidePositionsAtKick = new Map(
+      players
+        .filter(player => player.teamId === attackingTeam && isActivePlayer(player))
+        .map(player => [player.id, player.position.x]),
+    );
   }
 
   /**
@@ -754,6 +782,7 @@ export class SimulationEngine {
    * Enter a dead ball state. Ball is frozen at the restart position.
    */
   private _enterDeadBall(state: DeadBallState): void {
+    this.clearOffsideTracking();
     this.deadBall = state;
   }
 
@@ -766,7 +795,7 @@ export class SimulationEngine {
     restartPos: Vec2,
     players: readonly PlayerState[],
   ): string | null {
-    const teamPlayers = players.filter(p => p.teamId === teamId);
+    const teamPlayers = players.filter(p => p.teamId === teamId && isActivePlayer(p));
 
     if (type === RestartType.GOAL_KICK) {
       const gk = teamPlayers.find(p => p.role === 'GK');
@@ -804,6 +833,12 @@ export class SimulationEngine {
     const current = this.snapshot;
     const db = this.deadBall!;
     const elapsed = nextTick - db.tickStarted;
+    this.latestDebugIntents = [];
+
+    if (this.recentRestartType !== null && nextTick > this.recentRestartUntil) {
+      this.recentRestartType = null;
+      this.recentRestartUntil = 0;
+    }
 
     let ball = current.ball;
     let players = [...current.players] as PlayerState[];
@@ -814,7 +849,7 @@ export class SimulationEngine {
     // For kickoffs, ensure all players are in their own half before resuming (cap at 300 ticks)
     if (repositioningComplete && db.type === RestartType.KICKOFF && elapsed < 300) {
       const halfX = PITCH_WIDTH / 2;
-      const allInOwnHalf = players.every(p => {
+      const allInOwnHalf = players.filter(isActivePlayer).every(p => {
         if (p.teamId === 'home') return p.position.x <= halfX + 2;
         return p.position.x >= halfX - 2;
       });
@@ -840,6 +875,8 @@ export class SimulationEngine {
         this.carrierKickLockoutUntil = nextTick + 5;
         // Protect taker from immediate tackles — opponents must be 10 yards away at restart
         this.restartProtectionUntil = nextTick + 20;
+        this.recentRestartType = db.type;
+        this.recentRestartUntil = nextTick + (db.type === RestartType.CORNER ? 18 : 10);
       } else {
         // Fallback: drop ball at restart position
         ball = { ...ball, position: db.position, velocity: Vec2.zero(), z: 0, vz: 0, carrierId: null };
@@ -875,6 +912,7 @@ export class SimulationEngine {
       let homeIdx = 0;
       let awayIdx = 0;
       players = players.map(p => {
+        if (!isActivePlayer(p)) return createDismissedPlayer(p);
         const isHome = p.teamId === 'home';
         const anchors = isHome ? homeAnchors : awayAnchors;
         const idx = isHome ? homeIdx++ : awayIdx++;
@@ -886,7 +924,10 @@ export class SimulationEngine {
         const dist = p.position.distanceTo(target);
         if (dist < 1) return { ...p, velocity: Vec2.zero(), formationAnchor: anchor };
 
-        const speedFrac = db.type === RestartType.KICKOFF ? 1.0 : 0.8; // jog back for kickoff
+        const speedFrac =
+          db.type === RestartType.KICKOFF ? 1.0
+            : db.type === RestartType.CORNER ? 0.95
+              : 0.85;
         const maxSpeed = p.attributes.pace * TUNING.playerBaseSpeed * speedFrac;
         const desired = arrive(p.position, target, maxSpeed, 5.0);
         const newVel = clampVelocity(desired, maxSpeed);
@@ -909,7 +950,7 @@ export class SimulationEngine {
       score: current.score,
       events: [...phaseResult.events],
       stats: this.statsAccumulator.getSnapshot(),
-      deadBallInfo,
+      ...(deadBallInfo ? { deadBallInfo } : {}),
     };
     this.snapshot = newSnapshot;
     return newSnapshot;
@@ -934,6 +975,12 @@ export class SimulationEngine {
     // When entering HALFTIME, latch the engine so it stays in HALFTIME
     // until startSecondHalf() is called. Without this, HALFTIME only lasts
     // 1 tick and the 250ms poll in main.ts can't catch it.
+    if (
+      (phaseResult.phase === MatchPhase.HALFTIME || phaseResult.phase === MatchPhase.FULL_TIME) &&
+      shouldDelayPeriodWhistle(current, this.recentRestartType, this.recentRestartUntil, nextTick)
+    ) {
+      phaseResult = { phase: current.matchPhase, events: [] };
+    }
     if (phaseResult.phase === MatchPhase.HALFTIME && !this.halftimeLatched && !this.halftimeHandled) {
       this.halftimeLatched = true;
     }
@@ -951,6 +998,7 @@ export class SimulationEngine {
       (phaseResult.phase === MatchPhase.SECOND_HALF && current.matchPhase === MatchPhase.HALFTIME);
 
     if (isBreakTick) {
+      this.latestDebugIntents = [];
       // Clear any pending dead ball when entering halftime/fulltime
       this.deadBall = null;
       // Reset ball to stopped state at break or on second-half kickoff transition
@@ -980,6 +1028,7 @@ export class SimulationEngine {
 
     // ── 3. Accumulate fatigue for all players ────────────────────────────────
     const playersWithFatigue: PlayerState[] = current.players.map(p => {
+      if (p.sentOff) return createDismissedPlayer(p);
       const newFatigue = accumulateFatigue(
         p.fatigue,
         nextTick,
@@ -996,26 +1045,31 @@ export class SimulationEngine {
       applyFatigueToAttributes(p.attributes, p.fatigue)
     );
     const effectivePersonality = playersWithFatigue.map(p =>
-      applyFatigueToPersonality(p.personality, p.fatigue)
+      applyDisciplineToPersonality(
+        applyFatigueToPersonality(p.personality, p.fatigue),
+        p.yellowCards ?? 0,
+      )
     );
 
     // ── 5. Update spatial grid ───────────────────────────────────────────────
     this.grid.clear();
     for (const p of playersWithFatigue) {
+      if (!isActivePlayer(p)) continue;
       this.grid.insert(p.id, p.position);
     }
 
     // ── 6. Compute formation anchors ─────────────────────────────────────────
     // Select in-possession or out-of-possession config based on ball carrier
     const ballCarrierId = current.ball.carrierId;
-    const ballCarrier = ballCarrierId
-      ? playersWithFatigue.find(p => p.id === ballCarrierId)
+    const ballCarrier: PlayerState | null = ballCarrierId
+      ? (playersWithFatigue.find(p => p.id === ballCarrierId && isActivePlayer(p)) ?? null)
       : null;
-    const homePossession = ballCarrier?.teamId === 'home';
-    const awayPossession = ballCarrier?.teamId === 'away';
+    const effectivePossessionTeam = resolveEffectivePossessionTeam(ballCarrier, this.pendingPassTeamId);
+    const homePossession = effectivePossessionTeam === 'home';
+    const awayPossession = effectivePossessionTeam === 'away';
 
     // ── 6a. Transition detection ─────────────────────────────────────────────
-    const currentPossTeam: TeamId | null = homePossession ? 'home' : awayPossession ? 'away' : null;
+    const currentPossTeam: TeamId | null = effectivePossessionTeam;
     if (currentPossTeam !== null && this.previousPossessionTeam !== null && currentPossTeam !== this.previousPossessionTeam) {
       // Possession changed — start transition window for the team that lost it
       this.transitionTeam = this.previousPossessionTeam;
@@ -1088,6 +1142,7 @@ export class SimulationEngine {
     let awayIdx = 0;
 
     const playersWithAnchors: PlayerState[] = playersWithFatigue.map((p) => {
+      if (!isActivePlayer(p)) return createDismissedPlayer(p);
       const isHome = p.teamId === 'home';
       const tacticalConfig = isHome ? activeHomeConfig : activeAwayConfig;
       const anchors = isHome ? homeAnchors : awayAnchors;
@@ -1111,26 +1166,30 @@ export class SimulationEngine {
     for (let i = 1; i < 11; i++) {
       const p = playersWithAnchors[i]!;
       if (p.teamId !== 'home') continue;
+      if (!isActivePlayer(p)) continue;
       if (p.role !== 'CB' && p.role !== 'LB' && p.role !== 'RB') continue;
       if (homePossession) continue; // only when defending
       const lineX = homeOffsideLine;
       const anchor = homeAnchors[i]!;
-      // Clamp anchor x within 3m of line (creates flat back line)
+      // Clamp anchor x tightly around the line so the back four holds shape.
       const diff = anchor.x - lineX;
-      if (Math.abs(diff) > 3) {
-        homeAnchors[i] = new Vec2(lineX + Math.sign(diff) * 3, anchor.y);
+      const tolerance = p.role === 'CB' ? 1.1 : 1.8;
+      if (Math.abs(diff) > tolerance) {
+        homeAnchors[i] = new Vec2(lineX + Math.sign(diff) * tolerance, anchor.y);
       }
     }
     for (let i = 0; i < 11; i++) {
       const p = playersWithAnchors[11 + i]!;
       if (p.teamId !== 'away') continue;
+      if (!isActivePlayer(p)) continue;
       if (p.role !== 'CB' && p.role !== 'LB' && p.role !== 'RB') continue;
       if (awayPossession) continue;
       const lineX = awayOffsideLine;
       const anchor = awayAnchors[i]!;
       const diff = anchor.x - lineX;
-      if (Math.abs(diff) > 3) {
-        awayAnchors[i] = new Vec2(lineX + Math.sign(diff) * 3, anchor.y);
+      const tolerance = p.role === 'CB' ? 1.1 : 1.8;
+      if (Math.abs(diff) > tolerance) {
+        awayAnchors[i] = new Vec2(lineX + Math.sign(diff) * tolerance, anchor.y);
       }
     }
 
@@ -1174,8 +1233,8 @@ export class SimulationEngine {
 
     // ── 7. Build AgentContext for each player (with vision filtering) ────────
     const contexts: AgentContext[] = playersWithAnchors.map((p, idx) => {
-      const teammates = playersWithAnchors.filter(op => op.teamId === p.teamId && op.id !== p.id);
-      const allOpponents = playersWithAnchors.filter(op => op.teamId !== p.teamId);
+      const teammates = playersWithAnchors.filter(op => op.teamId === p.teamId && op.id !== p.id && isActivePlayer(op));
+      const allOpponents = playersWithAnchors.filter(op => op.teamId !== p.teamId && isActivePlayer(op));
 
       // Vision-filtered opponents: each player only "sees" opponents within their
       // vision radius and facing direction. Uses a per-player cache with refresh
@@ -1201,9 +1260,7 @@ export class SimulationEngine {
       const distanceToBall = p.position.distanceTo(current.ball.position);
       const distanceToFormationAnchor = p.position.distanceTo(p.formationAnchor);
 
-      const isInPossessionTeam = ballCarrierId
-        ? (p.teamId === 'home' ? homePossession : awayPossession)
-        : false;
+      const isInPossessionTeam = effectivePossessionTeam === p.teamId;
 
       // Nearest defender uses ALL opponents (ground truth) — you can feel physical
       // pressure even from opponents you can't see. Vision filtering only affects
@@ -1256,6 +1313,9 @@ export class SimulationEngine {
 
     const intents: ActionIntent[] = contexts.map((ctx, i) => {
       const player = playersWithAnchors[i]!;
+      if (!isActivePlayer(player)) {
+        return { agentId: player.id, action: ActionType.MOVE_TO_POSITION };
+      }
       const playerId = player.id;
       const prevAction = this.previousActions.get(playerId);
       // Build duty modifier from player's current role and duty
@@ -1297,6 +1357,10 @@ export class SimulationEngine {
         if (attTransMult) {
           tactMult = attTransMult;
         }
+      }
+
+      if ((player.yellowCards ?? 0) > 0) {
+        tactMult = applyDisciplineToMultipliers(tactMult, player.yellowCards ?? 0);
       }
 
       return selectAction(ACTIONS, ctx, effectivePersonality[i]!, PERSONALITY_WEIGHTS, this.rng, prevAction, dutyModifier, tactMult);
@@ -1363,6 +1427,7 @@ export class SimulationEngine {
       let closestIdx = -1;
       for (let i = 0; i < updatedPlayers.length; i++) {
         const p = updatedPlayers[i]!;
+        if (!isActivePlayer(p)) continue;
         // Skip kicker during cooldown
         if (p.id === this.lastKickerId && nextTick < this.kickCooldownUntil) continue;
         const d = p.position.distanceTo(ball.position);
@@ -1380,23 +1445,20 @@ export class SimulationEngine {
         let isOffside = false;
         if (this.offsideActive && this.offsideLineAtKick !== null && this.offsideKickTeam !== null) {
           if (newCarrier.teamId === this.offsideKickTeam && newCarrier.id !== this.lastKickerId) {
-            // Receiver is a teammate — check offside position
-            // Home attacks right (+x), offside = receiver.x > offsideLine
-            // Away attacks left (-x), offside = receiver.x < offsideLine
+            const receiverXAtKick = this.offsidePositionsAtKick.get(newCarrier.id) ?? newCarrier.position.x;
+            // Receiver is a teammate — check the position they held when the pass was played.
             if (this.offsideKickTeam === 'home') {
-              isOffside = newCarrier.position.x > this.offsideLineAtKick + 0.5; // 0.5m tolerance
+              isOffside = receiverXAtKick > this.offsideLineAtKick + 0.5;
             } else {
-              isOffside = newCarrier.position.x < this.offsideLineAtKick - 0.5;
+              isOffside = receiverXAtKick < this.offsideLineAtKick - 0.5;
             }
             // Can't be offside in your own half
             const halfX = PITCH_WIDTH / 2;
-            if (this.offsideKickTeam === 'home' && newCarrier.position.x <= halfX) isOffside = false;
-            if (this.offsideKickTeam === 'away' && newCarrier.position.x >= halfX) isOffside = false;
+            if (this.offsideKickTeam === 'home' && receiverXAtKick <= halfX) isOffside = false;
+            if (this.offsideKickTeam === 'away' && receiverXAtKick >= halfX) isOffside = false;
           }
           // Clear offside tracking once ball is received by anyone
-          this.offsideActive = false;
-          this.offsideLineAtKick = null;
-          this.offsideKickTeam = null;
+          this.clearOffsideTracking();
         }
 
         if (isOffside) {
@@ -1410,6 +1472,8 @@ export class SimulationEngine {
             teamId: newCarrier.teamId,
             position: newCarrier.position,
           });
+          this.gameLog.recordOffside(nextTick, newCarrier.teamId, newCarrier.id, newCarrier.role,
+            newCarrier.position.x, newCarrier.position.y);
           // Enter dead ball for free kick (use goal kick restart type as closest analogue)
           this._enterDeadBall({
             type: RestartType.GOAL_KICK,
@@ -1426,6 +1490,7 @@ export class SimulationEngine {
           ball = { ...ball, carrierId: newCarrier.id };
           // Track last touch for out-of-play decisions
           this.lastTouchTeamId = newCarrier.teamId;
+          const wasInterception = this.pendingPassTeamId !== null && newCarrier.teamId !== this.pendingPassTeamId;
 
           // Pass completion detection
           if (this.pendingPassPlayerId && this.pendingPassTeamId) {
@@ -1441,12 +1506,12 @@ export class SimulationEngine {
           // Clear kicker cooldown once someone else picks up the ball
           this.lastKickerId = null;
           // Kick lockout: new carrier must hold the ball before they can pass/shoot
-          this.carrierKickLockoutUntil = nextTick + TUNING.kickLockoutTicks;
+          this.carrierKickLockoutUntil = nextTick + TUNING.kickLockoutTicks + (wasInterception ? 6 : 0);
 
-          // Safety net: if the new carrier selected a non-carrier action (PRESS / MAKE_RUN)
-          // while the ball was loose, override to HOLD_SHIELD so they don't freeze.
+          // On interceptions and loose-ball recoveries, secure the ball before the next
+          // decision cycle instead of instant one-touch ping-pong.
           const carrierAction = intents[closestIdx]?.action;
-          if (carrierAction === 'PRESS' || carrierAction === 'MAKE_RUN') {
+          if (wasInterception || carrierAction === 'PRESS' || carrierAction === 'MAKE_RUN') {
             intents[closestIdx] = { ...intents[closestIdx]!, action: 'HOLD_SHIELD' as ActionType };
           }
         }
@@ -1458,6 +1523,10 @@ export class SimulationEngine {
     for (let i = 0; i < updatedPlayers.length; i++) {
       const p = updatedPlayers[i]!;
       const intent = intents[i]!;
+      if (!isActivePlayer(p)) {
+        updatedPlayers[i] = createDismissedPlayer(p);
+        continue;
+      }
       const effAttr = effectiveAttributes[i]!;
       let maxSpeed = effAttr.pace * TUNING.playerBaseSpeed * (1 - p.fatigue * 0.5);
       // Emergency sprint boost during defensive transition (10% faster for recovering defenders)
@@ -1470,29 +1539,28 @@ export class SimulationEngine {
         case 'MOVE_TO_POSITION': {
           // Base target is the formation anchor
           let moveTarget = p.formationAnchor;
+          const isDefensiveRole = p.role === 'GK' || p.role === 'CB' || p.role === 'LB' || p.role === 'RB';
+          const teamHasBall = ball.carrierId !== null &&
+            updatedPlayers.find(cp => cp.id === ball.carrierId)?.teamId === p.teamId;
+          const opponents = updatedPlayers.filter(op => op.teamId !== p.teamId && isActivePlayer(op));
+
+          if (p.role === 'GK' && ball.carrierId !== p.id) {
+            moveTarget = computeGoalkeeperSetPosition(
+              p.teamId,
+              ball.position,
+              p.formationAnchor,
+              teamHasBall,
+            );
+          }
 
           // Receive loose ball: when ball has no carrier, the closest outfield
           // player on each team moves toward the ball instead of their anchor.
           // This prevents passes sitting untouched because nobody walks onto them.
           if (ball.carrierId === null && p.role !== 'GK') {
-            const myDistToBall = p.position.distanceTo(ball.position);
-            const teamPlayers = updatedPlayers.filter(tp => tp.teamId === p.teamId && tp.role !== 'GK');
-            let isClosest = true;
-            for (const tp of teamPlayers) {
-              if (tp.id !== p.id && tp.position.distanceTo(ball.position) < myDistToBall) {
-                isClosest = false;
-                break;
-              }
-            }
-            if (isClosest) {
-              // Chase predicted ball position, not where it is now
-              const ballSpd = ball.velocity.length();
-              if (ballSpd > 2) {
-                const travelTime = myDistToBall / Math.max(maxSpeed, 0.1);
-                moveTarget = clampToPitch(ball.position.add(ball.velocity.scale(travelTime)));
-              } else {
-                moveTarget = ball.position;
-              }
+            const teamPlayers = updatedPlayers.filter(tp => tp.teamId === p.teamId && tp.role !== 'GK' && isActivePlayer(tp));
+            const looseBallTarget = computeLooseBallRecoveryTarget(p, teamPlayers, ball, maxSpeed);
+            if (looseBallTarget) {
+              moveTarget = looseBallTarget;
             }
           }
 
@@ -1513,9 +1581,22 @@ export class SimulationEngine {
                 const perpY = toCarrier.x;
                 const perpLen = Math.sqrt(perpX * perpX + perpY * perpY);
                 const lateralSign = p.position.y > carrier.position.y ? 1 : -1;
+                const roleLateralWidth =
+                  p.role === 'LW' || p.role === 'RW' ? 7
+                    : p.role === 'ST' ? 4.5
+                      : p.role === 'CM' || p.role === 'CAM' || p.role === 'CDM' ? 5.5
+                        : 3.5;
                 const lateralOffset = perpLen > 0.01
-                  ? new Vec2(perpX / perpLen, perpY / perpLen).scale(lateralSign * 5)
+                  ? new Vec2(perpX / perpLen, perpY / perpLen).scale(lateralSign * roleLateralWidth)
                   : Vec2.zero();
+                const forwardSign = p.teamId === 'home' ? 1 : -1;
+                const roleDepth =
+                  p.role === 'ST' ? 4.0
+                    : p.role === 'LW' || p.role === 'RW' ? 3.0
+                      : p.role === 'CM' || p.role === 'CAM' ? 2.2
+                        : p.role === 'LB' || p.role === 'RB' ? 1.5
+                          : 0.8;
+                const depthOffset = new Vec2(forwardSign * roleDepth, 0);
                 const supportPos = midpoint.add(lateralOffset);
 
                 // Blend: further from carrier = stronger pull toward support pos
@@ -1524,12 +1605,27 @@ export class SimulationEngine {
                 const plMultIdx = p.teamId === 'home' ? i : i - 11;
                 const playerFreedom = plConfig.multipliers?.[plMultIdx]?.freedom ?? 0.5;
                 const freedomFactor = 0.5 + (playerFreedom * 0.5); // 0.5..1.0
-                // Defenders hold shape — minimal pull toward carrier
-                const rolePullFactor = (p.role === 'CB' || p.role === 'LB' || p.role === 'RB') ? 0.15 : 1.0;
-                const pullStrength = Math.min((distToCarrier - 12) / 30, 1) * TUNING.supportPull * freedomFactor * rolePullFactor;
+                const carrierPressure = clamp01(1 - nearestOpponentDistance(carrier, opponents) / 12);
+                // Defenders hold shape; attackers and midfielders circulate more.
+                const rolePullFactor =
+                  p.role === 'CB' ? 0.12
+                    : p.role === 'LB' || p.role === 'RB' ? 0.28
+                      : p.role === 'CDM' ? 0.55
+                        : p.role === 'CM' || p.role === 'CAM' ? 0.82
+                          : 1.0;
+                const pressureFactor = 0.75 + carrierPressure * 0.7;
+                const pullStrength = Math.min((distToCarrier - 12) / 26, 1) * TUNING.supportPull * freedomFactor * rolePullFactor * pressureFactor;
+                let supportTarget = supportPos.add(depthOffset);
+                const offsideBuffer = p.teamId === 'home' ? awayOffsideLine - 1.5 : awayOffsideLine + 1.5;
+                if (p.teamId === 'home') {
+                  supportTarget = new Vec2(Math.min(supportTarget.x, offsideBuffer), supportTarget.y);
+                } else {
+                  const awayBuffer = homeOffsideLine + 1.5;
+                  supportTarget = new Vec2(Math.max(supportTarget.x, awayBuffer), supportTarget.y);
+                }
                 moveTarget = new Vec2(
-                  p.formationAnchor.x + (supportPos.x - p.formationAnchor.x) * pullStrength,
-                  p.formationAnchor.y + (supportPos.y - p.formationAnchor.y) * pullStrength,
+                  p.formationAnchor.x + (supportTarget.x - p.formationAnchor.x) * pullStrength,
+                  p.formationAnchor.y + (supportTarget.y - p.formationAnchor.y) * pullStrength,
                 );
               }
             }
@@ -1537,12 +1633,11 @@ export class SimulationEngine {
 
           // CSP nudge: when in possession, attacking/midfield players drift toward
           // better passing lanes. Defenders hold formation — no nudge.
-          const isDefensiveRole = p.role === 'GK' || p.role === 'CB' || p.role === 'LB' || p.role === 'RB';
           if (ball.carrierId !== null && ball.carrierId !== p.id && !isDefensiveRole) {
-            const cspCarrier = updatedPlayers.find(cp => cp.id === ball.carrierId);
-            if (cspCarrier && cspCarrier.teamId === p.teamId) {
-              const cspOpponents = updatedPlayers.filter(op => op.teamId !== p.teamId);
-              const cspTeammates = updatedPlayers.filter(tp => tp.teamId === p.teamId && tp.id !== p.id);
+              const cspCarrier = updatedPlayers.find(cp => cp.id === ball.carrierId);
+              if (cspCarrier && cspCarrier.teamId === p.teamId) {
+              const cspOpponents = updatedPlayers.filter(op => op.teamId !== p.teamId && isActivePlayer(op));
+              const cspTeammates = updatedPlayers.filter(tp => tp.teamId === p.teamId && tp.id !== p.id && isActivePlayer(tp));
               const cspOffsideLine = p.teamId === 'home' ? awayOffsideLine : homeOffsideLine;
               const bestCSP = selectBestCSP(
                 { ...p, position: moveTarget }, // evaluate CSPs around current target, not player pos
@@ -1553,7 +1648,9 @@ export class SimulationEngine {
               );
               // Only nudge if the CSP is reasonably close to the current target
               if (moveTarget.distanceTo(bestCSP) < 15) {
-                const influence = TUNING.cspSupportInfluence;
+                const freedom = (p.teamId === 'home' ? activeHomeConfig : activeAwayConfig)
+                  .multipliers?.[p.teamId === 'home' ? i : i - 11]?.freedom ?? 0.5;
+                const influence = TUNING.cspSupportInfluence + freedom * 0.18;
                 moveTarget = new Vec2(
                   moveTarget.x + (bestCSP.x - moveTarget.x) * influence,
                   moveTarget.y + (bestCSP.y - moveTarget.y) * influence,
@@ -1564,11 +1661,9 @@ export class SimulationEngine {
 
           // Defender runner-tracking: when out of possession, CB/LB/RB shadow nearby
           // opponents making forward runs. Only the closest defender to each runner tracks them.
-          const teamHasBall = ball.carrierId !== null &&
-            updatedPlayers.find(cp => cp.id === ball.carrierId)?.teamId === p.teamId;
           if ((p.role === 'CB' || p.role === 'LB' || p.role === 'RB') && !teamHasBall) {
             const oppRunners = updatedPlayers.filter(op =>
-              op.teamId !== p.teamId && op.role !== 'GK' && op.velocity.length() > 2.5,
+              op.teamId !== p.teamId && op.role !== 'GK' && op.velocity.length() > 2.5 && isActivePlayer(op),
             );
             let markTarget: typeof updatedPlayers[0] | undefined;
             let bestMarkScore = -Infinity;
@@ -1578,7 +1673,7 @@ export class SimulationEngine {
               // Only track if we're the closest defensive player to this runner
               const defTeammates = updatedPlayers.filter(tp =>
                 tp.teamId === p.teamId && tp.id !== p.id &&
-                (tp.role === 'CB' || tp.role === 'LB' || tp.role === 'RB'),
+                (tp.role === 'CB' || tp.role === 'LB' || tp.role === 'RB') && isActivePlayer(tp),
               );
               const isClosestDef = !defTeammates.some(tm => tm.position.distanceTo(opp.position) < d);
               if (!isClosestDef) continue;
@@ -1600,14 +1695,97 @@ export class SimulationEngine {
             }
           }
 
+          if ((p.role === 'CB' || p.role === 'LB' || p.role === 'RB') && !teamHasBall) {
+            const lineX = p.teamId === 'home' ? homeOffsideLine : awayOffsideLine;
+            const lineTolerance = p.role === 'CB' ? 1.25 : 2.1;
+            moveTarget = new Vec2(
+              Math.max(lineX - lineTolerance, Math.min(lineX + lineTolerance, moveTarget.x)),
+              moveTarget.y,
+            );
+          }
+
           // If already close to target, settle (zero velocity avoids jitter
           // that makes pass-leading overshoot)
           const distToTarget = p.position.distanceTo(moveTarget);
-          if (distToTarget < 2) {
+          const settleRadius = teamHasBall && !isDefensiveRole ? 0.5 : 1.2;
+          if (distToTarget < settleRadius) {
             updatedPlayers[i] = { ...p, velocity: Vec2.zero() };
           } else {
-            const desired = arrive(p.position, moveTarget, maxSpeed, 5.0);
+            const slowingRadius = teamHasBall && !isDefensiveRole ? 7.0 : 5.0;
+            const desired = arrive(p.position, moveTarget, maxSpeed, slowingRadius);
             const newVel = clampVelocity(desired, maxSpeed);
+            const dtSec = dt / 1000;
+            const newPos = p.position.add(newVel.scale(dtSec));
+            updatedPlayers[i] = {
+              ...p,
+              position: clampToPitch(newPos),
+              velocity: newVel,
+            };
+          }
+          break;
+        }
+
+        case 'OFFER_SUPPORT': {
+          let supportTarget = p.formationAnchor;
+          const carrier = ball.carrierId
+            ? updatedPlayers.find(cp => cp.id === ball.carrierId)
+            : undefined;
+          const teamPlayers = updatedPlayers.filter(tp => tp.teamId === p.teamId && tp.id !== p.id && isActivePlayer(tp));
+
+          if (ball.carrierId === null) {
+            const looseBallTarget = computeLooseBallRecoveryTarget(p, teamPlayers, ball, maxSpeed);
+            if (looseBallTarget) {
+              supportTarget = looseBallTarget;
+            }
+          }
+
+          if (carrier && carrier.teamId === p.teamId && carrier.id !== p.id) {
+            const opponents = updatedPlayers.filter(op => op.teamId !== p.teamId && isActivePlayer(op));
+            const teammates = teamPlayers;
+            const toCarrier = carrier.position.subtract(p.formationAnchor);
+            const toCarrierLen = Math.max(toCarrier.length(), 0.01);
+            const forwardSign = p.teamId === 'home' ? 1 : -1;
+            const lateralDir = new Vec2(-toCarrier.y / toCarrierLen, toCarrier.x / toCarrierLen);
+            const lateralSign = p.position.y >= carrier.position.y ? 1 : -1;
+            const roleWidth =
+              p.role === 'LW' || p.role === 'RW' ? 8
+                : p.role === 'ST' ? 5
+                  : p.role === 'CM' || p.role === 'CAM' ? 6
+                    : 4;
+            const basePocket = p.formationAnchor
+              .add(carrier.position)
+              .scale(0.5)
+              .add(lateralDir.scale(lateralSign * roleWidth))
+              .add(new Vec2(forwardSign * (p.role === 'ST' ? 4 : 2.5), 0));
+            const offsideLine = p.teamId === 'home' ? awayOffsideLine : homeOffsideLine;
+            const cspTarget = selectBestCSP(
+              { ...p, position: basePocket },
+              opponents,
+              teammates,
+              carrier,
+              offsideLine,
+            );
+            const freedom = (p.teamId === 'home' ? activeHomeConfig : activeAwayConfig)
+              .multipliers?.[p.teamId === 'home' ? i : i - 11]?.freedom ?? 0.5;
+            const influence = 0.45 + freedom * 0.25;
+            supportTarget = new Vec2(
+              basePocket.x + (cspTarget.x - basePocket.x) * influence,
+              basePocket.y + (cspTarget.y - basePocket.y) * influence,
+            );
+            if (p.teamId === 'home') {
+              supportTarget = new Vec2(Math.min(supportTarget.x, awayOffsideLine - 1.2), supportTarget.y);
+            } else {
+              supportTarget = new Vec2(Math.max(supportTarget.x, homeOffsideLine + 1.2), supportTarget.y);
+            }
+            supportTarget = clampToPitchInset(supportTarget, 1);
+          }
+
+          const distToTarget = p.position.distanceTo(supportTarget);
+          if (distToTarget < 0.35) {
+            updatedPlayers[i] = { ...p, velocity: Vec2.zero() };
+          } else {
+            const desired = arrive(p.position, supportTarget, maxSpeed * 0.95, 8.5);
+            const newVel = clampVelocity(desired, maxSpeed * 0.95);
             const dtSec = dt / 1000;
             const newPos = p.position.add(newVel.scale(dtSec));
             updatedPlayers[i] = {
@@ -1622,6 +1800,26 @@ export class SimulationEngine {
         case 'PRESS': {
           // Pursuit of ball carrier or ball position
           let pressTarget = ball.position;
+          const carrier = ball.carrierId
+            ? updatedPlayers.find(cp => cp.id === ball.carrierId)
+            : undefined;
+
+          if (carrier && carrier.teamId !== p.teamId) {
+            const ownGoalX = p.teamId === 'home' ? 0 : PITCH_WIDTH;
+            const goalSide = new Vec2(ownGoalX - carrier.position.x, 0).normalize();
+            const insideBias = carrier.position.y < 6
+              ? 1
+              : carrier.position.y > PITCH_HEIGHT - 6
+                ? -1
+                : 0;
+            const lateralBias = insideBias !== 0
+              ? new Vec2(0, insideBias * 0.9)
+              : new Vec2(0, clamp01((carrier.position.y - p.position.y + 12) / 24) * 1.2 - 0.6);
+            pressTarget = clampToPitchInset(
+              carrier.position.add(goalSide.scale(0.9)).add(lateralBias),
+              0.7,
+            );
+          }
 
           // GK containment: clamp press target to penalty area bounds
           if (p.role === 'GK') {
@@ -1666,8 +1864,8 @@ export class SimulationEngine {
             runTarget = clampToPitch(ball.position.add(ball.velocity.scale(travelTime)));
           } else {
             // CSP-based off-ball run: find the best space between defenders
-            const allOpponentsForCSP = updatedPlayers.filter(op => op.teamId !== p.teamId);
-            const runTeammates = updatedPlayers.filter(tp => tp.teamId === p.teamId && tp.id !== p.id);
+            const allOpponentsForCSP = updatedPlayers.filter(op => op.teamId !== p.teamId && isActivePlayer(op));
+            const runTeammates = updatedPlayers.filter(tp => tp.teamId === p.teamId && tp.id !== p.id && isActivePlayer(tp));
             const runCarrier = ball.carrierId ? updatedPlayers.find(cp => cp.id === ball.carrierId) : undefined;
             const runOffsideLine = p.teamId === 'home' ? awayOffsideLine : homeOffsideLine;
             runTarget = selectBestCSP(p, allOpponentsForCSP, runTeammates, runCarrier, runOffsideLine);
@@ -1689,9 +1887,10 @@ export class SimulationEngine {
         case 'PASS_SAFE': {
           if (ball.carrierId === p.id && nextTick >= this.carrierKickLockoutUntil) {
             // Find a target teammate — factor in lane clearance to avoid interceptions
-            const teammates = updatedPlayers.filter(tp => tp.teamId === p.teamId && tp.id !== p.id);
-            const opponents = updatedPlayers.filter(op => op.teamId !== p.teamId);
+            const teammates = updatedPlayers.filter(tp => tp.teamId === p.teamId && tp.id !== p.id && isActivePlayer(tp));
+            const opponents = updatedPlayers.filter(op => op.teamId !== p.teamId && isActivePlayer(op));
             let target = teammates[0];
+            let targetLaneClear = 1;
             if (intent.action === 'PASS_FORWARD') {
               // Progressive passing: score teammates by advancement gain vs distance,
               // penalising targets with blocked lanes.
@@ -1705,14 +1904,16 @@ export class SimulationEngine {
                 if (advGain < -10) continue;
                 // Score: advancement gain bonus, penalised by distance.
                 // Sweet spot is ~15-25m ahead, with distance penalty kicking in hard past 30m.
-                const advScore = Math.min(advGain / 20, 1.5); // caps at 30m gain
-                const distPenalty = dist > 15 ? (dist - 15) / 30 : 0; // penalty starts at 15m
+                const advScore = Math.min(Math.max(advGain, 0) / 18, 1.6);
+                const distWindow = dist < 6 ? -1.4 : dist < 10 ? -0.4 : dist < 26 ? 0.45 : -((dist - 26) / 20);
                 // Lane clearance: penalise targets with opponents in the passing lane
                 const laneClear = passLaneClearance(p.position, tm.position, opponents);
-                const score = advScore - distPenalty + (laneClear - 0.5) * 1.2;
+                const shortNoGainPenalty = dist < 8 && advGain < 3 ? 1.2 : 0;
+                const score = advScore + distWindow + (laneClear - 0.45) * 2.0 - shortNoGainPenalty;
                 if (score > bestScore) {
                   bestScore = score;
                   target = tm;
+                  targetLaneClear = laneClear;
                 }
               }
               // Fallback: if no forward target found (all behind), pick nearest with best lane
@@ -1721,8 +1922,12 @@ export class SimulationEngine {
                 for (const tm of teammates) {
                   const d = p.position.distanceTo(tm.position);
                   const laneClear = passLaneClearance(p.position, tm.position, opponents);
-                  const score = -d + laneClear * 15;
-                  if (score > bestFallback) { bestFallback = score; target = tm; }
+                  const score = (d < 6 ? -2.0 : d < 18 ? 0.7 : -((d - 18) / 14)) + laneClear * 1.8;
+                  if (score > bestFallback) {
+                    bestFallback = score;
+                    target = tm;
+                    targetLaneClear = laneClear;
+                  }
                 }
               }
             } else {
@@ -1731,27 +1936,44 @@ export class SimulationEngine {
               for (const tm of teammates) {
                 const d = p.position.distanceTo(tm.position);
                 const laneClear = passLaneClearance(p.position, tm.position, opponents);
-                // Score: prefer close + clear lane. Blocked lanes heavily penalised.
-                const score = -d + laneClear * 15;
+                const tmAdvance = p.teamId === 'home' ? tm.position.x : (PITCH_WIDTH - tm.position.x);
+                const selfAdvance = p.teamId === 'home' ? p.position.x : (PITCH_WIDTH - p.position.x);
+                const gain = tmAdvance - selfAdvance;
+                const distWindow = d < 5 ? -2.4 : d < 8 ? -0.7 : d < 18 ? 0.9 : d < 26 ? 0.4 : -0.8;
+                const noGainPenalty = d < 8 && Math.abs(gain) < 2 ? 1.4 : 0;
+                const score = distWindow + laneClear * 2.1 + Math.max(gain, -4) * 0.04 - noGainPenalty;
                 if (score > bestScore) {
                   bestScore = score;
                   target = tm;
+                  targetLaneClear = laneClear;
                 }
               }
             }
 
             if (target) {
               const passDist = p.position.distanceTo(target.position);
+              const passAction = intent.action as PassActionType;
+              if (shouldAbortPassAttempt(passAction, targetLaneClear, passDist, nearestOpponentDistance(p, opponents))) {
+                updatedPlayers[i] = { ...p, velocity: Vec2.zero() };
+                break;
+              }
+              const passSpeed = computePassSpeed(passDist, passAction);
 
               // Lead the target: aim where the receiver will be when the ball arrives.
-              // Applies to all passes where receiver is moving (>1.5 m/s), any distance >8m.
               let aimPos = target.position;
               const receiverSpeed = target.velocity.length();
-              if (passDist > 8 && receiverSpeed > 1.5) {
-                const travelTime = passDist / TUNING.passSpeed;
-                const leadDist = receiverSpeed * travelTime * TUNING.passLeadFactor;
+              if (passAction !== 'PASS_SAFE' && passDist > 10 && receiverSpeed > 1.5) {
+                const travelTime = passDist / Math.max(passSpeed, 0.1);
+                const leadFactor = computePassLeadFactor(
+                  passDist,
+                  receiverSpeed,
+                  passAction,
+                  effAttr.passing,
+                  effAttr.vision,
+                );
+                const leadDist = Math.min(passDist * 0.35, receiverSpeed * travelTime * leadFactor);
                 const leadDir = target.velocity.scale(1 / receiverSpeed); // unit direction
-                aimPos = target.position.add(leadDir.scale(leadDist));
+                aimPos = clampToPitch(target.position.add(leadDir.scale(leadDist)));
               }
 
               // Compute base pass direction
@@ -1774,21 +1996,21 @@ export class SimulationEngine {
                   worstSide = cross > 0 ? -1 : 1;
                 }
               }
-              if (worstPerp < 5) {
-                // Rotate away from closest blocker — angle scales with proximity
-                const angle = worstSide * (0.18 + (1 - worstPerp / 5) * 0.14); // 10°–18°
-                const cos = Math.cos(angle);
-                const sin = Math.sin(angle);
-                passDir = new Vec2(passDir.x * cos - passDir.y * sin, passDir.x * sin + passDir.y * cos);
+              const laneOffset = passAction === 'PASS_SAFE' ? 0 : computePassLaneOffset(passDist, worstPerp);
+              if (laneOffset > 0) {
+                const normal = new Vec2(-passDir.y, passDir.x).normalize();
+                aimPos = clampToPitch(aimPos.add(normal.scale(worstSide * laneOffset)));
+                passDir = aimPos.subtract(p.position).normalize();
               }
 
               // Loft long passes: add vertical velocity for passes > 20m
               // Short passes stay on the ground; long passes arc over defenders
-              const loftVz = passDist > 20 ? 4 + (passDist - 20) * 0.15 : 0;
+              const kickDist = p.position.distanceTo(aimPos);
+              const loftVz = kickDist > 22 ? 3.5 + (kickDist - 22) * 0.12 : 0;
 
               ball = {
                 ...ball,
-                velocity: passDir.scale(TUNING.passSpeed),
+                velocity: passDir.scale(passSpeed),
                 vz: loftVz,
                 carrierId: null,
               };
@@ -1798,23 +2020,19 @@ export class SimulationEngine {
               this.lastKickerId = p.id;
               this.lastTouchTeamId = p.teamId;
               this.kickCooldownUntil = nextTick + 10; // ~0.33s at 30 ticks/sec
-              // Global cooldown: ball must travel before anyone picks up (prevents possession loops)
-              this.pickupCooldownUntil = nextTick + 16;
+              // Let short passes be trapped quickly while still preventing self-pass loops.
+              this.pickupCooldownUntil = nextTick + computePassPickupCooldown(kickDist, passSpeed);
               // Record actual pass event
               this.statsAccumulator.recordPass(p.teamId);
               this.gameLog.recordPass(nextTick, p.teamId, p.id, p.role,
                 p.position.x, p.position.y, target.position.x, target.position.y,
                 target.id, intent.action === 'PASS_FORWARD' ? 'forward' : 'safe',
-                passDist);
+                kickDist);
               // Track pending pass for completion detection
               this.pendingPassPlayerId = p.id;
               this.pendingPassTeamId = p.teamId;
               this.lastKickWasShot = false;
-              // Snapshot offside line at moment of pass for offside detection
-              const defendingTeam: TeamId = p.teamId === 'home' ? 'away' : 'home';
-              this.offsideLineAtKick = computeDefensiveLine(updatedPlayers, defendingTeam, current.ball.position.x);
-              this.offsideKickTeam = p.teamId;
-              this.offsideActive = true;
+              this.snapshotOffsideState(updatedPlayers, p.teamId, current.ball.position.x);
             }
           }
           break;
@@ -1823,14 +2041,15 @@ export class SimulationEngine {
         case 'PASS_THROUGH': {
           // Through-ball: play the ball into space ahead of a running teammate
           if (ball.carrierId === p.id && nextTick >= this.carrierKickLockoutUntil) {
-            const teammates = updatedPlayers.filter(tp => tp.teamId === p.teamId && tp.id !== p.id);
-            const opponents = updatedPlayers.filter(op => op.teamId !== p.teamId);
+            const teammates = updatedPlayers.filter(tp => tp.teamId === p.teamId && tp.id !== p.id && isActivePlayer(tp));
+            const opponents = updatedPlayers.filter(op => op.teamId !== p.teamId && isActivePlayer(op));
             const forwardSign = p.teamId === 'home' ? 1 : -1;
             const goalX = p.teamId === 'home' ? PITCH_WIDTH : 0;
 
             // Find best runner: teammate moving toward goal with space ahead
             let bestRunner: PlayerState | null = null;
             let bestRunScore = -Infinity;
+            let bestRunnerLaneClear = 1;
             for (const tm of teammates) {
               const forwardVel = tm.velocity.x * forwardSign;
               if (forwardVel < 2) continue; // must be running forward
@@ -1847,27 +2066,71 @@ export class SimulationEngine {
                   if (d < spaceAhead) spaceAhead = d;
                 }
               }
-              const score = forwardVel * 0.3 + spaceAhead * 0.2 - Math.abs(tm.position.x - goalX) * 0.01;
-              if (score > bestRunScore) { bestRunScore = score; bestRunner = tm; }
+              const laneClear = passLaneClearance(p.position, tm.position, opponents);
+              const score = forwardVel * 0.3 + spaceAhead * 0.2 + laneClear * 1.4 - Math.abs(tm.position.x - goalX) * 0.01;
+              if (score > bestRunScore) {
+                bestRunScore = score;
+                bestRunner = tm;
+                bestRunnerLaneClear = laneClear;
+              }
             }
 
             if (bestRunner) {
-              // Compute lead point: where the runner will be in ~1s
+              const baseDist = p.position.distanceTo(bestRunner.position);
+              if (shouldAbortPassAttempt('PASS_THROUGH', bestRunnerLaneClear, baseDist, nearestOpponentDistance(p, opponents))) {
+                updatedPlayers[i] = { ...p, velocity: Vec2.zero() };
+                break;
+              }
+              const passSpeed = computePassSpeed(Math.max(baseDist, 16), 'PASS_THROUGH');
+              // Compute lead point using flight time, but cap it so through-balls stay reachable.
               const runSpeed = bestRunner.velocity.length();
-              const leadTime = Math.min(1.5, runSpeed > 0.1 ? 20 / Math.max(runSpeed, 3) : 1.0);
-              const leadPoint = bestRunner.position.add(bestRunner.velocity.scale(leadTime));
-              const clampedLead = clampToPitch(leadPoint);
+              const travelTime = baseDist / Math.max(passSpeed, 0.1);
+              const leadFactor = computePassLeadFactor(
+                baseDist,
+                runSpeed,
+                'PASS_THROUGH',
+                effAttr.passing,
+                effAttr.vision,
+              );
+              const leadDist = Math.min(14, runSpeed * travelTime * (0.8 + leadFactor));
+              let clampedLead = clampToPitch(
+                bestRunner.position.add(
+                  runSpeed > 0.1
+                    ? bestRunner.velocity.normalize().scale(leadDist)
+                    : Vec2.zero(),
+                ),
+              );
 
               let passDir = clampedLead.subtract(p.position);
               const passDist = passDir.length();
               if (passDist > 0.01) passDir = passDir.scale(1 / passDist);
 
+              let worstPerp = Infinity;
+              let worstSide = 0;
+              for (const opp of opponents) {
+                const toOpp = opp.position.subtract(p.position);
+                const proj = toOpp.dot(passDir);
+                if (proj < 2 || proj > passDist - 2) continue;
+                const cross = toOpp.x * passDir.y - toOpp.y * passDir.x;
+                const perp = Math.abs(cross);
+                if (perp < 3.5 && perp < worstPerp) {
+                  worstPerp = perp;
+                  worstSide = cross > 0 ? -1 : 1;
+                }
+              }
+              const laneOffset = computePassLaneOffset(passDist, worstPerp);
+              if (laneOffset > 0) {
+                const normal = new Vec2(-passDir.y, passDir.x).normalize();
+                clampedLead = clampToPitch(clampedLead.add(normal.scale(worstSide * laneOffset)));
+                passDir = clampedLead.subtract(p.position).normalize();
+              }
+
               // Through-balls are ground passes (stay low to run onto)
-              const loftVz = passDist > 25 ? 3 + (passDist - 25) * 0.1 : 0;
+              const loftVz = passDist > 27 ? 2.5 + (passDist - 27) * 0.08 : 0;
 
               ball = {
                 ...ball,
-                velocity: passDir.scale(TUNING.passSpeed * 1.05), // slightly harder to reach space
+                velocity: passDir.scale(passSpeed),
                 vz: loftVz,
                 carrierId: null,
               };
@@ -1875,7 +2138,7 @@ export class SimulationEngine {
               this.lastKickerId = p.id;
               this.lastTouchTeamId = p.teamId;
               this.kickCooldownUntil = nextTick + 10;
-              this.pickupCooldownUntil = nextTick + 16;
+              this.pickupCooldownUntil = nextTick + computePassPickupCooldown(passDist, passSpeed);
               this.statsAccumulator.recordPass(p.teamId);
               this.gameLog.recordPass(nextTick, p.teamId, p.id, p.role,
                 p.position.x, p.position.y, clampedLead.x, clampedLead.y,
@@ -1883,11 +2146,7 @@ export class SimulationEngine {
               this.pendingPassPlayerId = p.id;
               this.pendingPassTeamId = p.teamId;
               this.lastKickWasShot = false;
-              // Snapshot offside line for through-ball
-              const defendingTeam: TeamId = p.teamId === 'home' ? 'away' : 'home';
-              this.offsideLineAtKick = computeDefensiveLine(updatedPlayers, defendingTeam, current.ball.position.x);
-              this.offsideKickTeam = p.teamId;
-              this.offsideActive = true;
+              this.snapshotOffsideState(updatedPlayers, p.teamId, current.ball.position.x);
             } else {
               // No runner found — fallback to safe pass behavior
               // (carrier holds ball, will re-evaluate next tick)
@@ -1899,25 +2158,37 @@ export class SimulationEngine {
         case 'SHOOT': {
           if (ball.carrierId === p.id && nextTick >= this.carrierKickLockoutUntil) {
             const goalX = p.teamId === 'home' ? PITCH_WIDTH : 0;
-            const goalY = PITCH_HEIGHT / 2 + (this.rng() - 0.5) * 4; // slight randomness
-            const shootDir = new Vec2(goalX, goalY).subtract(p.position).normalize();
+            let goalY = PITCH_HEIGHT / 2;
+            let shootDir = new Vec2(goalX, goalY).subtract(p.position).normalize();
 
             // Check if GK is advanced — chip/lob over them
-            const oppPlayers = updatedPlayers.filter(op => op.teamId !== p.teamId);
+            const oppPlayers = updatedPlayers.filter(op => op.teamId !== p.teamId && isActivePlayer(op));
+            const distToGoal = Math.abs(p.position.x - goalX);
+            const pressureDist = nearestOpponentDistance(p, oppPlayers);
             const gk = oppPlayers.find(op => op.role === 'GK');
-            let shotVz = 2 + this.rng() * 3; // default loft
-            if (gk) {
-              const gkDistFromGoal = Math.abs(gk.position.x - goalX);
-              const distToGoal = Math.abs(p.position.x - goalX);
-              // If GK is off their line and between shooter and goal, lob higher
-              if (gkDistFromGoal > 5 && gkDistFromGoal < distToGoal) {
-                shotVz = 4 + gkDistFromGoal * 0.3 + this.rng() * 2;
-              }
-            }
+            const goalkeeperDepth = gk ? Math.abs(gk.position.x - goalX) : 0;
+            goalY = computeShotTargetY(p, gk, distToGoal, pressureDist, this.rng());
+            shootDir = new Vec2(goalX, goalY).subtract(p.position).normalize();
+            const shotSpeed = computeShotSpeed(
+              distToGoal,
+              p.attributes.shooting,
+              p.personality.composure,
+              pressureDist,
+              goalkeeperDepth,
+            );
+            const shotVz = computeShotVerticalVelocity(
+              distToGoal,
+              shotSpeed,
+              p.attributes.shooting,
+              p.personality.composure,
+              pressureDist,
+              goalkeeperDepth,
+              this.rng(),
+            );
 
             ball = {
               ...ball,
-              velocity: shootDir.scale(TUNING.shootSpeed),
+              velocity: shootDir.scale(shotSpeed),
               carrierId: null,
               vz: shotVz,
             };
@@ -1927,7 +2198,6 @@ export class SimulationEngine {
             this.kickCooldownUntil = nextTick + 10;
             this.pickupCooldownUntil = nextTick + 12;
             // Record actual shot event
-            const distToGoal = Math.abs(p.position.x - goalX);
             this.statsAccumulator.recordShot(p.teamId);
             this.gameLog.recordShot(nextTick, p.teamId, p.id, p.role,
               p.position.x, p.position.y, distToGoal);
@@ -1936,11 +2206,16 @@ export class SimulationEngine {
             this.pendingPassTeamId = null;
             // On-target check: would the ball pass through the goal frame (between posts, under bar)?
             // Goal posts at y = PITCH_HEIGHT/2 ± 3.66, crossbar at 2.44m height
-            const CROSSBAR_H = 2.44;
+            const goalHalfWidth = GOAL_WIDTH / 2;
             const timeToGoal = distToGoal / Math.max(Math.abs(ball.velocity.x), 0.1);
+            const yAtGoal = p.position.y + ball.velocity.y * timeToGoal;
             const zAtGoal = shotVz * timeToGoal - 0.5 * 9.8 * timeToGoal * timeToGoal;
             // goalY is always between posts (aim randomness is ±2m from center, posts are ±3.66m)
-            const onTarget = zAtGoal >= 0 && zAtGoal <= CROSSBAR_H;
+            const onTarget =
+              yAtGoal > PITCH_HEIGHT / 2 - goalHalfWidth &&
+              yAtGoal < PITCH_HEIGHT / 2 + goalHalfWidth &&
+              zAtGoal >= 0 &&
+              zAtGoal <= CROSSBAR_HEIGHT;
             if (onTarget) {
               this.statsAccumulator.recordShotOnTarget(p.teamId);
               this.gameLog.recordShotOnTarget(p.id);
@@ -1953,32 +2228,8 @@ export class SimulationEngine {
         case 'DRIBBLE': {
           if (ball.carrierId === p.id) {
             this.lastTouchTeamId = p.teamId;
-            // Move toward opponent goal, steering around nearby defenders
-            const opponentGoalX = p.teamId === 'home' ? PITCH_WIDTH : 0;
-            const forwardDir = new Vec2(opponentGoalX - p.position.x, 0).normalize();
-
-            let dribbleDir = forwardDir;
-
-            // Find nearest opponent and evade if close
-            const opponents = updatedPlayers.filter(op => op.teamId !== p.teamId);
-            let nearestOpp: PlayerState | null = null;
-            let nearestDist = Infinity;
-            for (const opp of opponents) {
-              const d = p.position.distanceTo(opp.position);
-              if (d < nearestDist) { nearestDist = d; nearestOpp = opp; }
-            }
-
-            if (nearestOpp && nearestDist < 8) {
-              // Steer perpendicular to the defender direction (go around them)
-              const toDefender = nearestOpp.position.subtract(p.position);
-              const perp1 = new Vec2(-toDefender.y, toDefender.x).normalize();
-              const perp2 = new Vec2(toDefender.y, -toDefender.x).normalize();
-              // Pick the perpendicular that maintains more forward progress
-              const evasionDir = perp1.dot(forwardDir) > perp2.dot(forwardDir) ? perp1 : perp2;
-              // Closer defender = stronger evasion (60% evasion at 0m, 0% at 8m)
-              const evasionWeight = Math.max(0, (8 - nearestDist) / 8) * 0.6;
-              dribbleDir = forwardDir.scale(1 - evasionWeight).add(evasionDir.scale(evasionWeight)).normalize();
-            }
+            const opponents = updatedPlayers.filter(op => op.teamId !== p.teamId && isActivePlayer(op));
+            const dribbleDir = computeDribbleDirection(p, opponents);
 
             const newVel = dribbleDir.scale(maxSpeed * TUNING.dribbleSpeedRatio);
             const dtSec = dt / 1000;
@@ -2027,8 +2278,8 @@ export class SimulationEngine {
 
     // 10c. Ball carrier position sync: if ball has a carrier, keep ball with player
     if (ball.carrierId !== null) {
-      const carrier = updatedPlayers.find(p => p.id === ball.carrierId);
-      if (carrier) {
+      const carrier = updatedPlayers.find(p => p.id === ball.carrierId && isActivePlayer(p));
+      if (carrier && isActivePlayer(carrier)) {
         // If carrier is using DRIBBLE, ball was already moved; otherwise keep at carrier
         const carrierIntent = intents.find(i => i.agentId === ball.carrierId);
         if (carrierIntent?.action !== 'DRIBBLE') {
@@ -2045,10 +2296,11 @@ export class SimulationEngine {
     // Uses resolveTackle() from contact.ts with a per-player cooldown to prevent spam.
     // Blocked briefly after dead ball restarts (corner, throw-in, etc.) to let taker deliver.
     if (ball.carrierId !== null && nextTick >= this.restartProtectionUntil) {
-      const carrier = updatedPlayers.find(p => p.id === ball.carrierId);
-      if (carrier) {
+      const carrier = updatedPlayers.find(p => p.id === ball.carrierId && isActivePlayer(p));
+      if (carrier && isActivePlayer(carrier)) {
         for (let i = 0; i < updatedPlayers.length; i++) {
           const p = updatedPlayers[i]!;
+          if (!isActivePlayer(p)) continue;
           // Only opponents
           if (p.teamId === carrier.teamId) continue;
           // Only players who chose PRESS
@@ -2056,6 +2308,7 @@ export class SimulationEngine {
 
           const dist = p.position.distanceTo(carrier.position);
           if (dist > 4.0) continue; // MAX_TACKLE_REACH
+          if (!shouldBookedPlayerAttemptTackle(p, carrier, updatedPlayers)) continue;
 
           // Cooldown: 30 ticks (~1s) between tackle attempts per player
           const cooldownExpiry = this.tackleCooldowns.get(p.id) ?? 0;
@@ -2074,7 +2327,7 @@ export class SimulationEngine {
 
           const result = resolveTackle(p, carrier, this.rng);
 
-          if (result.success) {
+          if (result.success && !result.foul) {
             this.gameLog.recordTackle(nextTick, p.teamId, p.id, p.role,
               p.position.x, p.position.y, carrier.id, true);
             // Tackler touched the ball last
@@ -2089,34 +2342,103 @@ export class SimulationEngine {
             ball = {
               ...ball,
               carrierId: null,
-              velocity: knockDir.scale(8 + this.rng() * 5),
+              velocity: ensureDirectionStaysInPlay(carrier.position, knockDir).scale(8 + this.rng() * 4),
             };
-            // Prevent dispossessed player from immediately re-picking up (breaks tackle chains)
+            // Prevent the dispossessed carrier from instantly reclaiming the ball, but
+            // don't freeze the entire scrum long enough for repeated body clashes.
             this.lastKickerId = carrier.id;
-            this.kickCooldownUntil = nextTick + 25;
-            this.pickupCooldownUntil = nextTick + 25; // longer cooldown lets ball clear congested zone
+            this.kickCooldownUntil = nextTick + 20;
+            this.pickupCooldownUntil = nextTick + 8;
             // Also cool down the tackler so they don't immediately re-engage
             this.tackleCooldowns.set(p.id, nextTick + 45);
-            // Push both players apart physically to prevent immediate re-engagement
-            const sepDir = carrier.position.subtract(p.position).normalize();
             const carrierIdx = updatedPlayers.findIndex(up => up.id === carrier.id);
+            const recovery = resolveTackleRecoveryPositions(carrier, p);
             if (carrierIdx >= 0) {
               updatedPlayers[carrierIdx] = {
                 ...updatedPlayers[carrierIdx]!,
-                velocity: sepDir.scale(3),
+                position: recovery.carrierPosition,
+                velocity: Vec2.zero(),
               };
             }
-            updatedPlayers[i] = { ...p, velocity: Vec2.zero() };
+            updatedPlayers[i] = {
+              ...updatedPlayers[i]!,
+              position: recovery.tacklerPosition,
+              velocity: Vec2.zero(),
+            };
             break; // One successful tackle per tick
           }
 
           if (result.foul) {
-            // Foul: ball released at carrier position (simplified free kick)
+            // Foul: stop play and award a free kick to the ball carrier's team.
             ball = {
               ...ball,
+              position: carrier.position,
               carrierId: null,
               velocity: Vec2.zero(),
+              z: 0,
+              vz: 0,
             };
+            this.lastTouchTeamId = carrier.teamId;
+            this.lastKickerId = null;
+            this.pendingPassPlayerId = null;
+            this.pendingPassTeamId = null;
+            this.lastKickWasShot = false;
+            tickEvents.push({
+              tick: nextTick,
+              type: 'foul',
+              playerId: p.id,
+              teamId: carrier.teamId,
+              position: carrier.position,
+              data: { foulerId: p.id, victimPlayerId: carrier.id },
+            });
+            this.gameLog.recordFoul(nextTick, carrier.teamId, p.id, p.role, carrier.id,
+              carrier.position.x, carrier.position.y);
+            const cardDecision = assessCardDecision(p, carrier, updatedPlayers);
+            const cardOutcome = resolveCardOutcome(p.yellowCards ?? 0, cardDecision);
+            if (cardOutcome.event === 'yellow') {
+              const booked = { ...updatedPlayers[i]!, yellowCards: cardOutcome.yellowCards };
+              updatedPlayers[i] = booked;
+              tickEvents.push({
+                tick: nextTick,
+                type: 'yellow_card',
+                playerId: booked.id,
+                teamId: booked.teamId,
+                position: booked.position,
+              });
+              this.gameLog.recordYellowCard(nextTick, booked.teamId, booked.id, booked.role,
+                booked.position.x, booked.position.y);
+            } else if (cardOutcome.event === 'red') {
+              const dismissed = createDismissedPlayer({
+                ...updatedPlayers[i]!,
+                yellowCards: cardOutcome.yellowCards,
+                sentOff: true,
+              });
+              updatedPlayers[i] = dismissed;
+              tickEvents.push({
+                tick: nextTick,
+                type: 'red_card',
+                playerId: dismissed.id,
+                teamId: dismissed.teamId,
+                position: carrier.position,
+                data: { secondYellow: cardOutcome.secondYellow },
+              });
+              this.gameLog.recordRedCard(nextTick, dismissed.teamId, dismissed.id, dismissed.role,
+                carrier.position.x, carrier.position.y, cardOutcome.secondYellow);
+            }
+            const taker = this._findTaker(RestartType.FREE_KICK, carrier.teamId, carrier.position, updatedPlayers);
+            const takerPlayer = updatedPlayers.find(player => player.id === taker);
+            if (taker && takerPlayer) {
+              this.gameLog.recordFreeKick(nextTick, carrier.teamId, taker, takerPlayer.role,
+                carrier.position.x, carrier.position.y);
+            }
+            this._enterDeadBall({
+              type: RestartType.FREE_KICK,
+              position: carrier.position,
+              teamId: carrier.teamId,
+              tickStarted: nextTick,
+              repositionTicks: TUNING.freeKickPauseTicks,
+              takerId: taker,
+            });
             break;
           }
         }
@@ -2127,8 +2449,9 @@ export class SimulationEngine {
     // Post-process: apply separation to prevent overlapping
     for (let i = 0; i < updatedPlayers.length; i++) {
       const p = updatedPlayers[i]!;
+      if (!isActivePlayer(p)) continue;
       const neighborPositions = updatedPlayers
-        .filter((_op, j) => j !== i)
+        .filter((op, j) => j !== i && isActivePlayer(op))
         .map(op => op.position);
 
       const sepForce = separation(p.position, neighborPositions, TUNING.separationRadius);
@@ -2145,7 +2468,65 @@ export class SimulationEngine {
     // ── 12. Integrate ball physics ────────────────────────────────────────────
     // Only integrate if ball has no carrier (carried balls move with player)
     if (ball.carrierId === null) {
+      const preIntegrationBall = ball;
       ball = integrateBall(ball, dt, TUNING.ballGroundFriction, TUNING.ballAirDrag);
+
+      if (this.lastKickWasShot && this.lastTouchTeamId !== null) {
+        const defendingTeam: TeamId = this.lastTouchTeamId === 'home' ? 'away' : 'home';
+        const goalkeeperIdx = updatedPlayers.findIndex(p => p.teamId === defendingTeam && p.role === 'GK' && isActivePlayer(p));
+        const goalkeeper = goalkeeperIdx >= 0 ? updatedPlayers[goalkeeperIdx]! : null;
+        if (goalkeeper) {
+          const saveResult = resolveGoalkeeperSave(
+            preIntegrationBall,
+            ball,
+            goalkeeper,
+            defendingTeam === 'home' ? 0 : PITCH_WIDTH,
+            this.rng(),
+          );
+          if (saveResult) {
+            ball = saveResult.ball;
+            updatedPlayers[goalkeeperIdx] = {
+              ...goalkeeper,
+              position: saveResult.keeperPosition,
+              velocity: Vec2.zero(),
+            };
+            this.lastTouchTeamId = defendingTeam;
+            this.lastKickerId = saveResult.caught ? goalkeeper.id : null;
+            this.pendingPassPlayerId = null;
+            this.pendingPassTeamId = null;
+            if (saveResult.caught) {
+              this.carrierKickLockoutUntil = nextTick + TUNING.kickLockoutTicks + 4;
+              this.pickupCooldownUntil = nextTick;
+            } else {
+              this.kickCooldownUntil = nextTick + 4;
+              this.pickupCooldownUntil = nextTick + 2;
+            }
+            tickEvents.push({
+              tick: nextTick,
+              type: 'save',
+              playerId: goalkeeper.id,
+              teamId: defendingTeam,
+              position: saveResult.keeperPosition,
+              data: { caught: saveResult.caught },
+            });
+          }
+        }
+      }
+    }
+
+    if (current.ball.carrierId !== null && nextTick < this.carrierKickLockoutUntil) {
+      const carrierIdx = playersWithAnchors.findIndex(player => player.id === current.ball.carrierId);
+      if (carrierIdx >= 0) {
+        const carrier = playersWithAnchors[carrierIdx]!;
+        intents[carrierIdx] = {
+          ...intents[carrierIdx]!,
+          action: resolveLockedCarrierAction(
+            intents[carrierIdx]!.action,
+            carrier.teamId === 'home' ? PITCH_WIDTH - carrier.position.x : carrier.position.x,
+            contexts[carrierIdx]!.nearestDefenderDistance,
+          ),
+        };
+      }
     }
 
     // ── 13. Check for goals ───────────────────────────────────────────────────
@@ -2204,6 +2585,7 @@ export class SimulationEngine {
         stats: this.statsAccumulator.getSnapshot(),
         deadBallInfo: { type: RestartType.KICKOFF, teamId: kickoffTeam, position: center },
       };
+      this.latestDebugIntents = intents.map(intent => ({ ...intent }));
       this.snapshot = newSnapshot;
       return newSnapshot;
     }
@@ -2281,6 +2663,7 @@ export class SimulationEngine {
           stats: this.statsAccumulator.getSnapshot(),
           deadBallInfo: dbInfo,
         };
+        this.latestDebugIntents = intents.map(intent => ({ ...intent }));
         this.snapshot = newSnapshot;
         return newSnapshot;
       }
@@ -2321,6 +2704,7 @@ export class SimulationEngine {
           stats: this.statsAccumulator.getSnapshot(),
           deadBallInfo: dbInfo,
         };
+        this.latestDebugIntents = intents.map(intent => ({ ...intent }));
         this.snapshot = newSnapshot;
         return newSnapshot;
       }
@@ -2349,6 +2733,7 @@ export class SimulationEngine {
       stats: this.statsAccumulator.getSnapshot(),
     };
 
+    this.latestDebugIntents = intents.map(intent => ({ ...intent }));
     this.snapshot = newSnapshot;
     return newSnapshot;
   }
@@ -2361,6 +2746,11 @@ export class SimulationEngine {
   /** Returns the decision log for external access (e.g., debug overlay). */
   getDecisionLog(): DecisionLog {
     return this.decisionLog;
+  }
+
+  /** Returns the latest resolved action intents for debug rendering. */
+  getLatestDebugIntents(): readonly ActionIntent[] {
+    return this.latestDebugIntents;
   }
 }
 
@@ -2395,6 +2785,580 @@ function clampToPitch(pos: Vec2): Vec2 {
     Math.max(0, Math.min(PITCH_WIDTH, pos.x)),
     Math.max(0, Math.min(PITCH_HEIGHT, pos.y)),
   );
+}
+
+function clampToPitchInset(pos: Vec2, inset: number = 0.5): Vec2 {
+  return new Vec2(
+    Math.max(inset, Math.min(PITCH_WIDTH - inset, pos.x)),
+    Math.max(inset, Math.min(PITCH_HEIGHT - inset, pos.y)),
+  );
+}
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+type PassActionType = 'PASS_FORWARD' | 'PASS_SAFE' | 'PASS_THROUGH';
+
+export function computeShotTargetY(
+  shooter: PlayerState,
+  goalkeeper: PlayerState | undefined,
+  distanceToGoal: number,
+  nearestPressureDist: number,
+  rngValue: number,
+): number {
+  const goalCenterY = PITCH_HEIGHT / 2;
+  const goalHalfWidth = GOAL_WIDTH / 2;
+  const shootingSkill =
+    shooter.attributes.shooting * 0.56 +
+    shooter.personality.composure * 0.28 +
+    shooter.personality.flair * 0.16;
+  const pressure = clamp01(1 - nearestPressureDist / 8);
+  const distanceT = clamp01((distanceToGoal - 8) / 24);
+  const anglePenalty = clamp01(Math.abs(shooter.position.y - goalCenterY) / 24);
+  const shooterSide = shooter.position.y >= goalCenterY ? -1 : 1;
+  const keeperSide =
+    goalkeeper && Math.abs(goalkeeper.position.y - goalCenterY) > 0.6
+      ? Math.sign(goalCenterY - goalkeeper.position.y)
+      : shooterSide;
+  const preferredSide = keeperSide === 0 ? shooterSide : keeperSide;
+  const baseOffset = preferredSide * (1.35 + shootingSkill * 1.45 + distanceT * 0.4);
+  const spread = 0.75 + (1 - shootingSkill) * 2.4 + pressure * 1.2 + anglePenalty * 1.3 + distanceT * 0.9;
+  const rawTargetY = goalCenterY + baseOffset + (rngValue - 0.5) * spread * 2;
+  const maxOffset = goalHalfWidth + 1.6 + (1 - shootingSkill) * 0.9 + pressure * 0.3;
+  return Math.max(goalCenterY - maxOffset, Math.min(goalCenterY + maxOffset, rawTargetY));
+}
+
+export function computeShotSpeed(
+  distanceToGoal: number,
+  shooting: number,
+  composure: number,
+  nearestPressureDist: number,
+  goalkeeperDepth: number,
+): number {
+  const pressure = clamp01(1 - nearestPressureDist / 8);
+  const distanceT = clamp01((distanceToGoal - 8) / 24);
+  const chipBias = clamp01((goalkeeperDepth - 5) / 8) * clamp01((distanceToGoal - 10) / 18);
+  const speed = 19.2 + shooting * 3.6 + composure * 0.8 + distanceT * 1.6 - chipBias * 2.0 - pressure * 0.6;
+  return Math.max(18, Math.min(25.5, speed));
+}
+
+export function computeShotVerticalVelocity(
+  distanceToGoal: number,
+  shotSpeed: number,
+  shooting: number,
+  composure: number,
+  nearestPressureDist: number,
+  goalkeeperDepth: number,
+  rngValue: number,
+): number {
+  const timeToGoal = Math.max(distanceToGoal / Math.max(shotSpeed, 0.1), 0.12);
+  const pressure = clamp01(1 - nearestPressureDist / 8);
+  const skill = shooting * 0.6 + composure * 0.4;
+  const distanceT = clamp01((distanceToGoal - 8) / 22);
+  const chipBias = clamp01((goalkeeperDepth - 5) / 8) * clamp01((distanceToGoal - 10) / 18);
+  const baseHeight = 0.28 + distanceT * 0.45 + rngValue * 0.45;
+  const chipHeight = 1.55 + rngValue * 0.55;
+  const targetHeight = baseHeight * (1 - chipBias) + chipHeight * chipBias;
+  const error = (1 - skill) * 0.95 + pressure * 0.5 + distanceT * 0.25;
+  const desiredGoalHeight = Math.max(-0.3, Math.min(CROSSBAR_HEIGHT + 0.8, targetHeight + (rngValue - 0.5) * error * 2));
+  return Math.max(0.8, (desiredGoalHeight + 0.5 * 9.8 * timeToGoal * timeToGoal) / timeToGoal);
+}
+
+export function computeGoalkeeperSetPosition(
+  teamId: TeamId,
+  ballPosition: Vec2,
+  formationAnchor: Vec2,
+  teamHasBall: boolean,
+): Vec2 {
+  const goalCenterY = PITCH_HEIGHT / 2;
+  const goalHalfWidth = GOAL_WIDTH / 2;
+  const ownGoalX = teamId === 'home' ? 0 : PITCH_WIDTH;
+  const goalCenter = new Vec2(ownGoalX, goalCenterY);
+  const toBall = ballPosition.subtract(goalCenter);
+  const distToBall = Math.max(toBall.length(), 0.01);
+  const centrality = 1 - clamp01(Math.abs(ballPosition.y - goalCenterY) / (PITCH_HEIGHT * 0.5));
+  const distanceT = 1 - clamp01((distToBall - 8) / 38);
+  const depth = 1.6 + distanceT * 4.8 + centrality * 1.1;
+  let setTarget = goalCenter.add(toBall.scale(depth / distToBall));
+
+  if (teamHasBall && distToBall > 45) {
+    setTarget = new Vec2(
+      formationAnchor.x + (setTarget.x - formationAnchor.x) * 0.35,
+      formationAnchor.y + (setTarget.y - formationAnchor.y) * 0.35,
+    );
+  }
+
+  const minX = teamId === 'home' ? 0.8 : PITCH_WIDTH - 11.5;
+  const maxX = teamId === 'home' ? 11.5 : PITCH_WIDTH - 0.8;
+  return new Vec2(
+    Math.max(minX, Math.min(maxX, setTarget.x)),
+    Math.max(goalCenterY - goalHalfWidth - 6.5, Math.min(goalCenterY + goalHalfWidth + 6.5, setTarget.y)),
+  );
+}
+
+export function resolveLockedCarrierAction(
+  action: ActionType,
+  distanceToGoal: number,
+  nearestDefenderDistance: number,
+): ActionType {
+  const isKickAction =
+    action === ActionType.SHOOT ||
+    action === ActionType.PASS_FORWARD ||
+    action === ActionType.PASS_SAFE ||
+    action === ActionType.PASS_THROUGH;
+  if (!isKickAction) return action;
+  if (distanceToGoal < 26 || nearestDefenderDistance > 2.8) return ActionType.DRIBBLE;
+  return ActionType.HOLD_SHIELD;
+}
+
+export function resolveEffectivePossessionTeam(
+  carrier: PlayerState | null,
+  pendingPassTeamId: TeamId | null,
+): TeamId | null {
+  if (carrier) return carrier.teamId;
+  if (pendingPassTeamId) return pendingPassTeamId;
+  return null;
+}
+
+export function computeDribbleDirection(
+  player: PlayerState,
+  opponents: readonly PlayerState[],
+): Vec2 {
+  const opponentGoalX = player.teamId === 'home' ? PITCH_WIDTH : 0;
+  const forwardSign = player.teamId === 'home' ? 1 : -1;
+  const forwardDir = new Vec2(opponentGoalX - player.position.x, 0).normalize();
+  const currentHeading = player.velocity.length() > 0.2
+    ? player.velocity.normalize()
+    : forwardDir;
+  let dribbleDir = forwardDir.scale(0.62).add(currentHeading.scale(0.38));
+  if (dribbleDir.length() < 0.01) dribbleDir = forwardDir;
+  dribbleDir = dribbleDir.normalize();
+
+  let nearestOpp: PlayerState | null = null;
+  let nearestDist = Infinity;
+  for (const opp of opponents) {
+    if (!isActivePlayer(opp)) continue;
+    const d = player.position.distanceTo(opp.position);
+    if (d < nearestDist) {
+      nearestDist = d;
+      nearestOpp = opp;
+    }
+  }
+
+  if (nearestOpp && nearestDist < 8) {
+    const ahead = (nearestOpp.position.x - player.position.x) * forwardSign;
+    if (ahead > -0.8) {
+      const toDefender = nearestOpp.position.subtract(player.position);
+      const perp1 = new Vec2(-toDefender.y, toDefender.x).normalize();
+      const perp2 = new Vec2(toDefender.y, -toDefender.x).normalize();
+      const evasionDir = perp1.dot(dribbleDir) > perp2.dot(dribbleDir) ? perp1 : perp2;
+      const evasionWeight = Math.max(0, (8 - nearestDist) / 8) * 0.42;
+      dribbleDir = dribbleDir.scale(1 - evasionWeight).add(evasionDir.scale(evasionWeight)).normalize();
+    }
+  }
+
+  return ensureDirectionStaysInPlay(player.position, dribbleDir);
+}
+
+export function computeLooseBallRecoveryTarget(
+  player: PlayerState,
+  teammates: readonly PlayerState[],
+  ball: BallState,
+  maxSpeed: number,
+): Vec2 | null {
+  if (ball.carrierId !== null || player.role === 'GK') return null;
+  const myDistToBall = player.position.distanceTo(ball.position);
+  const isClosest = !teammates.some(tp =>
+    tp.role !== 'GK' &&
+    isActivePlayer(tp) &&
+    tp.id !== player.id &&
+    tp.position.distanceTo(ball.position) < myDistToBall,
+  );
+  if (!isClosest) return null;
+
+  const ballSpd = ball.velocity.length();
+  if (ballSpd > 2) {
+    const travelTime = myDistToBall / Math.max(maxSpeed, 0.1);
+    return clampToPitch(ball.position.add(ball.velocity.scale(travelTime)));
+  }
+  return ball.position;
+}
+
+type CardDecision = 'NONE' | 'YELLOW' | 'RED';
+
+function isActivePlayer(player: PlayerState): boolean {
+  return !player.sentOff;
+}
+
+function getDismissalPosition(teamId: TeamId): Vec2 {
+  return teamId === 'home'
+    ? new Vec2(-4, 6)
+    : new Vec2(PITCH_WIDTH + 4, PITCH_HEIGHT - 6);
+}
+
+function createDismissedPlayer(player: PlayerState): PlayerState {
+  const dismissalSpot = getDismissalPosition(player.teamId);
+  return {
+    ...player,
+    position: dismissalSpot,
+    velocity: Vec2.zero(),
+    formationAnchor: dismissalSpot,
+    sentOff: true,
+  };
+}
+
+export function applyDisciplineToPersonality(
+  personality: PersonalityVector,
+  yellowCards: number,
+): PersonalityVector {
+  if (yellowCards <= 0) return personality;
+  const caution = Math.min(1, yellowCards);
+  return {
+    ...personality,
+    aggression: clamp01(personality.aggression - 0.28 * caution),
+    risk_appetite: clamp01(personality.risk_appetite - 0.18 * caution),
+    directness: clamp01(personality.directness - 0.08 * caution),
+    work_rate: clamp01(personality.work_rate - 0.06 * caution),
+  };
+}
+
+function applyDisciplineToMultipliers(
+  base: PlayerTacticalMultipliers | undefined,
+  yellowCards: number,
+): PlayerTacticalMultipliers {
+  const caution = Math.min(1, yellowCards);
+  const source = base ?? defaultMultipliers();
+  return {
+    ...source,
+    risk: clamp01(source.risk * (1 - 0.18 * caution)),
+    press: clamp01(source.press * (1 - 0.42 * caution)),
+    dribble: clamp01(source.dribble * (1 - 0.12 * caution)),
+    decisionWindow: clamp01(source.decisionWindow * (1 - 0.15 * caution)),
+  };
+}
+
+function attackingDirection(teamId: TeamId): number {
+  return teamId === 'home' ? 1 : -1;
+}
+
+function distanceToGoal(teamId: TeamId, x: number): number {
+  return teamId === 'home' ? PITCH_WIDTH - x : x;
+}
+
+function countCoveringDefenders(
+  attacker: PlayerState,
+  defendingTeamId: TeamId,
+  players: readonly PlayerState[],
+  ignoredDefenderId?: string,
+): number {
+  const dir = attackingDirection(attacker.teamId);
+  return players.filter((player) => {
+    if (player.teamId !== defendingTeamId) return false;
+    if (!isActivePlayer(player)) return false;
+    if (player.id === ignoredDefenderId) return false;
+    if ((player.position.x - attacker.position.x) * dir < 0.8) return false;
+    return Math.abs(player.position.y - attacker.position.y) < 16;
+  }).length;
+}
+
+function promisingAttackThreat(
+  victim: PlayerState,
+  defendingTeamId: TeamId,
+  players: readonly PlayerState[],
+  ignoredDefenderId?: string,
+): number {
+  const goalDist = distanceToGoal(victim.teamId, victim.position.x);
+  const centrality = 1 - clamp01(Math.abs(victim.position.y - PITCH_HEIGHT / 2) / (PITCH_HEIGHT * 0.5));
+  const goalward = clamp01((victim.velocity.x * attackingDirection(victim.teamId) + 1.2) / 4.4);
+  const cover = countCoveringDefenders(victim, defendingTeamId, players, ignoredDefenderId);
+  const coverPenalty = Math.min(0.45, cover * 0.18);
+  return clamp01(
+    0.42 * (1 - clamp01((goalDist - 10) / 38)) +
+    0.33 * centrality +
+    0.25 * goalward -
+    coverPenalty,
+  );
+}
+
+export function assessCardDecision(
+  fouler: PlayerState,
+  victim: PlayerState,
+  players: readonly PlayerState[],
+): CardDecision {
+  const dir = attackingDirection(victim.teamId);
+  const goalDist = distanceToGoal(victim.teamId, victim.position.x);
+  const centrality = 1 - clamp01(Math.abs(victim.position.y - PITCH_HEIGHT / 2) / (PITCH_HEIGHT * 0.5));
+  const fromBehind = (victim.position.x - fouler.position.x) * dir > 0.8;
+  const threat = promisingAttackThreat(victim, fouler.teamId, players, fouler.id);
+  const cover = countCoveringDefenders(victim, fouler.teamId, players, fouler.id);
+  const dogso = goalDist < 24 && centrality > 0.55 && threat > 0.72 && cover === 0;
+  if (dogso) return 'RED';
+
+  let severity = 0.08;
+  if (fromBehind) severity += 0.22;
+  if (threat > 0.48) severity += 0.2;
+  if (goalDist < 30 && centrality > 0.65) severity += 0.1;
+  severity += (1 - fouler.attributes.tackling) * 0.12;
+  severity += fouler.personality.aggression * 0.08;
+  return severity >= 0.42 ? 'YELLOW' : 'NONE';
+}
+
+export function resolveCardOutcome(
+  currentYellows: number,
+  decision: CardDecision,
+): {
+  yellowCards: number;
+  sentOff: boolean;
+  secondYellow: boolean;
+  event: 'none' | 'yellow' | 'red';
+} {
+  if (decision === 'RED') {
+    return { yellowCards: currentYellows, sentOff: true, secondYellow: false, event: 'red' };
+  }
+  if (decision === 'YELLOW') {
+    const nextYellows = currentYellows + 1;
+    if (nextYellows >= 2) {
+      return { yellowCards: nextYellows, sentOff: true, secondYellow: true, event: 'red' };
+    }
+    return { yellowCards: nextYellows, sentOff: false, secondYellow: false, event: 'yellow' };
+  }
+  return { yellowCards: currentYellows, sentOff: false, secondYellow: false, event: 'none' };
+}
+
+export function shouldBookedPlayerAttemptTackle(
+  player: PlayerState,
+  carrier: PlayerState,
+  players: readonly PlayerState[],
+): boolean {
+  if ((player.yellowCards ?? 0) === 0) return true;
+  const dist = player.position.distanceTo(carrier.position);
+  if (dist <= 2.2) return true;
+  return promisingAttackThreat(carrier, player.teamId, players, player.id) >= 0.68;
+}
+
+export function shouldDelayPeriodWhistle(
+  snapshot: SimSnapshot,
+  recentRestartType: RestartType | null,
+  recentRestartUntil: number,
+  nextTick: number,
+): boolean {
+  if (snapshot.deadBallInfo) return true;
+  if (recentRestartType !== null && nextTick <= recentRestartUntil) return true;
+  if (snapshot.ball.carrierId === null) return false;
+
+  const carrier = snapshot.players.find(player => player.id === snapshot.ball.carrierId && isActivePlayer(player));
+  if (!carrier) return false;
+
+  const finalThirdStart = PITCH_WIDTH * (2 / 3);
+  const finalThirdEnd = PITCH_WIDTH * (1 / 3);
+  if (carrier.teamId === 'home') {
+    return snapshot.ball.position.x >= finalThirdStart;
+  }
+  return snapshot.ball.position.x <= finalThirdEnd;
+}
+
+export function resolveGoalkeeperSave(
+  prevBall: BallState,
+  nextBall: BallState,
+  goalkeeper: PlayerState,
+  defendingGoalX: number,
+  rngValue: number,
+): {
+  caught: boolean;
+  keeperPosition: Vec2;
+  ball: BallState;
+} | null {
+  if (nextBall.carrierId !== null) return null;
+
+  const segment = nextBall.position.subtract(prevBall.position);
+  const travelSq = segment.dot(segment);
+  if (travelSq < 0.0001) return null;
+
+  const movingTowardGoal = defendingGoalX === 0 ? segment.x < -0.01 : segment.x > 0.01;
+  if (!movingTowardGoal) return null;
+
+  const goalPlaneT = (defendingGoalX - prevBall.position.x) / segment.x;
+  if (goalPlaneT < 0 || goalPlaneT > 12) return null;
+
+  const goalCenterY = PITCH_HEIGHT / 2;
+  const goalHalfWidth = GOAL_WIDTH / 2;
+  const projectedGoalY = prevBall.position.y + segment.y * goalPlaneT;
+  const projectedGoalZ = prevBall.z + (nextBall.z - prevBall.z) * goalPlaneT;
+  if (
+    projectedGoalY < goalCenterY - goalHalfWidth - 2.2 ||
+    projectedGoalY > goalCenterY + goalHalfWidth + 2.2 ||
+    projectedGoalZ < -0.2 ||
+    projectedGoalZ > CROSSBAR_HEIGHT + 0.9
+  ) {
+    return null;
+  }
+
+  const toKeeper = goalkeeper.position.subtract(prevBall.position);
+  const closestT = clamp01(toKeeper.dot(segment) / travelSq);
+  const contactPoint = prevBall.position.add(segment.scale(closestT));
+  const contactZ = prevBall.z + (nextBall.z - prevBall.z) * closestT;
+  const horizontalDist = contactPoint.distanceTo(goalkeeper.position);
+  const horizontalReach = 0.95 + goalkeeper.attributes.positioning * 0.95 + goalkeeper.attributes.aerial * 0.35;
+  const verticalReach = 1.45 + goalkeeper.attributes.aerial * 0.7 + goalkeeper.attributes.positioning * 0.35;
+  if (horizontalDist > horizontalReach + 0.35 || contactZ > verticalReach + 0.45) return null;
+
+  const shotSpeed = nextBall.velocity.length();
+  const saveSkill = goalkeeper.attributes.positioning * 0.6 + goalkeeper.attributes.aerial * 0.4;
+  const closeness = clamp01(1 - horizontalDist / Math.max(horizontalReach, 0.1));
+  const heightPenalty = clamp01(Math.max(0, contactZ - 1.3) / 1.6);
+  const speedPenalty = clamp01((shotSpeed - 14) / 12);
+  const saveChance = clamp01(0.42 + saveSkill * 0.3 + closeness * 0.28 - heightPenalty * 0.12 - speedPenalty * 0.12);
+  if (rngValue > saveChance) return null;
+
+  const keeperPosition = clampToPitchInset(contactPoint, 0.6);
+  const catchChance = clamp01(0.02 + saveSkill * 0.28 + closeness * 0.24 - heightPenalty * 0.4 - speedPenalty * 0.45);
+  const caught = contactZ < 1.7 && rngValue < catchChance;
+
+  if (caught) {
+    return {
+      caught: true,
+      keeperPosition,
+      ball: {
+        ...nextBall,
+        position: keeperPosition,
+        velocity: Vec2.zero(),
+        z: 0,
+        vz: 0,
+        carrierId: goalkeeper.id,
+      },
+    };
+  }
+
+  const awayFromGoalX = defendingGoalX === 0 ? 1 : -1;
+  const lateral = projectedGoalY >= goalkeeper.position.y ? -1 : 1;
+  const parryDir = new Vec2(
+    awayFromGoalX,
+    lateral * (0.45 + (1 - closeness) * 0.55),
+  ).normalize();
+  const parrySpeed = 9 + shotSpeed * 0.18 + (1 - saveSkill) * 1.6;
+  return {
+    caught: false,
+    keeperPosition,
+    ball: {
+      ...nextBall,
+      position: keeperPosition,
+      velocity: parryDir.scale(parrySpeed),
+      z: Math.max(0.1, Math.min(1.2, contactZ * 0.45)),
+      vz: 1.8 + goalkeeper.attributes.aerial * 1.1,
+      carrierId: null,
+    },
+  };
+}
+
+export function computePassSpeed(passDist: number, action: PassActionType): number {
+  const distT = clamp01(passDist / (action === 'PASS_THROUGH' ? 32 : 28));
+  switch (action) {
+    case 'PASS_SAFE':
+      return 10.5 + distT * 7.5;
+    case 'PASS_THROUGH':
+      return 15.5 + distT * 9.0;
+    default:
+      return 12.5 + distT * 9.5;
+  }
+}
+
+export function computePassLeadFactor(
+  passDist: number,
+  receiverSpeed: number,
+  action: PassActionType,
+  passing: number,
+  vision: number,
+): number {
+  const distT = clamp01((passDist - 8) / 24);
+  const runT = clamp01((receiverSpeed - 1.5) / 5);
+  const skill = 0.55 * passing + 0.45 * vision;
+  const base =
+    action === 'PASS_THROUGH'
+      ? 0.22 + distT * 0.28
+      : action === 'PASS_FORWARD'
+        ? 0.12 + distT * 0.18
+        : 0.04 + distT * 0.08;
+  return clamp01(base * runT * (0.8 + skill * 0.35));
+}
+
+export function computePassPickupCooldown(passDist: number, passSpeed: number): number {
+  const travelTicks = Math.round((passDist / Math.max(passSpeed, 0.1)) * 30);
+  return Math.max(4, Math.min(9, Math.round(travelTicks * 0.18 + 2)));
+}
+
+export function shouldAbortPassAttempt(
+  action: PassActionType,
+  laneClearance: number,
+  passDist: number,
+  nearestOpponentDist: number,
+): boolean {
+  const minLane =
+    action === 'PASS_SAFE'
+      ? (passDist < 10 ? 0.55 : 0.42)
+      : action === 'PASS_THROUGH'
+        ? 0.58
+        : (passDist < 12 ? 0.5 : 0.38);
+  if (laneClearance < minLane) return true;
+  if (nearestOpponentDist < 2.4 && passDist < 12 && laneClearance < 0.72) return true;
+  return false;
+}
+
+function computePassLaneOffset(
+  passDist: number,
+  perpBlockDistance: number,
+): number {
+  if (passDist < 10 || perpBlockDistance >= 3.5) return 0;
+  const severity = 1 - perpBlockDistance / 3.5;
+  return Math.min(2.2, 0.7 + severity * 1.3);
+}
+
+function ensureDirectionStaysInPlay(origin: Vec2, dir: Vec2): Vec2 {
+  let adjusted = dir;
+  if (origin.y < 2.5 && adjusted.y < 0) adjusted = new Vec2(adjusted.x, Math.abs(adjusted.y) * 0.35);
+  if (origin.y > PITCH_HEIGHT - 2.5 && adjusted.y > 0) adjusted = new Vec2(adjusted.x, -Math.abs(adjusted.y) * 0.35);
+  if (origin.x < 2.5 && adjusted.x < 0) adjusted = new Vec2(Math.abs(adjusted.x) * 0.35, adjusted.y);
+  if (origin.x > PITCH_WIDTH - 2.5 && adjusted.x > 0) adjusted = new Vec2(-Math.abs(adjusted.x) * 0.35, adjusted.y);
+  return adjusted.length() > 0.001 ? adjusted.normalize() : dir.normalize();
+}
+
+export function resolveTackleRecoveryPositions(carrier: PlayerState, tackler: PlayerState): {
+  carrierPosition: Vec2;
+  tacklerPosition: Vec2;
+} {
+  let sepDir = carrier.position.subtract(tackler.position);
+  if (sepDir.length() < 0.01) {
+    sepDir = new Vec2(carrier.teamId === 'home' ? 1 : -1, 0);
+  }
+  sepDir = ensureDirectionStaysInPlay(carrier.position, sepDir.normalize());
+  return {
+    carrierPosition: clampToPitchInset(carrier.position.add(sepDir.scale(0.9)), 0.6),
+    tacklerPosition: clampToPitchInset(tackler.position.add(sepDir.scale(-0.6)), 0.6),
+  };
+}
+
+function asVec2(value: { x: number; y: number } | Vec2 | undefined): Vec2 {
+  if (value instanceof Vec2) return value;
+  return new Vec2(value?.x ?? 0, value?.y ?? 0);
+}
+
+function normalizePlayerVectors(player: PlayerState): PlayerState {
+  return {
+    ...player,
+    position: asVec2(player.position),
+    velocity: asVec2(player.velocity),
+    formationAnchor: asVec2(player.formationAnchor),
+  };
+}
+
+function nearestOpponentDistance(player: PlayerState, opponents: readonly PlayerState[]): number {
+  let best = Infinity;
+  for (const opp of opponents) {
+    if (!isActivePlayer(opp)) continue;
+    const d = player.position.distanceTo(opp.position);
+    if (d < best) best = d;
+  }
+  return best;
 }
 
 /**

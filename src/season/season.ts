@@ -18,14 +18,14 @@ import { quickSimMatch } from './quickSim.ts';
 
 export interface SquadSelection {
   starters: PlayerState[];  // 11 players
-  bench: PlayerState[];     // 5 players
+  bench: PlayerState[];     // 7 players
 }
 
 export interface SeasonTeam {
   id: string;
   name: string;
   tier: TeamTier;
-  squad: PlayerState[];     // 16 players
+  squad: PlayerState[];     // 25 players
   isPlayerTeam: boolean;
 }
 
@@ -158,8 +158,8 @@ export function validateSquadSelection(
     return { valid: false, reason: 'No GK in starters — at least one goalkeeper is required' };
   }
 
-  if (selection.bench.length !== 5) {
-    return { valid: false, reason: `Expected 5 bench players, got ${selection.bench.length}` };
+  if (selection.bench.length !== 7) {
+    return { valid: false, reason: `Expected 7 bench players, got ${selection.bench.length}` };
   }
 
   return { valid: true };
@@ -250,8 +250,8 @@ export function simOneAIFixture(
     seed: `${state.seed}-md-${md}-${fixture.homeTeamId}-${fixture.awayTeamId}`,
     homeRoster: homeSquad.slice(0, 11),
     awayRoster: awaySquad.slice(0, 11),
-    homeBench: homeSquad.slice(11),
-    awayBench: awaySquad.slice(11),
+    homeBench: homeSquad.slice(11, 18),
+    awayBench: awaySquad.slice(11, 18),
   };
   const simResult = quickSimMatch(matchConfig);
 

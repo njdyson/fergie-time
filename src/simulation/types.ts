@@ -9,6 +9,7 @@ export const RestartType = {
   THROW_IN: 'THROW_IN',
   CORNER: 'CORNER',
   GOAL_KICK: 'GOAL_KICK',
+  FREE_KICK: 'FREE_KICK',
 } as const;
 export type RestartType = (typeof RestartType)[keyof typeof RestartType];
 
@@ -34,6 +35,7 @@ export const ActionType = {
   SHOOT: 'SHOOT',
   HOLD_SHIELD: 'HOLD_SHIELD',
   MOVE_TO_POSITION: 'MOVE_TO_POSITION',
+  OFFER_SUPPORT: 'OFFER_SUPPORT',
   PRESS: 'PRESS',
   MAKE_RUN: 'MAKE_RUN',
 } as const;
@@ -193,12 +195,15 @@ export interface PlayerState {
   readonly name?: string;           // display name (optional)
   readonly age?: number;            // player age (17..34)
   readonly height?: number;         // player height in cm (165..200)
+  readonly shirtNumber?: number;    // squad shirt number (1..25)
+  readonly yellowCards?: number;    // cautions shown in this match
+  readonly sentOff?: boolean;       // dismissed from the match
 }
 
 // Match events
 export interface MatchEvent {
   readonly tick: number;
-  readonly type: 'goal' | 'shot' | 'pass' | 'tackle' | 'foul' | 'save' | 'kickoff' | 'halftime' | 'fulltime' | 'throw_in' | 'corner' | 'goal_kick' | 'offside';
+  readonly type: 'goal' | 'shot' | 'pass' | 'tackle' | 'foul' | 'save' | 'yellow_card' | 'red_card' | 'kickoff' | 'halftime' | 'fulltime' | 'throw_in' | 'corner' | 'goal_kick' | 'offside';
   readonly playerId?: string;
   readonly teamId?: TeamId;
   readonly position?: Vec2;

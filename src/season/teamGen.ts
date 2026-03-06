@@ -4,6 +4,7 @@
 
 import type { PlayerState, PlayerAttributes, PersonalityVector, Role, TeamId } from '../simulation/types.ts';
 import { Duty } from '../simulation/types.ts';
+import { Vec2 } from '../simulation/math/vec2.ts';
 import { generatePlayerName } from './nameGen.ts';
 
 export const TeamTier = {
@@ -55,39 +56,47 @@ function generatePersonality(rng: () => number): PersonalityVector {
   };
 }
 
-// 16-man squad roles
+// 25-man squad roles
 // Starters (11) - 4-4-2: GK, CB, CB, LB, RB, CDM, CM, LW, RW, ST, ST
-// Bench (5): GK, CB, CM, CM, ST
-// Totals: 2 GK, 3 CB, 1 LB, 1 RB, 1 CDM, 3 CM, 1 LW, 1 RW, 3 ST = 16
-const ROLES: Role[] = [
+// Bench (7): GK, CB, CB, LB, CM, CAM, ST
+// Reserves (7): CB, RB, CDM, CM, LW, RW, GK
+// Totals: 3 GK, 5 CB, 2 LB, 2 RB, 2 CDM, 3 CM, 1 CAM, 2 LW, 2 RW, 3 ST = 25
+export const ROLES_25: Role[] = [
+  // Starters (11)
   'GK', 'CB', 'CB', 'LB', 'RB', 'CDM', 'CM', 'LW', 'RW', 'ST', 'ST',
-  'GK', 'CB', 'CM', 'CM', 'ST',
+  // Bench (7)
+  'GK', 'CB', 'CB', 'LB', 'CM', 'CAM', 'ST',
+  // Reserves (7)
+  'CB', 'RB', 'CDM', 'CM', 'LW', 'RW', 'GK',
 ];
 
 /**
- * Create an AI team squad with 16 players.
+ * Create an AI team squad with 25 players.
+ * @param names - Optional array of player names to use instead of generated ones
  */
 export function createAITeam(
   tier: TeamTier,
   teamId: string,
-  teamName: string,
+  _teamName: string,
   rng: () => number,
+  names?: string[],
 ): PlayerState[] {
   const config = TIER_CONFIGS[tier];
 
-  return ROLES.map((role, index): PlayerState => ({
+  return ROLES_25.map((role, index): PlayerState => ({
     id: `${teamId}-player-${index}`,
     teamId: teamId as TeamId,
-    position: { x: 0, y: 0 },
-    velocity: { x: 0, y: 0 },
+    position: Vec2.zero(),
+    velocity: Vec2.zero(),
     attributes: generateAttributes(config.base, config.spread, rng),
     personality: generatePersonality(rng),
     fatigue: 0,
     role,
     duty: Duty.SUPPORT,
-    formationAnchor: { x: 0, y: 0 },
-    name: generatePlayerName(rng),
+    formationAnchor: Vec2.zero(),
+    name: names?.[index] ?? generatePlayerName(rng),
     age: Math.floor(rng() * 18) + 17,
     height: Math.floor(rng() * 36) + 165,
+    shirtNumber: index + 1,
   }));
 }
