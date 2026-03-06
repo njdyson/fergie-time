@@ -60,10 +60,10 @@ Requirements for the Data Layer milestone.
 
 ### Server
 
-- [ ] **SERV-01**: Express API server with SQLite via better-sqlite3
+- [x] **SERV-01**: Express API server with SQLite via better-sqlite3
 - [ ] **SERV-02**: Vite dev proxy routes /api/* to Express during development
 - [ ] **SERV-03**: VPS deployment with systemd service + nginx reverse proxy
-- [ ] **SERV-04**: CORS and session management configured
+- [x] **SERV-04**: CORS and session management configured
 
 ### Squad Expansion
 
@@ -175,9 +175,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SQD-06 | Phase 3 | Complete |
 | PERS-03 | Phase 5 | Complete |
 | PERS-04 | Phase 5 | Complete |
-| SERV-01 | Phase 5 | Pending |
+| SERV-01 | Phase 5 | Complete |
 | SERV-02 | Phase 5 | Pending |
-| SERV-04 | Phase 5 | Pending |
+| SERV-04 | Phase 5 | Complete |
 | AUTH-01 | Phase 6 | Pending |
 | AUTH-02 | Phase 6 | Pending |
 | AUTH-03 | Phase 6 | Pending |
