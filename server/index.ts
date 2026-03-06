@@ -3,6 +3,7 @@ import cookieSession from 'cookie-session';
 import { getDb } from './db.js';
 import { healthRouter } from './routes/health.js';
 import { authRouter } from './routes/auth.js';
+import { gamesRouter } from './routes/games.js';
 
 const app = express();
 
@@ -16,6 +17,7 @@ app.use(cookieSession({
 
 app.use(healthRouter);
 app.use(authRouter);
+app.use(gamesRouter);
 
 // Initialize database on startup
 getDb();
