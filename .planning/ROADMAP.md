@@ -29,7 +29,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 ### v1.1 Data Layer
 
-- [x] **Phase 5: Server Foundation** - Express + SQLite running with proven serialization, dev proxy configured, ready to receive game state (completed 2026-03-06)
+- [x] **Phase 5: Server Foundation** - Express + SQLite running with proven serialization, dev proxy configured, ready to receive game state (completed 2026-03-06)
 - [ ] **Phase 6: Auth + Persistence** - User can create a game, log in, play matches, and return later to find their season exactly where they left it
 - [ ] **Phase 7: Squads + Names** - 25-man squads with realistic nationality-weighted names replace the 16-player placeholder rosters
 - [ ] **Phase 8: Stats + Deployment** - Per-player season stats tracked and displayed, entire application deployed to VPS
@@ -119,9 +119,9 @@ Plans:
   4. Save payload includes a version field that can be read back after deserialization
 **Plans**: 3 plans
 Plans:
-- [ ] 05-01-PLAN.md -- SeasonState round-trip serialization with tagged Map handling (TDD)
-- [ ] 05-02-PLAN.md -- Express server, SQLite database, health endpoint, session middleware
-- [ ] 05-03-PLAN.md -- Vite dev proxy, combined dev script, human verification
+- [x] 05-01-PLAN.md -- SeasonState round-trip serialization with tagged Map handling (TDD)
+- [x] 05-02-PLAN.md -- Express server, SQLite database, health endpoint, session middleware
+- [x] 05-03-PLAN.md -- Vite dev proxy, combined dev script, human verification
 
 ### Phase 6: Auth + Persistence
 **Goal**: User can create a new game, log in, play matches, close the browser, return later, and resume their season exactly where they left it
@@ -133,7 +133,10 @@ Plans:
   3. User can close the browser after playing matches, reopen it, enter team name and password, and find the season at the exact matchday they left
   4. Passwords are hashed — inspecting the database directly shows no plain-text passwords
   5. Game state saves automatically after each matchday completes, with no manual save button required
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 06-01-PLAN.md -- Auth and game persistence API routes with bcrypt hashing (TDD)
+- [ ] 06-02-PLAN.md -- Login screen, API client, auto-save wiring, and human verification
 
 ### Phase 7: Squads + Names
 **Goal**: All teams field 25-man squads with realistic nationality-weighted names, replacing the 16-player placeholder rosters with Premier League-scale depth
@@ -170,6 +173,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 3. Management Shell | v1.0 | 6/6 | Complete | 2026-03-06 |
 | 4. Development Systems | v1.0 | 0/TBD | Deferred | - |
 | 5. Server Foundation | 3/3 | Complete   | 2026-03-06 | - |
-| 6. Auth + Persistence | v1.1 | 0/TBD | Not started | - |
+| 6. Auth + Persistence | v1.1 | 0/2 | Not started | - |
 | 7. Squads + Names | v1.1 | 0/TBD | Not started | - |
 | 8. Stats + Deployment | v1.1 | 0/TBD | Not started | - |
