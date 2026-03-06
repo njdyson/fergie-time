@@ -117,7 +117,11 @@ Plans:
   2. SQLite database auto-creates its schema on first run with WAL mode enabled
   3. A round-trip serialization test proves SeasonState survives JSON encode/decode with zero data loss — specifically, Map types (fatigueMap) serialize and deserialize correctly
   4. Save payload includes a version field that can be read back after deserialization
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 05-01-PLAN.md -- SeasonState round-trip serialization with tagged Map handling (TDD)
+- [ ] 05-02-PLAN.md -- Express server, SQLite database, health endpoint, session middleware
+- [ ] 05-03-PLAN.md -- Vite dev proxy, combined dev script, human verification
 
 ### Phase 6: Auth + Persistence
 **Goal**: User can create a new game, log in, play matches, close the browser, return later, and resume their season exactly where they left it
@@ -165,7 +169,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 2. Tactical Layer | v1.0 | 2/3 | In Progress | - |
 | 3. Management Shell | v1.0 | 6/6 | Complete | 2026-03-06 |
 | 4. Development Systems | v1.0 | 0/TBD | Deferred | - |
-| 5. Server Foundation | v1.1 | 0/TBD | Not started | - |
+| 5. Server Foundation | v1.1 | 0/3 | Not started | - |
 | 6. Auth + Persistence | v1.1 | 0/TBD | Not started | - |
 | 7. Squads + Names | v1.1 | 0/TBD | Not started | - |
 | 8. Stats + Deployment | v1.1 | 0/TBD | Not started | - |
