@@ -32,4 +32,4 @@ jobs:
 
             # Build
             npm install
-            npm run build
+            npx --yes tsc && npx --yes vite build
