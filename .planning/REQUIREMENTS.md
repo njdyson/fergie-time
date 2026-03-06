@@ -48,8 +48,8 @@ Requirements for the Data Layer milestone.
 
 - [ ] **PERS-01**: Game state saves to SQLite after each matchday automatically
 - [ ] **PERS-02**: Game state loads from DB on login, restoring full season position
-- [ ] **PERS-03**: SeasonState serialization handles Map types with round-trip tests
-- [ ] **PERS-04**: Save format includes version field for future migration
+- [x] **PERS-03**: SeasonState serialization handles Map types with round-trip tests
+- [x] **PERS-04**: Save format includes version field for future migration
 
 ### Authentication
 
@@ -173,8 +173,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SQD-04 | Phase 3 | Complete |
 | SQD-05 | Phase 3 | Complete |
 | SQD-06 | Phase 3 | Complete |
-| PERS-03 | Phase 5 | Pending |
-| PERS-04 | Phase 5 | Pending |
+| PERS-03 | Phase 5 | Complete |
+| PERS-04 | Phase 5 | Complete |
 | SERV-01 | Phase 5 | Pending |
 | SERV-02 | Phase 5 | Pending |
 | SERV-04 | Phase 5 | Pending |

@@ -169,7 +169,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 2. Tactical Layer | v1.0 | 2/3 | In Progress | - |
 | 3. Management Shell | v1.0 | 6/6 | Complete | 2026-03-06 |
 | 4. Development Systems | v1.0 | 0/TBD | Deferred | - |
-| 5. Server Foundation | v1.1 | 0/3 | Not started | - |
+| 5. Server Foundation | 2/3 | In Progress|  | - |
 | 6. Auth + Persistence | v1.1 | 0/TBD | Not started | - |
 | 7. Squads + Names | v1.1 | 0/TBD | Not started | - |
 | 8. Stats + Deployment | v1.1 | 0/TBD | Not started | - |
