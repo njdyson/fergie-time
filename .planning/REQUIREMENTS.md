@@ -36,10 +36,10 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Squad Management
 
 - [x] **SQD-01**: Squad screen displays all players with attributes, personality traits, position, age, and fitness
-- [ ] **SQD-02**: Manager selects starting 11 and bench (5-7 subs) before each match
+- [x] **SQD-02**: Manager selects starting 11 and bench (5-7 subs) before each match
 - [x] **SQD-03**: Fixture list generated as round-robin schedule for 20-team league
 - [x] **SQD-04**: League table tracks points, wins, draws, losses, goals for/against, goal difference
-- [ ] **SQD-05**: Season ends with champion declared and squad carried forward to next season
+- [x] **SQD-05**: Season ends with champion declared and squad carried forward to next season
 - [x] **SQD-06**: Player names procedurally generated
 
 ### Player Development
@@ -117,10 +117,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TAC-04 | Phase 2 | Pending |
 | TAC-05 | Phase 2 | Pending |
 | SQD-01 | Phase 3 | Complete |
-| SQD-02 | Phase 3 | Pending |
+| SQD-02 | Phase 3 | Complete |
 | SQD-03 | Phase 3 | Complete |
 | SQD-04 | Phase 3 | Complete |
-| SQD-05 | Phase 3 | Pending |
+| SQD-05 | Phase 3 | Complete |
 | SQD-06 | Phase 3 | Complete |
 | DEV-01 | Phase 4 | Pending |
 | DEV-02 | Phase 4 | Pending |

@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in-progress
-stopped_at: "Completed 03-01-PLAN.md"
-last_updated: "2026-03-06T07:26:00Z"
-last_activity: "2026-03-06 — Plan 03-01 complete: Season data module with nameGen, teamGen, fixtures, leagueTable. 32 TDD tests. PlayerState extended with age/height."
+stopped_at: "Completed 03-02-PLAN.md"
+last_updated: "2026-03-06T07:31:00Z"
+last_activity: "2026-03-06 — Plan 03-02 complete: Season state machine with createSeason, validateSquadSelection, advanceMatchday, fatigue recovery. 33 TDD tests."
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 19
-  completed_plans: 14
-  percent: 74
+  completed_plans: 15
+  percent: 79
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-02)
 ## Current Position
 
 Phase: 3 of 4 (Management Shell) — IN PROGRESS
-Plan: 1 of 6 in current phase — COMPLETE (1/6)
-Status: Phase 3 plan 01 complete — Season data module with nameGen, teamGen, fixtures, leagueTable
-Last activity: 2026-03-06 — Plan 03-01 complete: Season data module with procedural name generation, AI team squad creation, Berger round-robin fixtures, and league table logic. 32 TDD tests pass.
+Plan: 2 of 6 in current phase — COMPLETE (2/6)
+Status: Phase 3 plan 02 complete — Season state machine with squad validation, matchday advancement, fatigue recovery
+Last activity: 2026-03-06 — Plan 03-02 complete: Season state machine with createSeason, validateSquadSelection, advanceMatchday, fatigue recovery. 33 TDD tests.
 
-Progress: [███████░░░] 74%
+Progress: [████████░░] 79%
 
 ## Performance Metrics
 
@@ -45,7 +45,7 @@ Progress: [███████░░░] 74%
 |-------|-------|-------|----------|
 | 1. Engine Core | 10 | ~64 min | ~6.4 min |
 | 2. Tactical Layer | 2 | ~21 min | ~10.5 min |
-| 3. Management Shell | 1 | ~4 min | ~4 min |
+| 3. Management Shell | 2 | ~7 min | ~3.5 min |
 
 **Recent Trend:**
 - Last 5 plans: 01-06 (7 min), 01-07 (3 min), 01-08 (8 min), 01-09 (7 min), 01-10 (20 min incl. checkpoint)
@@ -100,6 +100,9 @@ Recent decisions affecting current work:
 - [Phase 02-03]: Substituted player inherits role/duty/anchor from outgoing player, but retains own attributes/personality — preserves tactical role while representing individual player strengths
 - [Phase 03-01]: 16-man squad bench composition: GK, CB, CM, CM, ST — 2 CM for midfield flexibility over plan's ambiguous "5 bench" specification
 - [Phase 03-01]: Attribute generation uses clamp(base + (rng-0.5)*2*spread, 0, 1) — tight range per tier prevents cross-tier overlap
+- [Phase 03-02]: AI tier distribution: 4 strong + 10 mid + 5 weak (19 AI teams) — player team not assigned a tier
+- [Phase 03-02]: quickSim.ts created as stub returning {1,0} deterministically — Plan 05 will implement full logic
+- [Phase 03-02]: fatigueMap uses playerId keys across all teams — separate from readonly PlayerState.fatigue
 
 ### Pending Todos
 
@@ -113,6 +116,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-06T07:26:00Z
-Stopped at: Completed 03-01-PLAN.md
-Resume file: .planning/phases/03-management-shell/03-01-SUMMARY.md
+Last session: 2026-03-06T07:31:00Z
+Stopped at: Completed 03-02-PLAN.md
+Resume file: .planning/phases/03-management-shell/03-02-SUMMARY.md
