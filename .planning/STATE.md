@@ -37,24 +37,24 @@ See: .planning/PROJECT.md (updated 2026-03-07)
 ## Current Position
 
 Phase: 10 of 13 — Portraits
-Plan: 1 of 2 complete
-Status: In progress
-Last activity: 2026-03-07 — Portrait generation engine built (Plan 01 complete)
+Plan: 2 of 2 complete
+Status: Phase complete
+Last activity: 2026-03-07 — Portrait integration complete (Plan 02 complete, all visual issues fixed)
 
-Progress: [█░░░░░░░░░] 5% (v1.2)
+Progress: [██░░░░░░░░] 10% (v1.2)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1 (v1.2)
-- Average duration: 3 min
-- Total execution time: 3 min
+- Total plans completed: 2 (v1.2)
+- Average duration: 12 min
+- Total execution time: 23 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 10-portraits | 1/2 | 3 min | 3 min |
+| 10-portraits | 2/2 | 23 min | 12 min |
 
 ## Accumulated Context
 
@@ -73,6 +73,8 @@ Recent decisions affecting v1.2:
 - [10-01] Fixed RNG call order (skin, hairStyle, hairCol, eyeCol, facialHair) is append-only contract — inserting earlier calls changes all portraits
 - [10-01] getPalette() uses ternary guard not && short-circuit to ensure undefined nationality returns FALLBACK_PALETTE
 - [Phase 10-portraits]: Deleted drawAvatar, getInitials, and shiftColor entirely after portrait swap — no dead code left in playerProfileScreen.ts
+- [10-02] Portrait centred via ctx.translate(0, 13) inside save/restore — face content midpoint (rows 2-16, ~47px) aligned to canvas circle centre (60px)
+- [10-02] Hair gap fix: SHORT_CROP front row-3 extended to col 13, MEDIUM_PART front rows 2-3 right edge extended one pixel — closes top-right head outline gap
 
 ### Pending Todos
 
@@ -88,5 +90,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-07
-Stopped at: Completed 10-01-PLAN.md — Portrait generation engine (palettes, generator, cache). 6 tests pass.
+Stopped at: Completed 10-02-PLAN.md — Portrait integration complete. Pixel art faces on player profiles, centred in circular avatar, hair outline gaps fixed. Phase 10 done.
 Resume file: None
