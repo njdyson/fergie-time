@@ -32,14 +32,24 @@ The match engine must produce emergent behavior that feels like real football �
 - ✓ 25-man squads (up from 16, matching Premier League rules) — v1.1 Phase 7
 - ✓ Season player stats persisted in DB (goals, assists, appearances) — v1.1 Phase 8
 - ✓ VPS deployment with systemd + nginx — v1.1 Phase 9
+- ✓ Transfer market — buy/sell players between teams — v1.1
+
+## Current Milestone: v1.2 Player Development
+
+**Goal:** Add visual identity to players via pixel art portraits, then build a training system with drill scheduling and an observable sandbox mode.
+
+**Target features:**
+- Procedurally generated pixel art player portraits (nationality + seeded randomness)
+- Drill scheduling between matches (~3 training days/week, squad-wide drill choice)
+- Training ground sandbox (free-to-use, custom scenarios on the engine, observation only)
 
 ### Active
 
 - [ ] Procedurally generated pixel art player portraits
-- [ ] Training system — drills that shift attributes and personality weights over time
-- [ ] Observable training sessions (mini-sims to watch player behavior)
+- [ ] Drill scheduling — training days between matches, squad-wide daily drill, improvement based on drill type × talent × age
+- [ ] Personality vector nudges from training (slight, bounded shifts over time)
+- [ ] Training ground sandbox — set up custom scenarios, watch engine run them, no stat changes
 - [ ] Season cycle with youth graduates and retirements
-- [ ] Transfer market — buy/sell players between teams
 - [ ] Injury system with recovery timelines
 
 ### Out of Scope
@@ -51,6 +61,8 @@ The match engine must produce emergent behavior that feels like real football �
 - AI image generation for portraits — pixel art procedural generation instead
 - Commercial features (accounts, payments, analytics)
 - Press conferences / media — narrative layer, no simulation depth
+- Set piece choreography — deferred to future milestone, design and scope separately
+- Per-player drill assignment — squad-level training first, granularity later if needed
 - International management — multiplies fixture and squad complexity
 
 ## Context
@@ -99,4 +111,4 @@ The match engine is the foundation — everything else (management screens, seas
 | MAP_TAG sentinel for Map serialization | __MAP__ key with entries array survives JSON round-trip | ✓ Good — solved #1 data persistence risk |
 
 ---
-*Last updated: 2026-03-07 after v1.1 milestone completion*
+*Last updated: 2026-03-07 after v1.2 milestone start*
