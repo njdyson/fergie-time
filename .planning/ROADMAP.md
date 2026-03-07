@@ -124,7 +124,10 @@ Plans:
   2. User can mark each pre-match day as a drill or rest with a single click
   3. User can select a squad-wide drill type from a menu of 6-8 labelled categories, each showing which attributes it targets
   4. After a training block completes, the player profile screen shows the attribute deltas gained (e.g., "+0.02 Pace") from that block
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 12-01-PLAN.md — TDD: Training block computation (applyTrainingBlock, state types, DRILL_LABELS)
+- [ ] 12-02-PLAN.md — Hub scheduler UI, profile deltas panel, kickoff wiring
 
 ### Phase 13: Sandbox
 **Goal**: The manager can launch the training ground sandbox from the hub at any time, configure a custom scenario, watch the real match engine run it, and return to the hub knowing nothing in their season was affected
