@@ -25,6 +25,7 @@ import { SquadScreen } from './ui/screens/squadScreen.ts';
 import { LoginScreen } from './ui/screens/loginScreen.ts';
 import { createSeason, validateSquadSelection, isSeasonComplete, getChampion, startNewSeason, recordPlayerResult, simOneAIFixture, finalizeMatchday } from './season/season.ts';
 import type { SeasonState } from './season/season.ts';
+import { mergeAllMatchStats } from './season/playerStats.ts';
 import { saveGame, loadGame, logout } from './api/client.ts';
 import { serializeState, deserializeState } from '../server/serialize.ts';
 
@@ -603,6 +604,19 @@ function initMatchWithConfig(config: {
       const canvasWrapper = document.getElementById('canvas-wrapper');
       if (canvasWrapper) {
         const playerStats = engine.gameLog.getPlayerStats();
+
+        // Merge watched match player stats into season stats immediately at full-time
+        // (before vidiprinter, so stats are captured even if user closes browser during vidiprinter)
+        const goalsConceded: Record<string, number> = {
+          home: snap.score[1],  // home team concedes away team's goals
+          away: snap.score[0],  // away team concedes home team's goals
+        };
+        seasonState.playerSeasonStats = mergeAllMatchStats(
+          seasonState.playerSeasonStats,
+          playerStats,
+          goalsConceded,
+        );
+
         showFullTimeOverlay(canvasWrapper, snap.score, snap.players, playerStats, () => {
           // 1. Record player team fatigue from match result
           for (const player of snap.players) {

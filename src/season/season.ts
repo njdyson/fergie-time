@@ -15,6 +15,7 @@ import { createInitialTable, updateTable, sortTable } from './leagueTable.ts';
 import type { MatchConfig } from '../simulation/engine.ts';
 import { quickSimMatch } from './quickSim.ts';
 import type { PlayerSeasonStats } from './playerStats.ts';
+import { mergeAllMatchStats } from './playerStats.ts';
 
 // --- Types ---
 
@@ -290,8 +291,20 @@ export function simOneAIFixture(
     simResult.homeGoals, simResult.awayGoals,
   );
 
+  // Merge AI fixture player stats into season stats (guard against missing stats in tests/mocks)
+  const goalsConceded: Record<string, number> = {
+    [fixture.homeTeamId]: simResult.awayGoals,
+    [fixture.awayTeamId]: simResult.homeGoals,
+  };
+  const matchPlayerStats = simResult.playerStats ?? new Map();
+  const updatedPlayerSeasonStats = mergeAllMatchStats(
+    state.playerSeasonStats,
+    matchPlayerStats,
+    goalsConceded,
+  );
+
   return {
-    state: { ...state, fixtures: updatedFixtures, table: updatedTable },
+    state: { ...state, fixtures: updatedFixtures, table: updatedTable, playerSeasonStats: updatedPlayerSeasonStats },
     result: {
       homeName: homeTeam.name,
       awayName: awayTeam.name,
