@@ -97,6 +97,7 @@ export class SquadScreen {
   private shirtNumbers: Map<string, number> = new Map();
   private changeCallbacks: Array<(selection: SquadSelection) => void> = [];
   private shirtNumberChangeCallbacks: Array<(players: PlayerState[]) => void> = [];
+  private playerClickCallbacks: Array<(playerId: string) => void> = [];
   private formationRoles: string[] = ['GK', 'CB', 'CB', 'LB', 'RB', 'CDM', 'CM', 'LW', 'RW', 'ST', 'ST']; // default 4-4-2
   private formationRolesOOP: string[] = []; // out-of-possession roles (empty = same as in-poss)
   private sortColumn: string = 'default';
@@ -234,6 +235,11 @@ export class SquadScreen {
   /** Register a callback fired after a shirt number is edited. */
   onShirtNumberChange(cb: (players: PlayerState[]) => void): void {
     this.shirtNumberChangeCallbacks.push(cb);
+  }
+
+  /** Register a callback fired when a player name is clicked. */
+  setOnPlayerClick(cb: (playerId: string) => void): void {
+    this.playerClickCallbacks.push(cb);
   }
 
   private openRolePicker(playerId: string): void {
@@ -604,8 +610,8 @@ export class SquadScreen {
       // Shirt number circle (click to pick)
       html += `<span data-shirt="${p.id}" style="display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid ${ACCENT_BLUE}; background: #0f172a; color: ${TEXT_BRIGHT}; font: bold 11px/1 'Segoe UI',system-ui,sans-serif; cursor: pointer; user-select: none; margin: 0 auto;" title="Click to change shirt number">${shirtNum}</span>`;
 
-      // Name
-      html += `<span style="color: ${TEXT_BRIGHT}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${p.name ?? 'Unknown'}</span>`;
+      // Name (clickable for player profile)
+      html += `<span data-player-name="${p.id}" style="color: ${ACCENT_BLUE}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer;" title="View player profile">${p.name ?? 'Unknown'}</span>`;
 
       // Position
       html += `<span style="color: ${ACCENT_ORANGE}; font-weight: bold;">${p.role}</span>`;
@@ -698,6 +704,16 @@ export class SquadScreen {
           this.sortAscending = col === 'name' || col === '#' || col === 'pos'; // alpha/number default asc, stats default desc
         }
         this.render();
+      });
+    }
+
+    // Player name click handlers (for profile navigation)
+    const nameLinks = this.container.querySelectorAll('[data-player-name]');
+    for (const link of nameLinks) {
+      const playerId = (link as HTMLElement).dataset.playerName!;
+      link.addEventListener('click', (e) => {
+        e.stopPropagation();
+        for (const cb of this.playerClickCallbacks) cb(playerId);
       });
     }
 

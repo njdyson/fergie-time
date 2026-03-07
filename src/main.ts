@@ -24,6 +24,7 @@ import { TableScreen } from './ui/screens/tableScreen.ts';
 import { SquadScreen } from './ui/screens/squadScreen.ts';
 import { StatsScreen } from './ui/screens/statsScreen.ts';
 import { LoginScreen } from './ui/screens/loginScreen.ts';
+import { PlayerProfileScreen } from './ui/screens/playerProfileScreen.ts';
 import { createSeason, validateSquadSelection, isSeasonComplete, getChampion, startNewSeason, recordPlayerResult, simOneAIFixture, finalizeMatchday } from './season/season.ts';
 import type { SeasonState } from './season/season.ts';
 import { mergeAllMatchStats } from './season/playerStats.ts';
@@ -94,9 +95,11 @@ function hideTacticsCanvas(): void {
 // Screen routing + Season state
 // ============================================================
 
-const ScreenId = { LOGIN: 'LOGIN', HUB: 'HUB', SQUAD: 'SQUAD', STATS: 'STATS', FIXTURES: 'FIXTURES', TABLE: 'TABLE', TACTICS: 'TACTICS', MATCH: 'MATCH' } as const;
+const ScreenId = { LOGIN: 'LOGIN', HUB: 'HUB', SQUAD: 'SQUAD', STATS: 'STATS', FIXTURES: 'FIXTURES', TABLE: 'TABLE', TACTICS: 'TACTICS', MATCH: 'MATCH', PROFILE: 'PROFILE' } as const;
 type ScreenId = (typeof ScreenId)[keyof typeof ScreenId];
 let currentScreen: ScreenId = ScreenId.HUB;
+let previousScreen: ScreenId = ScreenId.HUB;
+let profilePlayerId: string | null = null;
 
 const hubScreenEl = document.getElementById('hub-screen')!;
 const squadScreenEl = document.getElementById('squad-screen')!;
@@ -113,6 +116,20 @@ const tableScreenView = new TableScreen(tableScreenEl);
 // Login screen
 const loginScreenEl = document.getElementById('login-screen')!;
 const loginScreenView = new LoginScreen(loginScreenEl);
+
+// Player profile screen — uses the #profile-screen div in index.html
+const profileScreenEl = document.getElementById('profile-screen')!;
+const playerProfileScreenView = new PlayerProfileScreen(profileScreenEl);
+playerProfileScreenView.onBack(() => {
+  showScreen(previousScreen);
+});
+
+/** Navigate to a player's profile page from any screen. */
+function showPlayerProfile(playerId: string): void {
+  profilePlayerId = playerId;
+  previousScreen = currentScreen;
+  showScreen(ScreenId.PROFILE);
+}
 
 // Season state — assigned in boot()
 let seasonState: SeasonState;
@@ -147,6 +164,19 @@ function updateCurrentScreen(): void {
   if (currentScreen === ScreenId.STATS) statsScreenView.update(seasonState);
   if (currentScreen === ScreenId.FIXTURES) fixturesScreenView.update(seasonState, seasonState.playerTeamId);
   if (currentScreen === ScreenId.TABLE) tableScreenView.update(seasonState, seasonState.playerTeamId);
+  if (currentScreen === ScreenId.PROFILE && profilePlayerId) {
+    // Find player across all teams
+    let foundPlayer = null;
+    let foundTeam = null;
+    for (const team of seasonState.teams) {
+      const p = team.squad.find(pl => pl.id === profilePlayerId);
+      if (p) { foundPlayer = p; foundTeam = team; break; }
+    }
+    if (foundPlayer && foundTeam) {
+      const pStats = seasonState.playerSeasonStats.get(profilePlayerId) ?? null;
+      playerProfileScreenView.update(foundPlayer, foundTeam, pStats, seasonState.seasonNumber);
+    }
+  }
 }
 
 const tacticsCenterEl = document.getElementById('tactics-center')!;
@@ -162,14 +192,15 @@ function showScreen(screen: ScreenId): void {
   const map: Record<string, string> = {
     LOGIN: 'login-screen', HUB: 'hub-screen', SQUAD: 'squad-screen', STATS: 'stats-screen',
     FIXTURES: 'fixtures-screen', TABLE: 'table-screen', TACTICS: 'tactics-screen', MATCH: 'pitch-area',
+    PROFILE: 'profile-screen',
   };
-  const flexScreens = new Set(['MATCH', 'SQUAD', 'LOGIN', 'TACTICS']);
+  const flexScreens = new Set(['MATCH', 'SQUAD', 'LOGIN', 'TACTICS', 'PROFILE']);
   for (const [key, id] of Object.entries(map)) {
     const el = document.getElementById(id);
     if (el) el.style.display = key === screen ? (flexScreens.has(key) ? 'flex' : 'block') : 'none';
   }
   const navEl = document.getElementById('nav-tabs');
-  if (navEl) navEl.style.display = (screen === ScreenId.MATCH || screen === ScreenId.LOGIN) ? 'none' : 'flex';
+  if (navEl) navEl.style.display = (screen === ScreenId.MATCH || screen === ScreenId.LOGIN || screen === ScreenId.PROFILE) ? 'none' : 'flex';
   // Mark active nav tab
   document.querySelectorAll('.nav-tab').forEach(btn => {
     btn.classList.toggle('active', (btn as HTMLElement).dataset.screen === screen);
@@ -235,6 +266,12 @@ squadScreenEl.style.display = 'none';
 squadScreenEl.style.flexDirection = 'column';
 
 const squadScreenViewInner = new SquadScreen(squadScreenEl);
+
+// Wire player profile navigation from squad screen
+squadScreenViewInner.setOnPlayerClick((playerId: string) => showPlayerProfile(playerId));
+
+// Wire player profile navigation from stats screen
+statsScreenView.onPlayerClick((playerId: string) => showPlayerProfile(playerId));
 
 // Persist squad selection changes into season state
 squadScreenViewInner.onSelectionChange(() => {
