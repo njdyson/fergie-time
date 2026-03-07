@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Player Development
 status: active
-last_updated: "2026-03-07T20:00:00Z"
+last_updated: "2026-03-07T20:44:00Z"
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 0
-  completed_plans: 0
-  percent: 0
+  completed_plans: 1
+  percent: 5
 ---
 
 # Project State
@@ -24,24 +24,24 @@ See: .planning/PROJECT.md (updated 2026-03-07)
 ## Current Position
 
 Phase: 10 of 13 — Portraits
-Plan: — of — (not yet planned)
-Status: Ready to plan
-Last activity: 2026-03-07 — v1.2 roadmap created, phases 10-13 defined
+Plan: 1 of 2 complete
+Status: In progress
+Last activity: 2026-03-07 — Portrait generation engine built (Plan 01 complete)
 
-Progress: [░░░░░░░░░░] 0% (v1.2)
+Progress: [█░░░░░░░░░] 5% (v1.2)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0 (v1.2)
-- Average duration: —
-- Total execution time: —
+- Total plans completed: 1 (v1.2)
+- Average duration: 3 min
+- Total execution time: 3 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 10-portraits | 1/2 | 3 min | 3 min |
 
 ## Accumulated Context
 
@@ -55,6 +55,10 @@ Recent decisions affecting v1.2:
 - Each training day is squad-wide drill or rest — no per-player assignment
 - Portraits only on player profile screen, not squad screen (PORT-F01 deferred)
 - Sandbox is free-to-use anytime, observation only, with scenario presets
+- [10-01] Use 20x24 logical pixel grid scaled 6x5 to 120x120 canvas for clean integer portrait scaling
+- [10-01] RNG namespaced with 'portrait-' prefix to prevent cross-system seed collisions
+- [10-01] Fixed RNG call order (skin, hairStyle, hairCol, eyeCol, facialHair) is append-only contract — inserting earlier calls changes all portraits
+- [10-01] getPalette() uses ternary guard not && short-circuit to ensure undefined nationality returns FALLBACK_PALETTE
 
 ### Pending Todos
 
@@ -70,5 +74,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-07
-Stopped at: Roadmap created for v1.2. Phases 10-13 defined. Ready to plan Phase 10.
+Stopped at: Completed 10-01-PLAN.md — Portrait generation engine (palettes, generator, cache). 6 tests pass.
 Resume file: None

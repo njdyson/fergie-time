@@ -9,9 +9,9 @@ Requirements for milestone v1.2 Player Development. Each maps to roadmap phases.
 
 ### Portraits
 
-- [ ] **PORT-01**: User can see a unique pixel art portrait for each player on the player profile screen
-- [ ] **PORT-02**: Portraits are deterministic — same player always generates the same face across sessions
-- [ ] **PORT-03**: Portraits reflect player nationality via skin tone and hair colour
+- [x] **PORT-01**: User can see a unique pixel art portrait for each player on the player profile screen
+- [x] **PORT-02**: Portraits are deterministic — same player always generates the same face across sessions
+- [x] **PORT-03**: Portraits reflect player nationality via skin tone and hair colour
 
 ### Training
 
@@ -78,9 +78,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PORT-01 | Phase 10 | Pending |
-| PORT-02 | Phase 10 | Pending |
-| PORT-03 | Phase 10 | Pending |
+| PORT-01 | Phase 10 | Complete |
+| PORT-02 | Phase 10 | Complete |
+| PORT-03 | Phase 10 | Complete |
 | TRAIN-04 | Phase 11 | Pending |
 | TRAIN-06 | Phase 11 | Pending |
 | TRAIN-01 | Phase 12 | Pending |
