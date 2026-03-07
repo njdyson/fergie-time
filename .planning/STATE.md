@@ -2,29 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Data Layer
-status: unknown
-last_updated: "2026-03-07T06:51:43.217Z"
+status: executing
+stopped_at: Completed 07-02-PLAN.md
+last_updated: "2026-03-07T06:55:00Z"
+last_activity: 2026-03-07 — Plan 07-02 complete (Squad UI, name wiring, editable shirt numbers)
 progress:
-  total_phases: 6
+  total_phases: 8
   completed_phases: 5
   total_plans: 26
   completed_plans: 25
----
-
----
-gsd_state_version: 1.0
-milestone: v1.1
-milestone_name: Data Layer
-status: executing
-stopped_at: Completed 07-01-PLAN.md
-last_updated: "2026-03-06T12:23:08.334Z"
-last_activity: 2026-03-06 — Plan 07-01 complete (Squad data layer and name service)
-progress:
-  total_phases: 8
-  completed_phases: 4
-  total_plans: 26
-  completed_plans: 24
-  percent: 96
+  percent: 98
 ---
 
 # Project State
@@ -38,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-03-06)
 
 ## Current Position
 
-Phase: 7 of 8 (Squads & Names) — in progress
-Plan: 1 of 2 complete
+Phase: 7 of 8 (Squads & Names) — complete
+Plan: 2 of 2 complete
 Status: Executing
-Last activity: 2026-03-06 — Plan 07-01 complete (Squad data layer and name service)
+Last activity: 2026-03-07 — Plan 07-02 complete (Squad UI, name wiring, editable shirt numbers)
 
-Progress: [██████████] 96%
+Progress: [██████████] 98%
 
 ## Performance Metrics
 
@@ -70,6 +57,7 @@ Progress: [██████████] 96%
 | Phase 05 P03 | 3min | 2 tasks | 3 files |
 | Phase 06 P01 | 4min | 2 tasks | 7 files |
 | Phase 07 P01 | 5min | 2 tasks | 8 files |
+| Phase 07 P02 | pre-committed | 1 task | 3 files |
 | Phase 06-auth-persistence P02 | 10 | 2 tasks | 4 files |
 
 ## Accumulated Context
@@ -93,6 +81,9 @@ Recent decisions affecting current work:
 - [Phase 06]: Per-file test name prefixes for DB isolation in shared SQLite
 - [Phase 07]: ROLES_25 bench adjusted from plan listing to match stated 5 CB total
 - [Phase 07]: getNames remainder allocation to last nationality for exact count
+- [Phase 07-02]: Player team uses createAITeam('mid') so fetched names reach all player-team players
+- [Phase 07-02]: names.slice(0,25) for player team, names.slice(25) to createSeason for 19 AI teams
+- [Phase 07-02]: Shirt numbers maintained as Map<string,number> on SquadScreen instance until getUpdatedPlayers() called
 - [Phase 06-02]: Boot function checks session first (silent restore), falls back to login screen
 - [Phase 06-02]: Continue tab shows list of saved games via /api/games/list rather than plain text input
 
@@ -108,6 +99,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-06T12:23:08.331Z
-Stopped at: Completed 07-01-PLAN.md
+Last session: 2026-03-07T06:55:00Z
+Stopped at: Completed 07-02-PLAN.md
 Resume file: None
