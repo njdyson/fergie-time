@@ -16,6 +16,8 @@ export interface PlayerLogStats {
   assists: number;
   tacklesWon: number;
   tacklesAttempted: number;
+  yellowCards: number;
+  redCards: number;
 }
 
 /**
@@ -261,7 +263,7 @@ export class GameEventLog {
     const ensure = (id: string, role: string, teamId: TeamId): PlayerLogStats => {
       let s = stats.get(id);
       if (!s) {
-        s = { playerId: id, role, teamId, passes: 0, passesCompleted: 0, shots: 0, shotsOnTarget: 0, goals: 0, assists: 0, tacklesWon: 0, tacklesAttempted: 0 };
+        s = { playerId: id, role, teamId, passes: 0, passesCompleted: 0, shots: 0, shotsOnTarget: 0, goals: 0, assists: 0, tacklesWon: 0, tacklesAttempted: 0, yellowCards: 0, redCards: 0 };
         stats.set(id, s);
       }
       return s;
@@ -309,6 +311,12 @@ export class GameEventLog {
         case 'tackle':
           s.tacklesAttempted++;
           if (e.data?.success) s.tacklesWon++;
+          break;
+        case 'yellow_card':
+          s.yellowCards++;
+          break;
+        case 'red_card':
+          s.redCards++;
           break;
       }
     }
