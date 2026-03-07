@@ -168,20 +168,20 @@ export class StatsScreen {
     html += `<div style="min-width: 700px;">`;
 
     // Header row
-    html += `<div style="display: grid; grid-template-columns: ${cols}; gap: 4px; padding: 6px 8px; font-size: 10px; border-bottom: 1px solid #334155; align-items: center;">`;
+    html += `<div class="stats-grid" style="display: grid; grid-template-columns: ${cols}; gap: 4px; padding: 6px 8px; font-size: 10px; border-bottom: 1px solid #334155; align-items: center;">`;
     html += `<span data-sort-col="name" style="${this.hdrStyle('name')}">Name${this.sortArrow('name')}</span>`;
     html += `<span data-sort-col="pos" style="${this.hdrStyle('pos')}">Pos${this.sortArrow('pos')}</span>`;
     html += `<span data-sort-col="apps" style="text-align:center; ${this.hdrStyle('apps')}">App${this.sortArrow('apps')}</span>`;
     html += `<span data-sort-col="goals" style="text-align:center; ${this.hdrStyle('goals')}">G${this.sortArrow('goals')}</span>`;
     html += `<span data-sort-col="assists" style="text-align:center; ${this.hdrStyle('assists')}">A${this.sortArrow('assists')}</span>`;
-    html += `<span data-sort-col="shots" style="text-align:center; ${this.hdrStyle('shots')}">Shots${this.sortArrow('shots')}</span>`;
-    html += `<span data-sort-col="shotsOnTarget" style="text-align:center; ${this.hdrStyle('shotsOnTarget')}">SoT${this.sortArrow('shotsOnTarget')}</span>`;
-    html += `<span data-sort-col="passPercent" style="text-align:center; ${this.hdrStyle('passPercent')}">Pass%${this.sortArrow('passPercent')}</span>`;
-    html += `<span data-sort-col="tacklesWon" style="text-align:center; ${this.hdrStyle('tacklesWon')}">Tkl${this.sortArrow('tacklesWon')}</span>`;
-    html += `<span data-sort-col="yellowCards" style="text-align:center; ${this.hdrStyle('yellowCards')}">YC${this.sortArrow('yellowCards')}</span>`;
-    html += `<span data-sort-col="redCards" style="text-align:center; ${this.hdrStyle('redCards')}">RC${this.sortArrow('redCards')}</span>`;
-    html += `<span data-sort-col="cleanSheets" style="text-align:center; ${this.hdrStyle('cleanSheets')}">CS${this.sortArrow('cleanSheets')}</span>`;
-    html += `<span data-sort-col="minsPlayed" style="text-align:center; ${this.hdrStyle('minsPlayed')}">Mins${this.sortArrow('minsPlayed')}</span>`;
+    html += `<span class="stats-col-minor" data-sort-col="shots" style="text-align:center; ${this.hdrStyle('shots')}">Shots${this.sortArrow('shots')}</span>`;
+    html += `<span class="stats-col-minor" data-sort-col="shotsOnTarget" style="text-align:center; ${this.hdrStyle('shotsOnTarget')}">SoT${this.sortArrow('shotsOnTarget')}</span>`;
+    html += `<span class="stats-col-minor" data-sort-col="passPercent" style="text-align:center; ${this.hdrStyle('passPercent')}">Pass%${this.sortArrow('passPercent')}</span>`;
+    html += `<span class="stats-col-minor" data-sort-col="tacklesWon" style="text-align:center; ${this.hdrStyle('tacklesWon')}">Tkl${this.sortArrow('tacklesWon')}</span>`;
+    html += `<span class="stats-col-minor" data-sort-col="yellowCards" style="text-align:center; ${this.hdrStyle('yellowCards')}">YC${this.sortArrow('yellowCards')}</span>`;
+    html += `<span class="stats-col-minor" data-sort-col="redCards" style="text-align:center; ${this.hdrStyle('redCards')}">RC${this.sortArrow('redCards')}</span>`;
+    html += `<span class="stats-col-minor" data-sort-col="cleanSheets" style="text-align:center; ${this.hdrStyle('cleanSheets')}">CS${this.sortArrow('cleanSheets')}</span>`;
+    html += `<span class="stats-col-minor" data-sort-col="minsPlayed" style="text-align:center; ${this.hdrStyle('minsPlayed')}">Mins${this.sortArrow('minsPlayed')}</span>`;
     html += `<span data-sort-col="goalsPerGame" style="text-align:center; ${this.hdrStyle('goalsPerGame')}">G/G${this.sortArrow('goalsPerGame')}</span>`;
     html += `</div>`;
 
@@ -194,7 +194,7 @@ export class StatsScreen {
       const gpg = s.appearances > 0 ? goalsPerGame(s).toFixed(2) : '-';
       const isGK = p.role === 'GK';
 
-      html += `<div style="display: grid; grid-template-columns: ${cols}; gap: 4px; padding: 6px 8px; font-size: 12px; background: ${rowBg}; border-radius: 2px; align-items: center;">`;
+      html += `<div class="stats-grid" style="display: grid; grid-template-columns: ${cols}; gap: 4px; padding: 6px 8px; font-size: 12px; background: ${rowBg}; border-radius: 2px; align-items: center;">`;
 
       // Name (clickable for player profile)
       html += `<span data-player-click="${p.id}" style="color: ${ACCENT_BLUE}; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="Click for player profile">${p.name ?? 'Unknown'}</span>`;
@@ -202,14 +202,14 @@ export class StatsScreen {
       html += `<span style="text-align:center; color: ${TEXT_BRIGHT};">${s.appearances}</span>`;
       html += `<span style="text-align:center; color: ${s.goals > 0 ? GREEN : TEXT_BRIGHT}; font-weight: ${s.goals > 0 ? 'bold' : 'normal'};">${s.goals}</span>`;
       html += `<span style="text-align:center; color: ${s.assists > 0 ? ACCENT_BLUE : TEXT_BRIGHT};">${s.assists}</span>`;
-      html += `<span style="text-align:center; color: ${TEXT_BRIGHT};">${s.shots}</span>`;
-      html += `<span style="text-align:center; color: ${TEXT_BRIGHT};">${s.shotsOnTarget}</span>`;
-      html += `<span style="text-align:center; color: ${TEXT};">${ppct}</span>`;
-      html += `<span style="text-align:center; color: ${TEXT_BRIGHT};">${s.tacklesWon}</span>`;
-      html += `<span style="text-align:center; color: ${s.yellowCards > 0 ? '#fbbf24' : TEXT};">${s.yellowCards || '-'}</span>`;
-      html += `<span style="text-align:center; color: ${s.redCards > 0 ? '#f87171' : TEXT};">${s.redCards || '-'}</span>`;
-      html += `<span style="text-align:center; color: ${isGK ? TEXT_BRIGHT : TEXT};">${isGK ? s.cleanSheets : '-'}</span>`;
-      html += `<span style="text-align:center; color: ${TEXT};">${s.minutesPlayed}</span>`;
+      html += `<span class="stats-col-minor" style="text-align:center; color: ${TEXT_BRIGHT};">${s.shots}</span>`;
+      html += `<span class="stats-col-minor" style="text-align:center; color: ${TEXT_BRIGHT};">${s.shotsOnTarget}</span>`;
+      html += `<span class="stats-col-minor" style="text-align:center; color: ${TEXT};">${ppct}</span>`;
+      html += `<span class="stats-col-minor" style="text-align:center; color: ${TEXT_BRIGHT};">${s.tacklesWon}</span>`;
+      html += `<span class="stats-col-minor" style="text-align:center; color: ${s.yellowCards > 0 ? '#fbbf24' : TEXT};">${s.yellowCards || '-'}</span>`;
+      html += `<span class="stats-col-minor" style="text-align:center; color: ${s.redCards > 0 ? '#f87171' : TEXT};">${s.redCards || '-'}</span>`;
+      html += `<span class="stats-col-minor" style="text-align:center; color: ${isGK ? TEXT_BRIGHT : TEXT};">${isGK ? s.cleanSheets : '-'}</span>`;
+      html += `<span class="stats-col-minor" style="text-align:center; color: ${TEXT};">${s.minutesPlayed}</span>`;
       html += `<span style="text-align:center; color: ${TEXT};">${gpg}</span>`;
       html += `</div>`;
     }

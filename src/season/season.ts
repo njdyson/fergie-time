@@ -16,6 +16,11 @@ import type { MatchConfig } from '../simulation/engine.ts';
 import { quickSimMatch } from './quickSim.ts';
 import type { PlayerSeasonStats } from './playerStats.ts';
 import { mergeAllMatchStats } from './playerStats.ts';
+import type { TransferMarketState } from './transferMarket.ts';
+import { generateFreeAgents, createTransferMarket, updateAllPlayerValues } from './transferMarket.ts';
+import type { InboxState } from './inbox.ts';
+import { createInbox, sendMessage } from './inbox.ts';
+import { processAITransfers } from './aiTransfers.ts';
 
 // --- Types ---
 
@@ -54,6 +59,8 @@ export interface SeasonState {
   fatigueMap: Map<string, number>;  // playerId -> current fatigue (0..1)
   squadSelectionMap?: Map<string, SquadSlot>;  // playerId -> selection state (player team only)
   playerSeasonStats: Map<string, PlayerSeasonStats>;  // playerId -> accumulated season stats
+  transferMarket: TransferMarketState;
+  inbox: InboxState;
   readonly seed: string;
 }
 
@@ -146,6 +153,21 @@ export function createSeason(
     }
   }
 
+  // Generate free agents and initialize transfer market
+  const freeAgents = generateFreeAgents(100, rng);
+  const emptyStats = new Map<string, PlayerSeasonStats>();
+  const transferMarket = createTransferMarket(teams, playerTeamId, freeAgents, emptyStats, 0);
+
+  // Initialize inbox with welcome message
+  let inbox = createInbox();
+  inbox = sendMessage(inbox, {
+    subject: 'Welcome to the Transfer Market',
+    body: 'The transfer market is now open. You can browse free agents, bid for players from other clubs, and transfer list your own players. Good luck with your squad building!',
+    from: 'Board of Directors',
+    matchday: 0,
+    category: 'general',
+  });
+
   return {
     seasonNumber: 1,
     playerTeamId,
@@ -154,7 +176,9 @@ export function createSeason(
     table,
     currentMatchday: 1,
     fatigueMap,
-    playerSeasonStats: new Map<string, PlayerSeasonStats>(),
+    playerSeasonStats: emptyStats,
+    transferMarket,
+    inbox,
     seed,
   };
 }
@@ -315,14 +339,49 @@ export function simOneAIFixture(
 }
 
 /**
- * Step 3: Finalize the matchday — apply fatigue recovery and advance.
+ * Step 3: Finalize the matchday — apply fatigue recovery, process transfers, update values, and advance.
  */
 export function finalizeMatchday(state: SeasonState): SeasonState {
   const updatedFatigueMap = new Map<string, number>();
   for (const [playerId, currentFatigue] of state.fatigueMap) {
     updatedFatigueMap.set(playerId, recoverFatigue(currentFatigue, 7));
   }
-  return { ...state, currentMatchday: state.currentMatchday + 1, fatigueMap: updatedFatigueMap };
+
+  let updated: SeasonState = { ...state, fatigueMap: updatedFatigueMap };
+
+  // Update all player valuations
+  const newValues = updateAllPlayerValues(
+    updated.teams,
+    updated.transferMarket.freeAgents,
+    updated.playerSeasonStats,
+    updated.currentMatchday,
+  );
+  updated = {
+    ...updated,
+    transferMarket: { ...updated.transferMarket, playerValues: newValues },
+  };
+
+  // Process AI transfer activity
+  const transferRng = seedrandom(`${state.seed}-transfers-md-${state.currentMatchday}`);
+  const aiResult = processAITransfers(updated, transferRng);
+  updated = {
+    ...updated,
+    transferMarket: aiResult.market,
+    teams: aiResult.teams,
+    inbox: aiResult.inbox,
+  };
+
+  // Add new players to fatigue map (from transfers)
+  const finalFatigueMap = new Map(updated.fatigueMap);
+  for (const team of updated.teams) {
+    for (const player of team.squad) {
+      if (!finalFatigueMap.has(player.id)) {
+        finalFatigueMap.set(player.id, 0);
+      }
+    }
+  }
+
+  return { ...updated, currentMatchday: updated.currentMatchday + 1, fatigueMap: finalFatigueMap };
 }
 
 /**
@@ -383,6 +442,22 @@ export function startNewSeason(
     }
   }
 
+  // Generate fresh free agents and transfer market
+  const freeAgents = generateFreeAgents(100, rng);
+  const emptyStats = new Map<string, PlayerSeasonStats>();
+  const transferMarket = createTransferMarket(newTeams, state.playerTeamId, freeAgents, emptyStats, 0);
+
+  // Carry over budget from previous season (with a top-up)
+  const prevBudgets = state.transferMarket.teamBudgets;
+  for (const team of newTeams) {
+    const prevBudget = prevBudgets.get(team.id) ?? 0;
+    const topUp = team.isPlayerTeam ? 200_000 : (team.tier === 'strong' ? 400_000 : team.tier === 'mid' ? 250_000 : 100_000);
+    transferMarket.teamBudgets.set(team.id, prevBudget + topUp);
+  }
+
+  // Fresh inbox (keep no messages from previous season)
+  const inbox = createInbox();
+
   return {
     seasonNumber: state.seasonNumber + 1,
     playerTeamId: state.playerTeamId,
@@ -391,7 +466,9 @@ export function startNewSeason(
     table,
     currentMatchday: 1,
     fatigueMap,
-    playerSeasonStats: new Map<string, PlayerSeasonStats>(),
+    playerSeasonStats: emptyStats,
+    transferMarket,
+    inbox,
     seed: newSeed,
   };
 }
