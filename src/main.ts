@@ -281,6 +281,16 @@ squadScreenViewInner.onSelectionChange(() => {
   }
 });
 
+// Persist shirt number edits into season state (SQD2-03)
+squadScreenViewInner.onShirtNumberChange((updatedPlayers: import('./simulation/types.ts').PlayerState[]) => {
+  if (typeof seasonState !== 'undefined' && seasonState) {
+    const playerTeam = seasonState.teams.find(t => t.isPlayerTeam);
+    if (playerTeam) {
+      playerTeam.squad = updatedPlayers;
+    }
+  }
+});
+
 // ============================================================
 // Button references
 // ============================================================
@@ -1514,7 +1524,7 @@ hubScreenView.onKickoff(() => {
   // Ensure squad screen has latest data for default selection
   const playerTeam = seasonState.teams.find(t => t.isPlayerTeam)!;
   squadScreenViewInner.setFormationRoles(tacticsBoard.getPhaseRoles('inPossession'), tacticsBoard.getPhaseRoles('outOfPossession'));
-  squadScreenViewInner.update(playerTeam.squad, seasonState.fatigueMap, seasonState.squadSelectionMap);
+  squadScreenViewInner.update(playerTeam.squad, seasonState.fatigueMap, seasonState.squadSelectionMap, seasonState.playerSeasonStats);
   startMatchFromSquad();
 });
 
