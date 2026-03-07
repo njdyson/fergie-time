@@ -14,6 +14,7 @@ import type { TeamRecord } from './leagueTable.ts';
 import { createInitialTable, updateTable, sortTable } from './leagueTable.ts';
 import type { MatchConfig } from '../simulation/engine.ts';
 import { quickSimMatch } from './quickSim.ts';
+import type { PlayerSeasonStats } from './playerStats.ts';
 
 // --- Types ---
 
@@ -51,6 +52,7 @@ export interface SeasonState {
   currentMatchday: number;   // 1..38; > 38 means season complete
   fatigueMap: Map<string, number>;  // playerId -> current fatigue (0..1)
   squadSelectionMap?: Map<string, SquadSlot>;  // playerId -> selection state (player team only)
+  playerSeasonStats: Map<string, PlayerSeasonStats>;  // playerId -> accumulated season stats
   readonly seed: string;
 }
 
@@ -151,6 +153,7 @@ export function createSeason(
     table,
     currentMatchday: 1,
     fatigueMap,
+    playerSeasonStats: new Map<string, PlayerSeasonStats>(),
     seed,
   };
 }
@@ -275,7 +278,10 @@ export function simOneAIFixture(
     f => f.matchday === md && f.homeTeamId === fixture.homeTeamId && f.awayTeamId === fixture.awayTeamId
   );
   if (fixtureIndex >= 0) {
-    updatedFixtures[fixtureIndex] = { ...updatedFixtures[fixtureIndex]!, result: simResult };
+    updatedFixtures[fixtureIndex] = {
+      ...updatedFixtures[fixtureIndex]!,
+      result: { homeGoals: simResult.homeGoals, awayGoals: simResult.awayGoals },
+    };
   }
 
   const updatedTable = updateTable(
@@ -372,6 +378,7 @@ export function startNewSeason(
     table,
     currentMatchday: 1,
     fatigueMap,
+    playerSeasonStats: new Map<string, PlayerSeasonStats>(),
     seed: newSeed,
   };
 }

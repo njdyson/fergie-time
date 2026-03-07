@@ -9,6 +9,7 @@
 import { SimulationEngine } from '../simulation/engine.ts';
 import type { MatchConfig } from '../simulation/engine.ts';
 import { MatchPhase } from '../simulation/types.ts';
+import type { PlayerLogStats } from '../simulation/match/gameLog.ts';
 
 const FIXED_DT_MS = 1000 / 30;
 const MAX_TICKS = 6000; // safety guard: 5400 ticks normal + buffer
@@ -16,6 +17,7 @@ const MAX_TICKS = 6000; // safety guard: 5400 ticks normal + buffer
 export interface QuickSimResult {
   homeGoals: number;
   awayGoals: number;
+  playerStats: Map<string, PlayerLogStats>;
 }
 
 /**
@@ -35,5 +37,6 @@ export function quickSimMatch(config: MatchConfig): QuickSimResult {
     snap = engine.tick(FIXED_DT_MS);
     guard++;
   }
-  return { homeGoals: snap.score[0], awayGoals: snap.score[1] };
+  const playerStats = engine.gameLog.getPlayerStats();
+  return { homeGoals: snap.score[0], awayGoals: snap.score[1], playerStats };
 }
