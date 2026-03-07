@@ -1,0 +1,31 @@
+# Fergie Time Football Manager — systemd service
+#
+# Installation:
+#   sudo cp deploy/fergie-time.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable fergie-time
+#   sudo systemctl start fergie-time
+#
+# Logs:
+#   journalctl -u fergie-time -f
+#
+# Adjust User and WorkingDirectory to match your VPS setup.
+# Set SESSION_SECRET to a random string for production security.
+
+[Unit]
+Description=Fergie Time Football Manager
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/var/www/fergie-time
+ExecStart=/usr/bin/node --import tsx server/index.ts
+Restart=on-failure
+RestartSec=5
+Environment=NODE_ENV=production
+Environment=PORT=3001
+# Environment=SESSION_SECRET=replace-with-random-secret
+
+[Install]
+WantedBy=multi-user.target
