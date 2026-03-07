@@ -58,23 +58,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-07)
 
 **Core value:** The match engine must produce emergent behavior that feels like real football — goals, mistakes, tactical dominance and individual brilliance all arising from physics, agent decisions and personality vectors, never from scripted events
-**Current focus:** Phase 11 — Training Logic
+**Current focus:** Phase 12 — Training Scheduler
 
 ## Current Position
 
-Phase: 11 of 13 — Training Logic
-Plan: 1 of 3 complete
+Phase: 12 of 13 — Training Scheduler
+Plan: 1 of 2 complete
 Status: In progress
-Last activity: 2026-03-07 — Training drill system complete (Plan 01 complete, 17 tests passing, economy sim verified)
+Last activity: 2026-03-07 — Training block computation complete (Plan 01 complete, 30 tests passing, applyTrainingBlock + DRILL_LABELS + types)
 
-Progress: [███░░░░░░░] 13% (v1.2)
+Progress: [████░░░░░░] 18% (v1.2)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3 (v1.2)
-- Average duration: 10 min
-- Total execution time: 26 min
+- Total plans completed: 4 (v1.2)
+- Average duration: 9 min
+- Total execution time: 29 min
 
 **By Phase:**
 
@@ -82,6 +82,7 @@ Progress: [███░░░░░░░] 13% (v1.2)
 |-------|-------|-------|----------|
 | 10-portraits | 2/2 | 23 min | 12 min |
 | 11-training-logic | 1/3 | 3 min | 3 min |
+| 12-training-scheduler | 1/2 | 3 min | 3 min |
 
 ## Accumulated Context
 
@@ -106,6 +107,10 @@ Recent decisions affecting v1.2:
 - [11-01] work_rate used as training proxy — formula: 0.6 + work_rate * 0.8, range [0.6, 1.4]; no new trait needed
 - [11-01] undefined player age defaults to 25 (safe midpoint, deterministic, avoids NaN)
 - [11-01] Age factor curve: ≤20→1.0, piecewise linear to 36+→0.15; no hard floor on growth (TRAIN-06 satisfied)
+- [12-01] TRAINING_DAYS_PER_MATCHDAY = 3 locked — changing requires re-running headless 5-season sim and re-tuning BASE_DELTA
+- [12-01] TrainingDeltas typed as Map (not plain object) for correct serialization via existing serialize.ts Map reviver/replacer
+- [12-01] Schedule entries sorted by numeric key in applyTrainingBlock for deterministic processing order
+- [12-01] DRILL_LABELS is single source of truth for display labels — both hub scheduler and profile delta panel import from training.ts
 
 ### Pending Todos
 
@@ -121,5 +126,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-07
-Stopped at: Completed 11-01-PLAN.md — Training drill system (applyDrill pure function), 17 tests passing, economy verified via headless 5-season sim.
+Stopped at: Completed 12-01-PLAN.md — Training block computation (applyTrainingBlock, DRILL_LABELS, TrainingSchedule types), 30 tests passing.
 Resume file: None

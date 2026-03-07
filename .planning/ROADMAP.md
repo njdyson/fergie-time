@@ -159,5 +159,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 9. Gap Closure | v1.1 | 2/2 | Complete | 2026-03-07 |
 | 10. Portraits | 2/2 | Complete    | 2026-03-07 | - |
 | 11. Training Logic | 1/1 | Complete    | 2026-03-07 | - |
-| 12. Training Scheduler | v1.2 | 0/TBD | Not started | - |
+| 12. Training Scheduler | 1/2 | In Progress|  | - |
 | 13. Sandbox | v1.2 | 0/TBD | Not started | - |
