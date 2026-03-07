@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A browser-based football management game built around a genuine emergent simulation engine. 22 autonomous player agents run identical decision code weighted by individual personality vectors — no scripted outcomes, no event tables. Tactics are real mechanical levers that create genuine spatial advantages. The manager sets up formations by dragging players, chooses training drills, and watches emergent football play out on a 2D canvas.
+A browser-based football management game built around a genuine emergent simulation engine. 22 autonomous player agents run identical decision code weighted by individual personality vectors — no scripted outcomes, no event tables. Tactics are real mechanical levers that create genuine spatial advantages. The manager picks a squad from a 25-man roster, sets formations by dragging players, and watches emergent football play out on a 2D canvas. Game state persists to a SQLite backend — log in, play matches, close the browser, come back later.
 
 ## Core Value
 
@@ -25,40 +25,33 @@ The match engine must produce emergent behavior that feels like real football �
 - ✓ Squad screen showing player attributes, fitness — v1.0 Phase 3
 - ✓ Fixtures and league table (single 20-team league) — v1.0 Phase 3
 - ✓ Procedural player name generation — v1.0 Phase 3
+- ✓ SQLite database layer with Express API server on VPS — v1.1 Phase 5
+- ✓ Game persistence — save/load season state across browser sessions — v1.1 Phase 6
+- ✓ Simple login — team name + password, create new game / continue existing — v1.1 Phase 6
+- ✓ Realistic player names via randomuser.me API, cached in DB — v1.1 Phase 7
+- ✓ 25-man squads (up from 16, matching Premier League rules) — v1.1 Phase 7
+- ✓ Season player stats persisted in DB (goals, assists, appearances) — v1.1 Phase 8
+- ✓ VPS deployment with systemd + nginx — v1.1 Phase 9
 
 ### Active
 
-- [ ] SQLite database layer with Express API server on VPS
-- [ ] Game persistence — save/load season state across browser sessions
-- [ ] Simple login — team name + password, create new game / continue existing
-- [ ] Realistic player names via randomuser.me API, cached in DB
-- [ ] 25-man squads (up from 16, matching Premier League rules)
-- [ ] Season player stats persisted in DB (goals, assists, appearances, etc.)
 - [ ] Procedurally generated pixel art player portraits
 - [ ] Training system — drills that shift attributes and personality weights over time
 - [ ] Observable training sessions (mini-sims to watch player behavior)
 - [ ] Season cycle with youth graduates and retirements
+- [ ] Transfer market — buy/sell players between teams
+- [ ] Injury system with recovery timelines
 
 ### Out of Scope
 
-- Transfer market — deferred, adds complexity before engine is proven
-- Multiple divisions / promotion-relegation — single league v1, designed for future expansion
+- Multiple divisions / promotion-relegation — single league, designed for future expansion
 - 3D graphics — 2D canvas is the rendering target
 - Multiplayer / online — single-player personal project
 - Mobile — web desktop-first
 - AI image generation for portraits — pixel art procedural generation instead
 - Commercial features (accounts, payments, analytics)
-
-## Current Milestone: v1.1 Data Layer
-
-**Goal:** Add persistent backend so game state survives sessions, with realistic names and expanded squads.
-
-**Target features:**
-- SQLite + Express API server deployed on existing VPS
-- Game save/load with simple team name + password login
-- Realistic player names from randomuser.me, cached in DB
-- 25-man squads matching Premier League rules
-- Season player stats (goals, assists, appearances) persisted per game
+- Press conferences / media — narrative layer, no simulation depth
+- International management — multiplies fixture and squad complexity
 
 ## Context
 
@@ -73,29 +66,37 @@ This is a personal passion project inspired by Championship Manager's depth but 
 
 The match engine is the foundation — everything else (management screens, seasons, training) layers on top of a proven engine.
 
-**v1 success = "I can watch a full match with emergent behavior and say 'that felt like football.'"**
+**Current state:** v1.0 engine + v1.1 data layer shipped. 26,876 lines TypeScript. Express + SQLite backend deployed on VPS. Full playable season loop with persistent save/load, realistic names, 25-man squads, per-player stats with profile screen.
+
+**Known issues:**
+- Player oscillation/jitter in utility AI (action scores flip each tick) — present since Phase 2, cosmetic but noticeable
+- Phase 2 (Tactical Layer) and Phase 4 (Development Systems) from v1.0 are incomplete/deferred
 
 ## Constraints
 
-- **Tech stack**: TypeScript + HTML5 Canvas, browser-based
+- **Tech stack**: TypeScript + HTML5 Canvas (client) + Express + SQLite (server), browser-based
 - **Rendering**: 2D top-down, no 3D — ball height conveyed via sprite scaling and shadow offset
 - **Performance**: 22 agents evaluating utility functions every tick must run smoothly in browser (target 30+ ticks/sec simulation, 60fps render)
 - **Simulation architecture**: Separate simulation from rendering from day one — engine runs headlessly, Canvas is a visualizer
+- **Deployment**: Single VPS with systemd + nginx reverse proxy
 - **Solo developer**: Personal project, one person building
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| TypeScript + Canvas over Godot | Browser-based distribution, zero-install, 22 agents feasible in JS at 30 ticks/sec | — Pending |
-| Utility AI over behavior trees | Every player runs identical code with personality weights — cleaner, more emergent, data-driven tuning | — Pending |
-| Separate simulation from rendering | Enables headless match simulation, future AI training runs, engine replacement flexibility | — Pending |
-| Single league, no transfers for v1 | Focus on engine quality before management complexity | — Pending |
+| TypeScript + Canvas over Godot | Browser-based distribution, zero-install, 22 agents feasible in JS at 30 ticks/sec | ✓ Good — 30+ ticks/sec achieved, canvas rendering smooth |
+| Utility AI over behavior trees | Every player runs identical code with personality weights — cleaner, more emergent, data-driven tuning | ⚠️ Revisit — works well but causes oscillation/jitter |
+| Separate simulation from rendering | Enables headless match simulation, future AI training runs, engine replacement flexibility | ✓ Good — enabled quick-sim for AI matches |
+| Single league, no transfers for v1 | Focus on engine quality before management complexity | ✓ Good — engine proven before management layers |
 | Pixel art procedural portraits | Can generate from trait combinations, fits the aesthetic, no external API dependency | — Pending |
-| Drag formation over preset templates | More expressive tactical control, aligns with "tactics as real mechanical levers" philosophy | — Pending |
-| SQLite + Express over Supabase/PocketBase | Simple single-file DB, deploy on existing VPS, no external services | — Pending |
-| randomuser.me for player names | Free, no API key, nationality-based, well-established | — Pending |
-| 25-man squads over 16 | Matches PL rules, enables rotation/depth decisions | — Pending |
+| Drag formation over preset templates | More expressive tactical control, aligns with "tactics as real mechanical levers" philosophy | ✓ Good — natural interaction model |
+| SQLite + Express over Supabase/PocketBase | Simple single-file DB, deploy on existing VPS, no external services | ✓ Good — zero external dependencies, simple deployment |
+| randomuser.me for player names | Free, no API key, nationality-based, well-established | ✓ Good — realistic names with graceful fallback |
+| 25-man squads over 16 | Matches PL rules, enables rotation/depth decisions | ✓ Good — adds squad management depth |
+| Cookie sessions over JWT | Same-origin single-player game, no token management needed | ✓ Good — simple, works well |
+| bcryptjs (pure JS) over native bcrypt | Cross-platform builds without native addon compilation | ✓ Good — no build tool requirements on VPS |
+| MAP_TAG sentinel for Map serialization | __MAP__ key with entries array survives JSON round-trip | ✓ Good — solved #1 data persistence risk |
 
 ---
-*Last updated: 2026-03-06 after v1.1 milestone start*
+*Last updated: 2026-03-07 after v1.1 milestone completion*
