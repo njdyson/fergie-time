@@ -55,7 +55,7 @@ Requirements for the Data Layer milestone.
 
 - [x] **AUTH-01**: User can create a new game with team name + password
 - [x] **AUTH-02**: User can continue an existing game by entering team name + password
-- [ ] **AUTH-03**: Login screen shown on app load with "New Game" / "Continue" options
+- [x] **AUTH-03**: Login screen shown on app load with "New Game" / "Continue" options
 - [x] **AUTH-04**: Passwords hashed with bcrypt, never stored in plain text
 
 ### Server
@@ -180,7 +180,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SERV-04 | Phase 5 | Complete |
 | AUTH-01 | Phase 6 | Complete |
 | AUTH-02 | Phase 6 | Complete |
-| AUTH-03 | Phase 6 | Pending |
+| AUTH-03 | Phase 6 | Complete |
 | AUTH-04 | Phase 6 | Complete |
 | PERS-01 | Phase 6 | Complete |
 | PERS-02 | Phase 6 | Complete |

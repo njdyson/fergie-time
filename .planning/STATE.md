@@ -2,6 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Data Layer
+status: unknown
+last_updated: "2026-03-07T06:47:23.217Z"
+progress:
+  total_phases: 6
+  completed_phases: 5
+  total_plans: 26
+  completed_plans: 25
+---
+
+---
+gsd_state_version: 1.0
+milestone: v1.1
+milestone_name: Data Layer
 status: executing
 stopped_at: Completed 07-01-PLAN.md
 last_updated: "2026-03-06T12:23:08.334Z"
@@ -57,6 +70,7 @@ Progress: [██████████] 96%
 | Phase 05 P03 | 3min | 2 tasks | 3 files |
 | Phase 06 P01 | 4min | 2 tasks | 7 files |
 | Phase 07 P01 | 5min | 2 tasks | 8 files |
+| Phase 06-auth-persistence P02 | 10 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -79,6 +93,8 @@ Recent decisions affecting current work:
 - [Phase 06]: Per-file test name prefixes for DB isolation in shared SQLite
 - [Phase 07]: ROLES_25 bench adjusted from plan listing to match stated 5 CB total
 - [Phase 07]: getNames remainder allocation to last nationality for exact count
+- [Phase 06-02]: Boot function checks session first (silent restore), falls back to login screen
+- [Phase 06-02]: Continue tab shows list of saved games via /api/games/list rather than plain text input
 
 ### Pending Todos
 
