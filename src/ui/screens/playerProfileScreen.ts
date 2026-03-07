@@ -9,6 +9,7 @@ import type { PlayerSeasonStats } from '../../season/playerStats.ts';
 import type { SeasonTeam } from '../../season/season.ts';
 import { calculatePlayerRating } from '../../season/playerAnalysis.ts';
 import { formatMoney } from '../../season/transferMarket.ts';
+import { getOrGeneratePortrait } from '../portrait/portraitCache.ts';
 
 // Color palette (dark theme)
 const PANEL_BG = '#1e293b';
@@ -54,86 +55,6 @@ const NAT_NAMES: Record<string, string> = {
 function getNationalityName(code?: string): string {
   if (!code) return 'Unknown';
   return NAT_NAMES[code] ?? code;
-}
-
-function getInitials(name?: string): string {
-  if (!name) return '?';
-  const parts = name.trim().split(/\s+/);
-  if (parts.length === 1) return (parts[0]![0] ?? '?').toUpperCase();
-  return ((parts[0]![0] ?? '') + (parts[parts.length - 1]![0] ?? '')).toUpperCase();
-}
-
-/** Draw the player avatar on a canvas element. */
-function drawAvatar(canvas: HTMLCanvasElement, player: PlayerState, shirtColor: string): void {
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return;
-
-  const w = canvas.width;
-  const h = canvas.height;
-  ctx.clearRect(0, 0, w, h);
-
-  // Background circle
-  ctx.fillStyle = '#0f172a';
-  ctx.beginPath();
-  ctx.arc(w / 2, h / 2, w / 2 - 2, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Shirt shape: rounded rectangle for body + two side "sleeves"
-  const shirtTop = 20;
-  const shirtBottom = h - 16;
-  const shirtLeft = 16;
-  const shirtRight = w - 16;
-  const sleeveH = 18;
-
-  ctx.fillStyle = shirtColor;
-
-  // Main body
-  ctx.beginPath();
-  ctx.roundRect(shirtLeft, shirtTop + 10, shirtRight - shirtLeft, shirtBottom - shirtTop - 10, 4);
-  ctx.fill();
-
-  // Left sleeve
-  ctx.beginPath();
-  ctx.roundRect(6, shirtTop + 8, shirtLeft - 2, sleeveH, 3);
-  ctx.fill();
-
-  // Right sleeve
-  ctx.beginPath();
-  ctx.roundRect(shirtRight + 2, shirtTop + 8, shirtLeft - 2, sleeveH, 3);
-  ctx.fill();
-
-  // Collar (darker)
-  ctx.fillStyle = shiftColor(shirtColor, -30);
-  ctx.beginPath();
-  ctx.roundRect(w / 2 - 10, shirtTop, 20, 14, [6, 6, 2, 2]);
-  ctx.fill();
-
-  // Shirt number
-  const shirtNum = player.shirtNumber;
-  if (shirtNum != null) {
-    ctx.fillStyle = '#ffffff';
-    ctx.font = `bold ${shirtNum > 9 ? 16 : 18}px 'Segoe UI', system-ui, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(String(shirtNum), w / 2, h / 2 + 4);
-  }
-
-  // Player initials below number
-  const initials = getInitials(player.name);
-  ctx.fillStyle = 'rgba(255,255,255,0.7)';
-  ctx.font = `bold 11px 'Segoe UI', system-ui, sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(initials, w / 2, shirtBottom - 6);
-}
-
-/** Darken/lighten a hex color by amount (-255..255). */
-function shiftColor(hex: string, amount: number): string {
-  const n = parseInt(hex.replace('#', ''), 16);
-  const r = Math.max(0, Math.min(255, (n >> 16) + amount));
-  const g = Math.max(0, Math.min(255, ((n >> 8) & 0xff) + amount));
-  const b = Math.max(0, Math.min(255, (n & 0xff) + amount));
-  return `rgb(${r},${g},${b})`;
 }
 
 /** Render a horizontal attribute bar row. */
@@ -367,10 +288,10 @@ export class PlayerProfileScreen {
     html += `</div>`; // end max-width wrapper
     this.container.innerHTML = html;
 
-    // Draw avatar on canvas
+    // Draw portrait on canvas
     const avatarCanvas = this.container.querySelector('#player-avatar-canvas') as HTMLCanvasElement | null;
     if (avatarCanvas) {
-      drawAvatar(avatarCanvas, player, shirtColor);
+      getOrGeneratePortrait(avatarCanvas, player);
     }
 
     // Attach back button handler
