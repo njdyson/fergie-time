@@ -29,7 +29,8 @@ import type { ProfileTransferInfo } from './ui/screens/playerProfileScreen.ts';
 import { TransferScreen } from './ui/screens/transferScreen.ts';
 import { InboxScreen } from './ui/screens/inboxScreen.ts';
 import { createSeason, validateSquadSelection, isSeasonComplete, getChampion, startNewSeason, recordPlayerResult, simOneAIFixture, finalizeMatchday } from './season/season.ts';
-import type { SeasonState } from './season/season.ts';
+import type { SeasonState, TrainingSchedule } from './season/season.ts';
+import { applyTrainingBlock } from './season/training.ts';
 import { mergeAllMatchStats } from './season/playerStats.ts';
 import { saveGame, loadGame, logout } from './api/client.ts';
 import { serializeState, deserializeState } from '../server/serialize.ts';
@@ -263,7 +264,7 @@ function updateCurrentScreen(): void {
         isFreeAgent,
         budget: market.teamBudgets.get(playerTeam.id) ?? 0,
       };
-      playerProfileScreenView.update(foundPlayer, foundTeam, pStats, seasonState.seasonNumber, transferInfo);
+      playerProfileScreenView.update(foundPlayer, foundTeam, pStats, seasonState.seasonNumber, transferInfo, seasonState.trainingDeltas);
     }
   }
 }
@@ -1741,7 +1742,25 @@ function startMatchFromSquad(): void {
   initMatchWithConfig({ homeRoster, homeBench, awayRoster, awayBench, seed: matchSeed });
 }
 
+hubScreenView.onScheduleChange((schedule: TrainingSchedule) => {
+  seasonState = { ...seasonState, trainingSchedule: schedule };
+  saveGame(serializeState(seasonState), 1).catch(err => console.error('Auto-save (training schedule) failed:', err));
+});
+
 hubScreenView.onKickoff(() => {
+  // Apply training block before match (exactly once per kickoff)
+  const playerTeamForTraining = seasonState.teams.find(t => t.isPlayerTeam)!;
+  const trainingSchedule = seasonState.trainingSchedule ?? {};
+  const { updatedSquad, deltas } = applyTrainingBlock(playerTeamForTraining.squad, trainingSchedule);
+  seasonState = {
+    ...seasonState,
+    teams: seasonState.teams.map(t =>
+      t.isPlayerTeam ? { ...t, squad: updatedSquad } : t,
+    ),
+    trainingDeltas: deltas,
+    trainingSchedule: {},  // Reset for next training block
+  };
+
   // Ensure squad screen has latest data for default selection
   const playerTeam = seasonState.teams.find(t => t.isPlayerTeam)!;
   squadScreenViewInner.setFormationRoles(tacticsBoard.getPhaseRoles('inPossession'), tacticsBoard.getPhaseRoles('outOfPossession'));

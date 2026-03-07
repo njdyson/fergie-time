@@ -6,7 +6,7 @@
 
 import type { PlayerState } from '../../simulation/types.ts';
 import type { PlayerSeasonStats } from '../../season/playerStats.ts';
-import type { SeasonTeam } from '../../season/season.ts';
+import type { SeasonTeam, TrainingDeltas } from '../../season/season.ts';
 import { calculatePlayerRating } from '../../season/playerAnalysis.ts';
 import { formatMoney } from '../../season/transferMarket.ts';
 import { getOrGeneratePortrait } from '../portrait/portraitCache.ts';
@@ -44,6 +44,14 @@ function getAttrBarColor(value: number): string {
   if (value >= 0.7) return GREEN;
   if (value >= 0.4) return YELLOW;
   return RED;
+}
+
+/** Convert camelCase attribute name to Title Case: 'oneOnOnes' -> 'One On Ones' */
+function camelToTitle(s: string): string {
+  return s
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/^./, c => c.toUpperCase())
+    .trim();
 }
 
 // ISO 2-letter → full name
@@ -105,11 +113,11 @@ export class PlayerProfileScreen {
   onSignFreeAgent(cb: (playerId: string) => void): void { this.signFreeAgentCallbacks.push(cb); }
 
   /** Update the profile screen with a specific player's data. */
-  update(player: PlayerState, team: SeasonTeam, seasonStats: PlayerSeasonStats | null, seasonNumber: number, transferInfo?: ProfileTransferInfo): void {
-    this.render(player, team, seasonStats, seasonNumber, transferInfo);
+  update(player: PlayerState, team: SeasonTeam, seasonStats: PlayerSeasonStats | null, seasonNumber: number, transferInfo?: ProfileTransferInfo, trainingDeltas?: TrainingDeltas): void {
+    this.render(player, team, seasonStats, seasonNumber, transferInfo, trainingDeltas);
   }
 
-  private render(player: PlayerState, team: SeasonTeam, seasonStats: PlayerSeasonStats | null, seasonNumber: number, transferInfo?: ProfileTransferInfo): void {
+  private render(player: PlayerState, team: SeasonTeam, seasonStats: PlayerSeasonStats | null, seasonNumber: number, transferInfo?: ProfileTransferInfo, trainingDeltas?: TrainingDeltas): void {
     const shirtColor = getTeamShirtColor(team);
     const attrs = player.attributes;
     const personality = player.personality;
@@ -284,6 +292,29 @@ export class PlayerProfileScreen {
       html += `</div>`;
     }
     html += `</div>`; // end stats panel
+
+    // ── Training Gains panel (only if deltas exist for this player) ──
+    if (trainingDeltas) {
+      const playerDeltas = trainingDeltas.get(player.id);
+      if (playerDeltas) {
+        const significantDeltas = Object.entries(playerDeltas).filter(([, v]) => v > 0.0005);
+        if (significantDeltas.length > 0) {
+          html += `<div style="background:${PANEL_BG}; border-radius:8px; padding:14px; margin-bottom:20px;">`;
+          html += `<div style="color:${GREEN}; font-size:12px; font-weight:bold; margin-bottom:12px; text-transform:uppercase; letter-spacing:0.05em;">Training Gains</div>`;
+          html += `<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(90px, 1fr)); gap:8px;">`;
+          for (const [attr, delta] of significantDeltas) {
+            const rounded = Math.round(delta * 100);
+            if (rounded === 0) continue;
+            html += `<div style="background:#0f172a; border-radius:6px; padding:8px; text-align:center;">`;
+            html += `<div style="color:${GREEN}; font-size:16px; font-weight:bold; margin-bottom:4px;">+${rounded}</div>`;
+            html += `<div style="color:${TEXT}; font-size:10px;">${camelToTitle(attr)}</div>`;
+            html += `</div>`;
+          }
+          html += `</div>`; // end grid
+          html += `</div>`; // end training gains panel
+        }
+      }
+    }
 
     html += `</div>`; // end max-width wrapper
     this.container.innerHTML = html;
