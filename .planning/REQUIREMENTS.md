@@ -22,13 +22,6 @@ Requirements for milestone v1.2 Player Development. Each maps to roadmap phases.
 - [x] **TRAIN-05**: User can see stat improvement deltas on the player profile after training
 - [x] **TRAIN-06**: Improvement rate is uncapped — no hidden potential ceiling — but naturally slows with age and varies by personality
 
-### Sandbox
-
-- [ ] **SAND-01**: User can access the training ground sandbox from the game hub
-- [ ] **SAND-02**: User can configure a scenario by picking teams and setting formations
-- [ ] **SAND-03**: Sandbox runs the real match engine on the canvas with speed controls
-- [ ] **SAND-04**: Sandbox is observation-only — no stats, results, or season state are affected
-- [ ] **SAND-05**: User can load named scenario presets (e.g., "High Press vs Low Block")
 
 ## Future Requirements
 
@@ -46,8 +39,13 @@ Deferred to future release. Tracked but not in current roadmap.
 - **PORT-F01**: Portraits on squad screen alongside player names
 - **PORT-F02**: Portrait reflects physical attributes (strength → broader face, pace → leaner)
 
-### Sandbox Enhancements
+### Sandbox
 
+- **SAND-01**: User can access the training ground sandbox from the game hub
+- **SAND-02**: User can configure a scenario by picking teams and setting formations
+- **SAND-03**: Sandbox runs the real match engine on the canvas with speed controls
+- **SAND-04**: Sandbox is observation-only — no stats, results, or season state are affected
+- **SAND-05**: User can load named scenario presets (e.g., "High Press vs Low Block")
 - **SAND-F01**: Sandbox recording/replay (save engine tick log for playback)
 
 ### Other
@@ -87,17 +85,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TRAIN-02 | Phase 12 | Complete |
 | TRAIN-03 | Phase 12 | Complete |
 | TRAIN-05 | Phase 12 | Complete |
-| SAND-01 | Phase 13 | Pending |
-| SAND-02 | Phase 13 | Pending |
-| SAND-03 | Phase 13 | Pending |
-| SAND-04 | Phase 13 | Pending |
-| SAND-05 | Phase 13 | Pending |
-
 **Coverage:**
-- v1.2 requirements: 14 total
-- Mapped to phases: 14
+- v1.2 requirements: 9 total
+- Mapped to phases: 9
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-07*
-*Last updated: 2026-03-07 after roadmap creation (v1.2 phases 10-13)*
+*Last updated: 2026-03-07 — sandbox deferred to future milestone*

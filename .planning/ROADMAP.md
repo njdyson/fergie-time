@@ -7,7 +7,7 @@ Four phases derived directly from the dependency chain in the match engine: phys
 ## Milestones
 
 - ✅ **v1.0 Match Engine** — Phases 1-4 (Phases 1, 3 shipped; Phase 2 partial; Phase 4 deferred)
-- ✅ **v1.1 Data Layer** — Phases 5-9 (shipped 2026-03-07)
+- ✅ **v1.1 Data Layer** — Phases 5-9 (shipped 2013-03-07)
 - 🚧 **v1.2 Player Development** — Phases 10-13 (in progress)
 
 ## Phases
@@ -21,21 +21,21 @@ Decimal phases appear between their surrounding integers in numeric order.
 <details>
 <summary>✅ v1.0 Match Engine (Phases 1-4)</summary>
 
-- [x] **Phase 1: Engine Core** — A watchable match with emergent goals, realistic player movement, and observable possession changes (completed 2026-03-03)
+- [x] **Phase 1: Engine Core** — A watchable match with emergent goals, realistic player movement, and observable possession changes (completed 2013-03-03)
 - [ ] **Phase 2: Tactical Layer** — Formation drag-and-drop and role assignments that visibly and measurably change team behavior (2/3 plans complete, partial)
-- [x] **Phase 3: Management Shell** — A full playable season with squad management, fixtures, league table, and a champion declared (completed 2026-03-06)
+- [x] **Phase 3: Management Shell** — A full playable season with squad management, fixtures, league table, and a champion declared (completed 2013-03-06)
 - [ ] **Phase 4: Development Systems** — Training, youth graduates, retirements, and procedural portraits that make seasons 2+ meaningfully different (deferred)
 
 </details>
 
 <details>
-<summary>✅ v1.1 Data Layer (Phases 5-9) — SHIPPED 2026-03-07</summary>
+<summary>✅ v1.1 Data Layer (Phases 5-9) — SHIPPED 2013-03-07</summary>
 
-- [x] **Phase 5: Server Foundation** — Express + SQLite running with proven serialization, dev proxy configured (completed 2026-03-06)
-- [x] **Phase 6: Auth + Persistence** — Login, save/load, auto-save after each matchday (completed 2026-03-07)
-- [x] **Phase 7: Squads + Names** — 25-man squads with realistic nationality-weighted names (completed 2026-03-07)
-- [x] **Phase 8: Stats + Deployment** — Per-player season stats, player profile, VPS deployment (completed 2026-03-07)
-- [x] **Phase 9: Gap Closure** — Shirt number persistence, Hub stats fix, deployment config (completed 2026-03-07)
+- [x] **Phase 5: Server Foundation** — Express + SQLite running with proven serialization, dev proxy configured (completed 2013-03-06)
+- [x] **Phase 6: Auth + Persistence** — Login, save/load, auto-save after each matchday (completed 2013-03-07)
+- [x] **Phase 7: Squads + Names** — 25-man squads with realistic nationality-weighted names (completed 2013-03-07)
+- [x] **Phase 8: Stats + Deployment** — Per-player season stats, player profile, VPS deployment (completed 2013-03-07)
+- [x] **Phase 9: Gap Closure** — Shirt number persistence, Hub stats fix, deployment config (completed 2013-03-07)
 
 </details>
 
@@ -43,10 +43,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 **Milestone Goal:** Add visual identity to players via pixel art portraits, then build a training system with drill scheduling and an observation-only sandbox.
 
-- [x] **Phase 10: Portraits** — Every player has a deterministic, nationality-influenced pixel art portrait on their profile screen (completed 2026-03-07)
-- [x] **Phase 11: Training Logic** — Player attributes improve after drill sessions based on drill type, age, and personality — verified headlessly before any UI (completed 2026-03-07)
-- [x] **Phase 12: Training Scheduler** — The hub shows training days until the next match; manager assigns drill or rest and sees stat deltas on player profiles (completed 2026-03-07)
-- [ ] **Phase 13: Sandbox** — Manager can access a free-to-use training ground sandbox, configure custom scenarios, and observe the real engine running without affecting season state
+- [x] **Phase 10: Portraits** — Every player has a deterministic, nationality-influenced pixel art portrait on their profile screen (completed 2013-03-07)
+- [x] **Phase 11: Training Logic** — Player attributes improve after drill sessions based on drill type, age, and personality — verified headlessly before any UI (completed 2013-03-07)
+- [x] **Phase 12: Training Scheduler** — The hub shows training days until the next match; manager assigns drill or rest and sees stat deltas on player profiles (completed 2013-03-07)
 
 ## Phase Details
 
@@ -128,36 +127,3 @@ Plans:
 Plans:
 - [ ] 12-01-PLAN.md — TDD: Training block computation (applyTrainingBlock, state types, DRILL_LABELS)
 - [ ] 12-02-PLAN.md — Hub scheduler UI, profile deltas panel, kickoff wiring
-
-### Phase 13: Sandbox
-**Goal**: The manager can launch the training ground sandbox from the hub at any time, configure a custom scenario, watch the real match engine run it, and return to the hub knowing nothing in their season was affected
-**Depends on**: Phase 12
-**Requirements**: SAND-01, SAND-02, SAND-03, SAND-04, SAND-05
-**Success Criteria** (what must be TRUE):
-  1. User can access the training ground sandbox from the game hub without starting a league match
-  2. User can pick two teams, set their formations, and launch the scenario before the engine starts
-  3. Sandbox runs the real match engine on the canvas with speed controls (play, fast-forward)
-  4. After the sandbox match ends, the user's league table, squad attributes, and season state are identical to before — no changes are written
-  5. User can load a named preset scenario (e.g., "High Press vs Low Block") that pre-configures both teams without manual setup
-**Plans**: TBD
-
-## Progress
-
-**Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13
-
-| Phase | Milestone | Plans Complete | Status | Completed |
-|-------|-----------|----------------|--------|-----------|
-| 1. Engine Core | v1.0 | 10/10 | Complete | 2026-03-03 |
-| 2. Tactical Layer | v1.0 | 2/3 | Partial | - |
-| 3. Management Shell | v1.0 | 6/6 | Complete | 2026-03-06 |
-| 4. Development Systems | v1.0 | 0/TBD | Deferred | - |
-| 5. Server Foundation | v1.1 | 3/3 | Complete | 2026-03-06 |
-| 6. Auth + Persistence | v1.1 | 2/2 | Complete | 2026-03-07 |
-| 7. Squads + Names | v1.1 | 2/2 | Complete | 2026-03-07 |
-| 8. Stats + Deployment | v1.1 | 3/3 | Complete | 2026-03-07 |
-| 9. Gap Closure | v1.1 | 2/2 | Complete | 2026-03-07 |
-| 10. Portraits | 2/2 | Complete    | 2026-03-07 | - |
-| 11. Training Logic | 1/1 | Complete    | 2026-03-07 | - |
-| 12. Training Scheduler | 2/2 | Complete    | 2026-03-07 | - |
-| 13. Sandbox | v1.2 | 0/TBD | Not started | - |
