@@ -1,178 +1,214 @@
 # Project Research Summary
 
-**Project:** Fergie Time v1.1 Data Layer
-**Domain:** Backend persistence layer for existing browser-based football management game
-**Researched:** 2026-03-06
+**Project:** Fergie Time v1.2 Player Development
+**Domain:** Browser-based football management game — pixel art portrait generation, drill scheduling, training ground sandbox
+**Researched:** 2026-03-07
 **Confidence:** HIGH
 
 ## Executive Summary
 
-Fergie Time is a browser-based football management game with a working match engine, tactical system, and management shell (Phases 1-3 complete). The v1.1 milestone adds a persistence layer so game state survives browser refreshes. The recommended approach is the thinnest possible backend: Express 5 serving a REST API over SQLite via better-sqlite3, with the browser remaining the sole authority on game logic. The server is a "filing cabinet" -- it accepts serialized state blobs and hands them back. No game logic runs server-side.
+Fergie Time v1.2 adds three interconnected features to an established TypeScript + Canvas + SQLite browser game: procedurally generated pixel art player portraits, a squad-level drill scheduling system, and an observation-only training ground sandbox. The game already has a solid foundation — a working match engine, season loop, transfer market, and persistence layer — so v1.2 is purely additive. No existing code requires architectural change, and only two new npm packages are needed (`@dicebear/core`, `@dicebear/pixel-art`). The backend requires zero changes; all new state serializes into the existing game_state JSON blob.
 
-The stack is deliberately minimal: Express 5, better-sqlite3, express-session, helmet, compression, and tsx for dev. No ORM, no WebSockets, no Redis, no Passport.js. The entire database has 4 tables, the most complex query is a single SELECT, and the game has one concurrent user. Every technology decision is calibrated to this reality. The existing frontend stack (TypeScript 5.9, Vite 7.3, Vitest 3.2, Zod 3.24) is unchanged.
+The recommended approach is to build the three features in strict dependency order: portraits first (self-contained, no dependencies, immediate visual impact), then the training logic core as pure functions (testable without UI), then the training screen UI on top of proven logic, and finally the sandbox (self-contained mode switch on the existing engine). Each step is independently testable. The architecture is explicit: portraits live in a UI layer and are invisible to the simulation engine; training mutations happen at season-boundary level and feed the engine as updated PlayerState at kickoff; the sandbox is a single boolean flag in main.ts that redirects the post-match callback.
 
-The primary risks are: (1) SeasonState serialization -- the `fatigueMap` uses a JavaScript Map which silently serializes to `{}`, causing silent data loss; (2) deployment complexity -- the project jumps from static file hosting to running a live Node process, requiring process management and reverse proxying; and (3) randomuser.me dependency on the critical path of game creation. All three have clear mitigations: round-trip serialization tests, systemd service configuration planned upfront, and a name cache with fallback to the existing procedural generator.
+The key risks are economy balance (training gains must be modelled across a full season before any numbers are written — a young player should gain ~0.00056 per attribute per session at peak development, not 0.003), sandbox data isolation (deep-clone player rosters before passing to the sandbox engine or real season state mutates silently), and portrait determinism (use the existing `createRng(playerId)` factory — never `Math.random()`). All three risks are preventable by following the patterns identified in research. Recovery after late discovery is expensive in all three cases.
 
 ## Key Findings
 
 ### Recommended Stack
 
-The existing frontend stack stays untouched. New dependencies are server-only and deliberately few.
+The existing stack is complete and validated. Only two new client-side dependencies are required. DiceBear (`@dicebear/core` v9.4.0, `@dicebear/pixel-art` v9.2.4) handles the full portrait pipeline: seed string → configurable pixel art SVG with 8 skin tones, 11 hair colours, configurable eyes, mouth, beard, and clothing. SVG is rendered to Canvas via the native browser `Blob URL + new Image() + drawImage()` pattern — no additional libraries needed. All other features (drill scheduling, sandbox, personality nudges) are implemented in pure TypeScript using existing infrastructure.
 
 **Core technologies:**
-- **Express 5.2** (HTTP server) -- v5 is the npm default since March 2025, native promise support eliminates async error handling boilerplate
-- **better-sqlite3 12.6** (database) -- synchronous API matches the single-process, single-user model; fastest Node SQLite driver; zero external services
-- **express-session 1.19** (auth) -- simple cookie-based sessions; no JWT complexity for a same-origin single-player game
-- **tsx 4.21** (dev/runtime) -- runs TypeScript server without a compile step; sub-second restarts in dev
+- `@dicebear/core` ^9.4.0 — avatar engine (seed → SVG); deterministic, TypeScript-native, ESM, Vite 7 compatible
+- `@dicebear/pixel-art` ^9.2.4 — pixel art avatar style; 8 skin tones, 11 hair colours, fully configurable
+- `seedrandom` ^3.0.5 (existing) — via `createRng(seed)` factory in `src/simulation/math/random.ts`; mandatory for all new procedural generation; never use `Math.random()` in portrait or training code
+- `better-sqlite3` ^12.6.2 (existing) — all new state serializes into the existing `game_state` JSON blob; no schema changes
 
-**Explicitly not needed:** ORM (4 tables), WebSockets (no real-time), Redis (one user), Passport.js (two auth endpoints), CORS middleware (same-origin), dotenv (Node 20+ `--env-file`), migration framework (`CREATE TABLE IF NOT EXISTS` + `PRAGMA user_version`).
+**Explicitly not needed:** `@dicebear/converter` (SVG-to-PNG — drawImage handles SVG natively), `sharp` (server-side image processing — portraits are client-only), `canvas` npm (Node Canvas polyfill — portraits never generate server-side), `date-fns`/`dayjs` (game calendar is an integer index, not real dates), `rxjs` (existing event array on SimSnapshot is sufficient).
+
+See: `.planning/research/STACK.md`
 
 ### Expected Features
 
-**Must have (table stakes for v1.1):**
-- SQLite database with 4 tables (games, saves, name_cache, player_stats)
-- Express API server with ~6 REST endpoints + Vite dev proxy
-- SeasonState serialize/deserialize handling Map-to-Object conversion
-- Login screen (team name + password) gating save game access
-- Auto-save after each matchday (zero-friction persistence)
-- 25-man squads (expanded from 16; independent frontend change)
-- randomuser.me name cache with procedural fallback
-- Per-match player stats extraction and season aggregation
+The milestone has three pillars, each with clear MVP scope. Portrait generation and drill scheduling are independent and can be built in any order relative to each other. The sandbox depends on engine reachability from a new screen but does not depend on portraits or training being complete.
 
-**Should have (v1.1.x polish):**
-- Quick-sim goalscorer attribution (expose GameEventLog from engine)
-- League-wide stat leaderboards (top scorer, most assists)
-- Match history browser on fixtures screen
-- Nationality field on PlayerState with flag display
-- Player form indicator (rolling 5-match average)
+**Must have (table stakes) — v1.2 core:**
+- Pixel art portrait on squad screen and player profile — players feel anonymous without visual identity
+- Portrait deterministic across sessions — a different face on each load is a broken experience
+- Nationality-mapped skin/hair palette — visual diversity tied to existing player data
+- Training calendar integrated into season loop (~3 drill days per match week)
+- ~6-8 squad-wide drill types with clear attribute-to-gain mapping on each drill card
+- Stat improvement delta shown on player profile after training block
+- `player.potential` field on all players (generated at creation, range 40-99) — required for growth formula
+- Training ground sandbox accessible from hub; runs real engine; observation-only (no season writes)
 
-**Defer (v1.2+):**
-- Export/import save as JSON (cross-device)
-- Player of the month/season awards
-- Historical season records and career stats tables
+**Should have (v1.2.x — add once core is stable):**
+- Personality vector nudges from drill type — small bounded float shifts per session; ties training to the game's core architecture
+- Drill intensity toggle (light/standard/hard) with injury risk on hard — tactical tension
+- Training history log per player — narrative of development
+- Sandbox scenario presets (3-5 named configs: "High Press vs Low Block", "Counter-attack from deep", etc.)
+
+**Defer (v2+):**
+- Per-player drill assignment — explicitly deferred in PROJECT.md; UI and logic burden without proven value at squad-level scale
+- Youth graduate visual cohort markers
+- AI-generated portraits — explicitly excluded in PROJECT.md
+- Sandbox recording/replay
+
+See: `.planning/research/FEATURES.md`
 
 ### Architecture Approach
 
-The simulation stays client-side (22 agents at 30Hz with Canvas rendering cannot move server-side without a complete rewrite). The backend is a pure persistence layer: Express receives JSON blobs via POST, stores them in SQLite, returns them via GET. The client owns all game logic -- the server validates only auth and payload shape. State is stored as a single JSON blob per save (50-80KB), not normalized into relational tables, because there is one save per user and no cross-save queries needed. Player stats get their own table because they benefit from aggregation queries.
+All three v1.2 features integrate as purely additive layers over the existing architecture. The simulation engine, game loop, renderer, and backend are unchanged. Four new files are created (`portraitGen.ts`, `training.ts`, `trainingScreen.ts`, `sandboxScreen.ts`) and six existing files receive small targeted edits (~15-60 lines each). `SeasonState` gains one new field (`trainingState: TrainingState`). `PlayerState` gains one optional field (`portraitSeed?: string`). The backend gains no new endpoints and no schema changes.
 
 **Major components:**
-1. **Frontend game** (existing, modified) -- simulation, rendering, UI; adds login screen + save/load wiring + API client
-2. **Express server** (new, `server/`) -- REST endpoints, session auth, Zod request validation
-3. **SQLite database** (new, `data/games.db`) -- 4 tables; auto-created on first run; WAL mode
-4. **Serialization layer** (new, in `season.ts`) -- `serializeSeason()`/`deserializeSeason()` handling Map-to-Object conversion
-5. **Name cache service** (new) -- proxies randomuser.me, caches in SQLite, fallback to `nameGen.ts`
+1. `src/ui/portrait/portraitGen.ts` — deterministic pixel art generator; session cache via `Map<playerId, ImageBitmap>`; reads only stable player fields (id, nationality, shirtNumber); never reads attributes or personality
+2. `src/season/training.ts` — pure functions: `applyDrill()`, `nudgePersonality()`, `resetTrainingWeek()`; no I/O; fully unit-testable without UI; produces new PlayerState[] via spread, never mutates in-place
+3. `src/ui/screens/trainingScreen.ts` — drill picker UI; day counter; wires training.ts output back to SeasonState via main.ts callback
+4. `src/ui/screens/sandboxScreen.ts` — team/formation config UI; triggers existing engine with `isSandboxMode = true`; no season state writes on FULL_TIME; displays explicit "no changes made" confirmation on exit
+5. `main.ts` (modified) — adds `isSandboxMode` boolean, sandbox FULL_TIME handler, new screen routing; ~60 additional lines total
+
+**Key patterns to follow:**
+- PlayerState rebuilt via spread on training gain application (never mutated in-place) — consistent with existing codebase pattern
+- Portrait seed derived from stable fields only; portrait generation never reads live attributes or personality
+- Sandbox is a post-match callback switch, not a parallel engine or renderer
+- All new state is plain JSON with no Maps — serializes trivially into existing blob without serialize.ts changes
+- Training days are gated by matchdays (up to 3 clicks between matchdays), not a separate calendar system
+
+See: `.planning/research/ARCHITECTURE.md`
 
 ### Critical Pitfalls
 
-1. **Map serialization data loss** -- `JSON.stringify()` silently converts `fatigueMap` to `{}`. Must convert Map to Record before serializing and write a mandatory round-trip test before any other persistence work begins.
-2. **Deployment complexity jump** -- going from static files to a live Node process requires systemd, nginx reverse proxy, port management, and crash recovery. Plan the deployment model in Phase 1, execute manually via SSH before automating.
-3. **randomuser.me as boot blocker** -- free API with no SLA and documented outages. Never call it on the critical path. Pre-cache names in SQLite, keep `nameGen.ts` as hard fallback.
-4. **Squad size magic numbers** -- hardcoded `16`, `5` (bench), and `slice(11)` patterns scattered through codebase. Must grep and replace with named constants before persistence encodes the wrong assumptions.
-5. **Auth scope creep** -- the instinct to build production-grade auth for a single-player personal project. Time-box to 4 hours. Cookie sessions, bcrypt hashing, no email, no OAuth.
+1. **Non-deterministic portrait generation** — using `Math.random()` instead of `createRng(player.id)` produces different faces across sessions; use the existing `createRng()` factory from `src/simulation/math/random.ts`; use ordered arrays (not `Object.keys()`) for feature option tables; verify with `canvas.toDataURL()` comparison across two sessions before Phase 2 begins.
+
+2. **Training economy collapse from over-tuned gain rates** — model the full season before writing any constants: 38 matchdays × 3 training days = ~90 sessions/season; a player peaking over 3 seasons should gain ~0.00056 per attribute per session at maximum; cap per-session gain at 0.003 even for prodigy-tier talent; run a headless 5-season simulation to verify no attribute exceeds 0.95 before building any training UI.
+
+3. **Sandbox roster aliasing (stat leak into real season)** — passing live `SeasonState` players by reference to the sandbox engine allows fatigue and stat mutations to silently modify the real squad; always deep-clone via `JSON.parse(JSON.stringify(squad))` before constructing the sandbox MatchConfig; TypeScript `readonly` is compile-time only and does not prevent runtime mutation.
+
+4. **Personality vector drift out of bounds** — small per-session nudges accumulate undetected across seasons; a composure of 1.03 breaks utility AI calculations in ways that look like simulation bugs, not training bugs; clamp every trait to `[0, 1]` at point of application using the existing `clamp()` utility from `teamGen.ts`; cap total drift per trait per season at 0.10.
+
+5. **Concurrent simulation loops in sandbox mode** — if sandbox launches its own `requestAnimationFrame` loop alongside an active match loop, match framerate degrades; sandbox is a mode that replaces match mode, not a parallel screen; enforce mutual exclusion via the `isSandboxMode` flag; the sandbox canvas replaces (not supplements) the main canvas in the DOM.
+
+See: `.planning/research/PITFALLS.md`
 
 ## Implications for Roadmap
 
-Based on research, suggested phase structure:
+The build order is determined by dependency analysis. Portraits have no dependencies on other v1.2 work. Training logic must precede training UI. The sandbox depends only on engine reachability from a new screen — it does not depend on portraits or training being complete, but benefits from both being stable and should come last so the known oscillation issue (which the sandbox makes highly visible) can be addressed in context.
 
-### Phase 1: Foundation -- Serialization + Database + Express Skeleton
+### Phase 1: Portrait Generator
 
-**Rationale:** Serialization is the riskiest piece (silent data loss from Map) and has zero dependencies. The database schema and Express skeleton are prerequisites for everything else. Building and testing these first de-risks the entire milestone.
-**Delivers:** Proven serialize/deserialize with round-trip tests; Express server with health check; SQLite schema created on startup with WAL mode; separate `tsconfig.server.json`; Vite dev proxy configured.
-**Addresses:** SQLite database, Express API server, SeasonState serialization (from FEATURES.md)
-**Avoids:** Map serialization data loss (Pitfall 1), WAL mode omission (Pitfall 5), Vite proxy misconfiguration
+**Rationale:** Self-contained with no dependencies on other v1.2 work. Delivers immediate visible value. Establishes the determinism and caching patterns that subsequent phases follow. Architectural decisions made here (optional `portraitSeed` field, session-only cache, no attribute coupling) prevent save-format migrations in later phases.
 
-### Phase 2: Auth + Save/Load + Login Screen
+**Delivers:** Pixel art portraits on squad screen and player profile; deterministic across sessions; nationality-mapped skin/hair palettes; session-level ImageBitmap cache; DiceBear integration via `@dicebear/core` + `@dicebear/pixel-art`.
 
-**Rationale:** With the server running and serialization proven, auth and save/load are the core persistence flow. Login screen gates access to the hub. This phase delivers the primary user-facing value of the milestone.
-**Delivers:** Register/login endpoints with bcrypt + cookie sessions; save/load endpoints accepting JSON blobs; login screen UI; auto-save after matchday; manual save button in hub.
-**Addresses:** Simple login, game save/load, auto-save (from FEATURES.md)
-**Avoids:** Auth scope creep (Pitfall 6), dual state ownership (Pitfall 2)
+**Addresses:** All portrait table-stakes features from FEATURES.md (display, persistence, nationality mapping).
 
-### Phase 3: 25-Man Squads
+**Avoids:** Non-deterministic portrait pitfall (verify with `toDataURL()` round-trip test before closing phase); portrait-stored-in-DB anti-pattern (regenerate from seed at render time, never persist pixel data).
 
-**Rationale:** Independent of the backend -- purely frontend. Can be built in parallel with or after persistence. Placing it here avoids encoding 16-player assumptions into save files created in Phase 2.
-**Delivers:** Expanded ROLES array (16 to 25), updated squad selection validation, updated AI team simulation, updated squad screen UI layout.
-**Addresses:** 25-man squads (from FEATURES.md)
-**Avoids:** Squad size magic numbers (Pitfall 7)
+**Research flag:** Standard patterns — DiceBear documentation is thorough and SVG-to-Canvas rendering is well-documented on MDN. No per-phase research needed.
 
-### Phase 4: Name Cache + randomuser.me Integration
+### Phase 2: Training Logic Core (no UI)
 
-**Rationale:** Depends on the server and database from Phase 1. Lower priority than core save/load. The existing `nameGen.ts` works as a fallback, so this is an enhancement not a blocker.
-**Delivers:** `/api/names/batch` endpoint; SQLite name_cache table; batch fetch from randomuser.me with nationality filtering; fallback to procedural generator.
-**Addresses:** Realistic names via randomuser.me (from FEATURES.md)
-**Avoids:** randomuser.me as boot blocker (Pitfall 4)
+**Rationale:** Pure functions with no UI — easy to unit-test and balance before building any screens. The balance constants (gain rate, age decay, potential ceiling, decline curve) must be verified against a headless multi-season simulation before any UI provides player feedback. Getting the economy wrong here is the highest-impact mistake in the milestone. Discovering balance issues after the training screen is built and integrated means reworking the UI's feedback values too.
 
-### Phase 5: Player Stats Persistence
+**Delivers:** `training.ts` with `DrillType` definitions, `applyDrill()`, `nudgePersonality()`, `resetTrainingWeek()`; `player.potential` field on all players (with fallback for existing saves); `trainingState` added to `SeasonState`; `finalizeMatchday()` extended to reset training week; `createSeason()` extended to initialize `trainingState`; headless 5-season balance validation confirming no attribute exceeds ~0.95 for a player starting below 0.70.
 
-**Rationale:** Depends on save/load working (Phase 2) and requires a post-match hook that does not yet exist. The `GameEventLog.getPlayerStats()` output must be captured and persisted after each match.
-**Delivers:** Per-match stat extraction hook; player_stats table population; season stats aggregation; stats display on squad screen.
-**Addresses:** Season player stats persisted in DB (from FEATURES.md)
-**Avoids:** N/A -- standard CRUD pattern
+**Addresses:** Drill taxonomy design; player potential field requirement; season loop integration; age regression (decline) modelled alongside gain in the same balance pass.
 
-### Phase 6: Deployment
+**Avoids:** Training economy collapse (Pitfall 3) — balance verified before UI; age regression absent (Pitfall 4) — decline designed in the same pass; personality drift (Pitfall 7) — clamping enforced at point of nudge application.
 
-**Rationale:** Deploy after all features work locally. The deployment model (systemd, nginx reverse proxy, SQLite file location) should be planned in Phase 1 but executed here to avoid deploying broken features.
-**Delivers:** Updated deploy.yml; nginx `/api` proxy; systemd service for Express; SQLite backup cron; verified end-to-end on VPS.
-**Addresses:** Production deployment (from ARCHITECTURE.md)
-**Avoids:** Static-to-process deployment gap (Pitfall 3)
+**Research flag:** Standard patterns for pure function design and game balance modelling. The gain formula constants need a project-specific headless validation test — this is calibration work, not research.
+
+### Phase 3: Training Screen UI
+
+**Rationale:** Depends on Phase 2 training logic being proven correct and balanced. Building UI before the underlying model is calibrated leads to shipping wrong numbers or rebuilding the UI when numbers change. Phase 3 is pure wiring of proved logic to the interface.
+
+**Delivers:** `trainingScreen.ts` with drill picker (each drill card shows affected attributes and approximate gain), day counter (X of 3 training days used), confirmation flow; hub navigation showing training day count and "Training" button between matchdays; stat delta shown on player profile post-training block.
+
+**Addresses:** Training screen table-stakes feature; stat improvement visibility requirement; hub integration; UX requirement that drill cards list affected attributes.
+
+**Avoids:** Drill-choice UI with no attribute visibility (UX pitfall — players assign wrong drills when attribute impact is invisible).
+
+**Research flag:** Standard UI patterns following the established screen architecture in the codebase (same pattern as `squadScreen.ts`, `playerProfileScreen.ts`, etc.). No per-phase research needed.
+
+### Phase 4: Training Ground Sandbox
+
+**Rationale:** Self-contained relative to training and portraits. Comes last because: (a) portraits and training being stable means the sandbox can display portraits in team views without risk, (b) the known oscillation issue (TUNING.hysteresisBonus = 0.36) becomes highly visible in the sandbox since managers watch short clips where the first ticks dominate perception, and addressing it here with a 30-tick warmup is the right fix point, (c) sandbox isolation invariants are cleanest to verify when the other features are complete and not changing.
+
+**Delivers:** `sandboxScreen.ts` with team/formation picker; `isSandboxMode` flag in main.ts; sandbox FULL_TIME handler (show results overlay, no season state writes); 30-tick headless warmup before visible simulation starts; explicit "Sandbox complete — no changes to your squad" toast on return to hub.
+
+**Addresses:** Sandbox table-stakes features (accessible from hub, runs real engine, observation-only); sandbox scenario preset differentiator (3-5 named presets) if time allows.
+
+**Avoids:** Concurrent simulation loops (Pitfall 5) — mutual exclusion enforced via mode flag; sandbox stat leak (Pitfall 6) — deep-clone roster before constructing sandbox MatchConfig; oscillation visible in sandbox (Pitfall 8) — 30-tick warmup before first rendered frame.
+
+**Research flag:** Oscillation fix (`TUNING.hysteresisBonus` increase from 0.36 to 0.45-0.50) should be tested in this phase against existing headless agent tests. Not a blocker for sandbox delivery, but worth attempting since the sandbox makes the issue front-and-centre and the fix is low-risk (single constant in `tuning.ts`).
 
 ### Phase Ordering Rationale
 
-- **Serialization first** because it is the single highest-risk item with the cheapest fix. A round-trip test takes an hour; discovering Map data loss after building the entire save/load pipeline wastes days.
-- **Auth + save/load before squads** because save files created during testing will encode squad size assumptions. Getting persistence working with the current 16-player squads first, then expanding to 25, ensures the serialization layer handles both.
-- **25-man squads is independent** and can be done in parallel with any phase. Placing it at Phase 3 is a suggestion, not a hard dependency. However, it MUST be done before deployment so production saves use the correct squad size.
-- **Name cache after save/load** because the existing `nameGen.ts` works fine. Names are cosmetic; persistence is the milestone's reason for existing.
-- **Stats last** because they require the most integration (post-match hook, engine changes for quick-sim attribution) and are additive to a working save/load system.
-- **Deployment last** because deploying broken features to the VPS is worse than not deploying at all. Local dev with Vite proxy is sufficient for all development.
+- Portrait first because it has zero dependencies, delivers immediate visible polish, and its determinism invariant (verified early) is foundational for the entire codebase going forward.
+- Training logic before training UI because balance must be verified headlessly; UI built on unproven numbers causes rework and ships incorrect player feedback.
+- Training UI third because it is pure wiring on proved logic — straightforward and low risk after the model is stable.
+- Sandbox last because it reuses 100% of the existing engine and renderer; its two concerns (mode isolation and data isolation) are cleanest to implement after the other features are stable.
+- No phase requires architectural change to the simulation engine, game loop, renderer, or backend — all phases are additive.
 
 ### Research Flags
 
-**Phases likely needing deeper research during planning:**
-- **Phase 2 (Auth + Save/Load):** Resolve JWT vs cookie sessions contradiction across research files (recommendation: use express-session with cookies). Determine exact save payload size with 25-man squads.
-- **Phase 6 (Deployment):** Verify VPS has build tools for better-sqlite3 native addon (`python3 make g++`). Confirm nginx config for reverse proxy alongside existing static serving.
+Phases with standard patterns (skip per-phase research):
+- **Phase 1 (Portraits):** DiceBear documentation is comprehensive; SVG-to-Canvas rendering is MDN-documented; DiceBear v9 is current and TypeScript-native.
+- **Phase 2 (Training Logic):** Pure function and game balance modelling are well-understood. The balance verification is a headless test, not a research question.
+- **Phase 3 (Training UI):** Follows established screen patterns already in the codebase. No novel UI components needed.
 
-**Phases with standard patterns (skip research-phase):**
-- **Phase 1 (Foundation):** Express + better-sqlite3 + Vite proxy is thoroughly documented. No unknowns.
-- **Phase 3 (25-Man Squads):** Pure frontend refactor with known touchpoints. Grep for magic numbers, replace with constants.
-- **Phase 4 (Name Cache):** randomuser.me API is well-documented, fetch-and-cache is a standard pattern.
-- **Phase 5 (Player Stats):** Standard CRUD with aggregation queries. `GameEventLog` already produces the data.
+Phases that may benefit from focused investigation:
+- **Phase 4 (Sandbox):** Oscillation fix — if `hysteresisBonus` increase is attempted, run against existing agent tests before committing. All relevant variables are in `src/simulation/tuning.ts` and the existing test suite can validate the change. Low external research needed.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | All packages verified on npm with current versions. Express 5 is the npm default. better-sqlite3 is the standard Node SQLite driver. No exotic dependencies. |
-| Features | HIGH | Features derived directly from PROJECT.md milestone definition and codebase analysis. Specific files and line numbers identified for each change. |
-| Architecture | HIGH | Express + SQLite + JSON blob storage is a well-established pattern. Architecture is intentionally simple -- no novel decisions. |
-| Pitfalls | HIGH | Pitfalls are codebase-specific (Map serialization, hardcoded squad sizes) with concrete file references and line numbers. Not generic warnings. |
+| Stack | HIGH | DiceBear packages confirmed from npm with version and compatibility verified; existing stack confirmed from package.json and source; all integration patterns code-validated against the codebase |
+| Features | MEDIUM | Table stakes and anti-features are well-reasoned from PROJECT.md scope and codebase analysis; drill taxonomy design is sound but gain constants require in-game calibration; competitor analysis (FM, pixel art FM games) is partial |
+| Architecture | HIGH | Based on direct source code analysis of all files that will be touched; integration points identified from actual type definitions and function signatures; no architectural guesswork |
+| Pitfalls | HIGH | Derived from codebase-specific analysis (real code patterns, existing utility functions, known oscillation issue documented in PROJECT.md) combined with established browser game patterns |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **JWT vs sessions contradiction:** STACK.md recommends express-session (cookies), ARCHITECTURE.md proposes JWT with jsonwebtoken. Resolution: use express-session with cookie-based sessions. JWT adds unnecessary complexity for a same-origin single-player game. Sessions are simpler and do not require token management on the client.
-- **pm2 vs systemd contradiction:** STACK.md recommends systemd, ARCHITECTURE.md recommends pm2. Resolution: use systemd. The VPS already runs systemd, pm2 is an extra dependency, and a single Express process does not need pm2's cluster/monitoring features.
-- **bcrypt vs SHA-256 contradiction:** STACK.md says SHA-256 with salt (no dependency), PITFALLS.md and ARCHITECTURE.md say bcrypt. Resolution: use bcrypt (async). It is the standard for password hashing and the `bcrypt` package is tiny. SHA-256 is technically sufficient but bcrypt is the right habit.
-- **Save payload size with 25-man squads:** Estimated at 50-80KB but not measured. With 25 players x 20 teams x ~15 fields each, actual size may be larger. Measure during Phase 1 serialization work.
-- **Quick-sim performance with GameEventLog exposure:** Exposing the log from quick-sim adds ~10% overhead (FEATURES.md estimate). Not measured. Defer measurement to Phase 5 when stats are implemented.
+- **Drill gain constants need playtesting calibration:** The formula structure is architecturally correct; the numeric constants (base rate, age decay slope, potential multiplier) need iteration against a headless multi-season simulation. Phase 2 completion criterion: formula correct AND balance verified headlessly. A Node script running 5 seasons and printing attribute histograms is the right validation tool.
+
+- **Player potential field migration for existing saves:** Saves created before v1.2 will not have `potential` on existing players. A fallback is needed (e.g., derive potential from current attribute average + age factor if field is absent). Address at the start of Phase 2 — makes it optional with a derivation fallback.
+
+- **Nationality palette completeness:** The research provides a starter set of nationality-to-skin-tone mappings (~6 nationalities). The full game has more nationalities. The default fallback (mid-range palette) is safe for launch; extend the mapping incrementally in Phase 1 based on nationalities present in `teamGen.ts`.
+
+- **Canvas renderer parametric (confirm before Phase 4):** Architecture research flags that if the existing renderer targets a hardcoded DOM element ID, the sandbox will need it parametric to mount on its own canvas. Confirm before starting Phase 4 by checking `src/renderer/canvas.ts` — likely a one-line change if needed.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- Express npm registry -- v5.2.1 confirmed as latest
-- better-sqlite3 npm/GitHub -- v12.6.2, synchronous API design
-- randomuser.me documentation -- API v1.4, nationality filtering, seed support, 5000 results max
-- Codebase analysis -- `season.ts`, `teamGen.ts`, `nameGen.ts`, `gameLog.ts`, `quickSim.ts`, `main.ts`, `engine.ts`, `deploy.yml`, `vite.config.ts`
-- PROJECT.md -- milestone definition and explicit out-of-scope items
+- `src/simulation/math/random.ts` — `createRng()` factory confirmed as canonical RNG factory
+- `src/simulation/types.ts` — PlayerState, PlayerAttributes, PersonalityVector type definitions (readonly fields confirmed)
+- `src/season/season.ts` — SeasonState shape, finalizeMatchday pattern
+- `src/simulation/tuning.ts` — TUNING.hysteresisBonus = 0.36, noiseScale = 0.06
+- `src/simulation/ai/agent.ts` — hysteresis implementation
+- `src/season/teamGen.ts` — player generation, clamp() usage, nationality handling
+- `src/season/quickSim.ts` — headless engine usage pattern (sandbox model)
+- `package.json` — full existing dependency list confirmed
+- `@dicebear/core` npm v9.4.0 — TypeScript-native, deterministic, browser + Node 18+ confirmed
+- `@dicebear/pixel-art` npm v9.2.4 — 8 skin tones, 11 hair colours confirmed
+- MDN `drawImage()` — SVG via Blob URL is a supported image source
+- MDN `image-rendering: pixelated` — Canvas upscaling technique for pixel art
 
 ### Secondary (MEDIUM confidence)
-- better-sqlite3-session-store npm -- evaluated and rejected (low adoption)
-- randomuser.me GitHub issues #42, #66 -- documented outages (502 errors)
-- Uptrends State of API Reliability 2025 -- API uptime trends
+- Football Manager 2024 training guide (fmscout.com) — drill categories, frequency patterns, intensity model
+- paperdoll (fralonra) GitHub — layer/slot architecture for pixel art composition
+- Runtime procedural character generation article (dev.to) — seed-based determinism, 64-bit seed space
+- Football Manager player development stages by age (fm-base.co.uk) — age-progression reference for balance calibration
+- Football Manager 11 reasons players won't develop (passion4fm.com) — game economy pitfall patterns
 
 ### Tertiary (LOW confidence)
-- Save payload size estimate (50-80KB) -- not measured, based on field count extrapolation
+- Pixel Manager Football (pixelmanagerfootball.com) — confirms paper doll approach for portrait variety; no implementation detail
+- MFL player development whitepaper — potential-based growth with age factor design pattern reference
 
 ---
-*Research completed: 2026-03-06*
+*Research completed: 2026-03-07*
 *Ready for roadmap: yes*

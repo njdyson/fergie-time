@@ -1,580 +1,687 @@
 # Architecture Patterns
 
-**Domain:** Backend integration for existing browser-based football management game
-**Researched:** 2026-03-06
-**Confidence:** HIGH -- standard Express+SQLite patterns applied to well-understood existing codebase
+**Domain:** v1.2 Player Development — pixel art portraits, drill scheduling, training ground sandbox
+**Researched:** 2026-03-07
+**Confidence:** HIGH — working codebase thoroughly analysed, all integration points identified from source
 
 ---
 
-## Current Architecture (Before v1.1)
+## Existing Architecture (v1.1 baseline)
+
+Understanding what exists is prerequisite to knowing what to add.
 
 ```
 [Browser]
-  main.ts (monolithic ~1200 lines)
-    - Creates SeasonState in module-level `let` variable
-    - Runs SimulationEngine in browser at 30Hz
-    - Renders via CanvasRenderer at 60fps
-    - UI screens: Hub, Squad, Fixtures, Table
-    - Season state LOST on page refresh
-    - Tactics saved in localStorage (survives refresh)
-    - Tuning settings saved in localStorage (survives refresh)
+  main.ts (~1200+ lines, monolithic coordinator)
+    |-- SimulationEngine (30 ticks/sec, 22 agents, headless-capable)
+    |-- CanvasRenderer (60fps, pitch + players + ball)
+    |-- GameLoop (accumulator-based fixed timestep)
+    |-- SeasonState (module-level variable, the single source of truth)
+    |-- UI Screens: Hub, Squad, Fixtures, Table, Stats, Login,
+    |               PlayerProfile, Transfer, Inbox
+    |-- Auto-saves to backend after matchday complete
 
-[VPS: 185.230.218.116]
-  nginx serves static files from /var/www/vhosts/psybob.uk/ft.psybob.uk/dist
-  GitHub Actions: SSH -> git pull -> npm run build
-  No backend process running
+[Express + SQLite backend (VPS)]
+  /api/auth/*     -- session auth (cookie, not JWT)
+  /api/games/*    -- save/load blob (SeasonState as JSON)
+  /api/health
+  Single `saves` table with game_state TEXT column (~50-80KB JSON blob)
+
+[SeasonState shape — the critical data structure]
+  SeasonState {
+    seasonNumber, playerTeamId, seed
+    teams: SeasonTeam[]          -- 20 teams, each with squad: PlayerState[25]
+    fixtures: Fixture[]          -- 38 matchdays x 10 fixtures
+    table: TeamRecord[]
+    currentMatchday: number
+    fatigueMap: Map<playerId, 0..1>
+    squadSelectionMap: Map<playerId, SquadSlot>
+    playerSeasonStats: Map<playerId, PlayerSeasonStats>
+    transferMarket: TransferMarketState
+    inbox: InboxState
+  }
+
+[PlayerState — immutable per simulation tick]
+  id, teamId, position, velocity
+  attributes: PlayerAttributes   -- 20 floats (pace, shooting, etc.)
+  personality: PersonalityVector -- 8 floats (directness, composure, etc.)
+  fatigue: 0..1
+  role, duty, formationAnchor
+  name?, age?, height?, shirtNumber?, nationality?, yellowCards?
 ```
 
-**The core problem:** `SeasonState` lives in a module-level variable. Refreshing the browser destroys the season -- 38 matchdays of progress gone. The simulation engine, rendering, and all game logic stay client-side. The backend exists solely to persist state across sessions and authenticate save slots.
+Key constraint: `PlayerState` is **readonly** (simulation immutable). Season-level mutations happen via `SeasonState` updates, not in-place PlayerState mutation.
 
 ---
 
-## Recommended Architecture (v1.1)
+## New Feature Integration Points
+
+### Feature 1: Pixel Art Player Portraits
+
+**What it is:** A procedurally generated pixel art portrait per player, seeded from player ID + nationality + physical attributes. Generated once, cached, rendered in UI screens. No external API. No runtime generation during simulation.
+
+**Where it touches existing code:**
+
+| Touch Point | What Changes | Type |
+|-------------|-------------|------|
+| `PlayerState` | Add optional `portraitSeed?: string` field | Extend existing type |
+| `PlayerProfileScreen` | Replace initials placeholder with portrait canvas | Modify existing |
+| `SquadScreen` | Add small portrait thumbnail per row | Modify existing |
+| `TransferScreen` | Add portrait thumbnail to player cards | Modify existing |
+| `SeasonState` serialization | `portraitSeed` is a plain string, serializes trivially | No change needed |
+
+**New component:** `src/ui/portrait/portraitGen.ts`
+
+Responsible for:
+- Generating an OffscreenCanvas (or regular Canvas) from a seed string
+- Deterministic pixel art: skin tone layer, hair layer, shirt color layer, eyes
+- Nationality maps to skin tone range; player ID seed determines hair/eyes/features
+- Returns ImageBitmap or canvas for rendering elsewhere
+
+**What does NOT change:**
+- `SimulationEngine` — portraits are UI-only, invisible to simulation
+- `SeasonState` structure — `portraitSeed` lives on `PlayerState`, which is already serialized
+- Backend — no new endpoints, no database changes
+- `quickSim` — headless simulation never touches portraits
+
+**Data flow:**
+```
+PlayerState.id + PlayerState.nationality + PlayerState.shirtNumber
+    -> portraitGen.generateSeed(player)   -> deterministic string
+    -> portraitGen.render(seed, size)     -> OffscreenCanvas
+    -> drawn into PlayerProfileScreen / SquadScreen via ctx.drawImage()
+```
+
+**Caching strategy:** Generate on demand, cache in a `Map<playerId, ImageBitmap>` module-level in `portraitGen.ts`. Portraits survive for a session. On page reload they regenerate (deterministic, so identical output). No backend persistence needed.
+
+---
+
+### Feature 2: Drill Scheduling
+
+**What it is:** Between matchdays, training days pass (~3 per week). Each training day the manager picks one squad-wide drill. Drills improve player attributes based on `drill_type × talent × age`. Personality vector gets slight bounded nudges.
+
+**Where it touches existing code:**
+
+| Touch Point | What Changes | Type |
+|-------------|-------------|------|
+| `SeasonState` | Add `trainingState: TrainingState` field | Extend existing type |
+| `season.ts: finalizeMatchday()` | Call `applyTrainingWeek()` before advancing matchday | Modify existing function |
+| `PlayerState` | Attributes are `readonly` in the type — mutation happens at season level by rebuilding PlayerState objects | Pattern already used |
+| `serialize.ts` | `TrainingState` serializes as plain JSON (no Maps) | Verify, likely no change |
+| `main.ts` | Add `TrainingScreen` navigation + drill selection flow | Modify existing |
+| `HubScreen` | Show "Training Day" button between matchdays | Modify existing |
+
+**New components:**
+
+`src/season/training.ts` — Core training logic (pure functions, no I/O):
+```typescript
+interface DrillType {
+  id: string;                        // 'fitness', 'passing', 'shooting', etc.
+  label: string;
+  attributeTargets: (keyof PlayerAttributes)[];  // which attrs improve
+  personalityNudge?: Partial<PersonalityVector>; // small shifts
+}
+
+interface TrainingDay {
+  matchday: number;                  // which matchday week this belongs to
+  drillId: string;                   // which drill was run
+  completedAt: number;               // day number within the week
+}
+
+interface TrainingState {
+  trainingDaysThisWeek: number;      // 0..3, resets each matchday
+  history: TrainingDay[];            // log of past drills
+  pendingDrill: string | null;       // drill chosen, not yet applied
+}
+
+// Pure function: apply one drill session to a player squad
+function applyDrill(
+  squad: PlayerState[],
+  drill: DrillType,
+  matchday: number,
+  seed: string,
+): PlayerState[]
+```
+
+`src/ui/screens/trainingScreen.ts` — Drill picker UI:
+- List of available drills with descriptions
+- "Run Drill" button
+- Progress indicator (X of 3 training days used this week)
+
+**Training day timing model:**
+
+The simplest model that works: training days happen between matchdays. After the player's match resolves (before calling `finalizeMatchday()`), the hub shows a "Training" button that can be clicked up to 3 times. Each click opens `TrainingScreen`, player picks a drill, it applies, and the day is consumed. `finalizeMatchday()` resets the counter.
+
+This avoids introducing a separate calendar/time system. Training is gated by matchdays, not real calendar days.
+
+**Attribute improvement formula:**
+
+```typescript
+function attributeGain(
+  currentValue: number,
+  talentMultiplier: number,  // derived from player's peak potential (hidden stat or approximation)
+  age: number,
+  drillEfficiency: number,   // 0..1, drill-specific
+): number {
+  const ageFactor = age <= 23 ? 1.0 : Math.max(0.2, 1.0 - (age - 23) * 0.05);
+  const headroom = 1.0 - currentValue;              // less gain as you approach ceiling
+  const gain = drillEfficiency * talentMultiplier * ageFactor * headroom * 0.01;
+  return Math.min(currentValue + gain, 1.0);
+}
+```
+
+**Personality nudge (bounded):**
+```typescript
+function nudgePersonality(
+  personality: PersonalityVector,
+  drill: DrillType,
+  strength: number = 0.002,  // very small per session
+): PersonalityVector {
+  // clamp each trait to [0.1, 0.9] — traits cannot be trained to extremes
+}
+```
+
+**SeasonState integration:**
+
+```typescript
+// Extended SeasonState — add one field
+interface SeasonState {
+  // ... existing fields ...
+  trainingState: TrainingState;   // NEW
+}
+
+// finalizeMatchday() extension
+function finalizeMatchday(state: SeasonState): SeasonState {
+  // ... existing fatigue recovery, transfers ...
+  const updated = { ...state, trainingState: resetTrainingWeek(state.trainingState) };
+  return { ...updated, currentMatchday: updated.currentMatchday + 1 };
+}
+```
+
+**What does NOT change:**
+- `SimulationEngine` — training stat changes are persistent season-level changes, not tick-level
+- The simulation receives updated `PlayerState[]` at match kickoff (already how it works)
+- `quickSim` — AI teams do not use the training system (they get static squads regenerated each season)
+- Backend schema — `TrainingState` serializes into the existing `game_state` JSON blob, no new tables
+
+---
+
+### Feature 3: Training Ground Sandbox
+
+**What it is:** A free-play mode where the manager sets up custom scenarios (teams, formations, maybe specific player builds) and watches the simulation engine run them. No stat changes. Observation only. Essentially a "match viewer" with configurable inputs.
+
+**Where it touches existing code:**
+
+| Touch Point | What Changes | Type |
+|-------------|-------------|------|
+| `SimulationEngine` | Zero changes — sandbox runs the existing engine | None |
+| `CanvasRenderer` | Zero changes — same renderer | None |
+| `GameLoop` | Reused as-is — sandbox uses the same loop | None |
+| `main.ts` | Add sandbox entry point + new screen navigation | Modify existing |
+| `HubScreen` | Add "Training Ground" navigation link | Modify existing |
+| `quickSim.ts` | Conceptual model reused — sandbox is an interactive quickSim | Reference pattern |
+
+**New component:** `src/ui/screens/sandboxScreen.ts`
+
+The sandbox screen is a configuration UI that:
+1. Lets the manager configure two teams (select from existing squads, or use custom builds)
+2. Sets formation for each team
+3. Shows a "Run Simulation" button
+4. Kicks off a match using the existing engine + renderer — but in "sandbox mode" where `finalizeMatchday` is NOT called, so no persistent state changes occur
+
+**Architecture pattern — sandbox vs live match:**
+
+The existing live match flow in `main.ts`:
+```
+kickoff() -> SimulationEngine(config) -> GameLoop -> CanvasRenderer
+          -> on FULL_TIME: recordPlayerResult() -> simOneAIFixture() -> finalizeMatchday()
+```
+
+The sandbox flow:
+```
+sandboxKickoff(config) -> SimulationEngine(config) -> GameLoop -> CanvasRenderer
+                       -> on FULL_TIME: show results, NO season state mutation
+```
+
+The key difference is what happens at FULL_TIME. The simulation, game loop, and renderer are identical. Only the post-match callback differs.
+
+**Implementation pattern:**
+
+```typescript
+// In main.ts — new sandbox mode flag
+let isSandboxMode = false;
+
+// Existing full-time handler (simplified):
+function onFullTime(snap: SimSnapshot): void {
+  if (isSandboxMode) {
+    showSandboxResultsOverlay(snap);   // show score, no season mutations
+    return;
+  }
+  // ... existing recordPlayerResult etc.
+}
+```
+
+This is the minimum-viable integration: one boolean flag and one branch at FULL_TIME.
+
+**Sandbox configuration state:**
+
+No persistence needed. Sandbox config is ephemeral — the manager sets it up, watches the match, and it's gone. No changes to `SeasonState`, `serialize.ts`, or the backend.
+
+**Scenario builder — what the UI exposes:**
+
+| Control | Source | Notes |
+|---------|--------|-------|
+| Team A squad | Select from `season.teams` | Player team or any AI team |
+| Team B squad | Select from `season.teams` | Or randomly generated scratch team |
+| Formation A | Existing `FormationId` picker | Reuse TacticsBoard |
+| Formation B | Existing `FormationId` picker | |
+| Match seed | Random or custom string | For reproducibility |
+| Speed | 1x / 2x / 4x | Existing speed controls |
+
+A minimal MVP exposes just Team A / Team B selection and formation. The scenario builder can grow later.
+
+---
+
+## System Overview — v1.2 Components Added
 
 ```
-[Browser - Vite Dev / Static Build]
+[Browser — existing + new]
   main.ts
-    |-- Still creates SeasonState in memory during play
-    |-- Still runs SimulationEngine in browser
-    |-- NEW: Login screen gates access to hub
-    |-- NEW: "Save Game" / "Load Game" buttons in hub
-    |-- NEW: api/client.ts handles all HTTP calls
-    |
-  src/api/
-    client.ts       -- fetch wrapper (login, register, save, load, fetchNames)
-  src/season/
-    season.ts       -- NEW: serializeSeason() / deserializeSeason() functions
+    |-- [EXISTING] SimulationEngine, CanvasRenderer, GameLoop
+    |-- [EXISTING] SeasonState (now includes trainingState field)
+    |-- [EXISTING] UI: Hub, Squad, Fixtures, Table, Stats, Profile, Transfer, Inbox
+    |-- [NEW] TrainingScreen     -- drill picker, week progress display
+    |-- [NEW] SandboxScreen      -- scenario config, launches sandbox match
+    |-- [NEW] portraitGen.ts     -- deterministic pixel art generation + session cache
+    |-- [MODIFIED] PlayerProfileScreen -- renders portrait instead of initials
+    |-- [MODIFIED] SquadScreen         -- thumbnail portrait per row
+    |-- [MODIFIED] HubScreen           -- "Training" + "Training Ground" nav buttons
+    |-- [MODIFIED] finalizeMatchday()  -- resets training state
+    |-- [MODIFIED] PlayerState type    -- add portraitSeed field
 
-[VPS: 185.230.218.116]
-  nginx
-    |-- Serves /dist as static files (unchanged)
-    |-- NEW: reverse proxy /api/* -> localhost:3001
-    |
-  NEW: Express server (port 3001)
-    |-- POST /api/auth/register
-    |-- POST /api/auth/login
-    |-- POST /api/games/save
-    |-- GET  /api/games/load
-    |-- GET  /api/names/batch
-    |
-  NEW: SQLite database
-    |-- ./data/games.db (auto-created on first run)
-    |-- Managed by better-sqlite3 (synchronous API)
-    |
-  NEW: pm2 daemon manager
-    |-- Runs Express as background process
-    |-- Auto-restarts on crash
+  src/season/training.ts         [NEW]
+    |-- DrillType definitions
+    |-- applyDrill() pure function
+    |-- nudgePersonality() bounded nudge
+    |-- resetTrainingWeek()
+    |-- TrainingState interface
+
+  src/ui/portrait/portraitGen.ts [NEW]
+    |-- generatePortraitSeed(player: PlayerState): string
+    |-- render(seed: string, size: number): OffscreenCanvas
+    |-- portrait cache: Map<playerId, ImageBitmap>
+
+  src/ui/screens/trainingScreen.ts [NEW]
+    |-- Drill picker UI
+    |-- Training day counter
+    |-- Calls training.ts, updates SeasonState
+
+  src/ui/screens/sandboxScreen.ts [NEW]
+    |-- Team/formation config UI
+    |-- Triggers sandbox match (isSandboxMode = true)
+    |-- Result overlay on FULL_TIME (no season mutations)
+
+[Express + SQLite backend — NO CHANGES]
+  All new features serialize into the existing game_state blob.
+  No new endpoints. No schema changes.
+  TrainingState is plain JSON (no Maps), serializes trivially.
+  Portrait seeds are strings, survive JSON round-trip.
 ```
-
-### Why This Shape
-
-The simulation MUST stay in the browser. It runs 22 autonomous agents at 30Hz with real-time Canvas rendering -- moving it server-side would require WebSocket streaming and eliminate the direct Canvas interaction. The backend is a "filing cabinet": it receives serialized game state blobs and hands them back. This is the thinnest possible backend that solves the persistence problem.
 
 ---
 
 ## Component Boundaries
 
-| Component | Responsibility | Communicates With | New/Modified |
-|-----------|---------------|-------------------|-------------|
-| **Frontend game** (existing) | Simulation, rendering, UI | API client | Modified (login + save/load UI) |
-| **API client** (`src/api/client.ts`) | HTTP calls, auth token storage | Express API | **New** |
-| **Serialization** (`src/season/season.ts`) | Convert SeasonState to/from JSON-safe format | Frontend game | **Modified** |
-| **Express server** (`server/`) | REST endpoints, auth, validation | SQLite, randomuser.me | **New** |
-| **SQLite database** (`data/games.db`) | Persistent storage | Express only | **New** |
-| **nginx** (existing) | Static files + reverse proxy | Browser, Express | **Modified** (add `/api` proxy) |
-| **pm2** | Process management for Express | Express | **New** |
+| Component | Responsibility | Communicates With |
+|-----------|---------------|-------------------|
+| `portraitGen.ts` | Generate deterministic pixel art from seed | UI screens (SquadScreen, PlayerProfileScreen, TransferScreen) |
+| `training.ts` | Pure training logic — drill application, personality nudges | `season.ts: finalizeMatchday()`, `trainingScreen.ts` |
+| `trainingScreen.ts` | Training week UI, drill selection | `training.ts`, `SeasonState` via main.ts callbacks |
+| `sandboxScreen.ts` | Sandbox scenario config UI | `main.ts` (triggers match via existing engine) |
+| `main.ts` (modified) | Add sandbox mode flag, training nav, sandbox FULL_TIME handler | All new + existing components |
+| `SimulationEngine` | Match simulation — UNCHANGED | Sandbox and live match use identically |
 
 ---
 
-## New Files to Create
+## Data Flow Changes
+
+### Portrait Generation Flow
 
 ```
-server/
-  index.ts              # Express app, middleware, listen on 3001
-  db.ts                 # SQLite init, schema migration, connection singleton
-  routes/
-    auth.ts             # register + login endpoints
-    games.ts            # save + load endpoints
-    names.ts            # randomuser.me cache proxy
-  middleware/
-    auth.ts             # JWT verification middleware
-
-src/api/
-  client.ts             # Typed fetch wrapper for all API calls
-
-src/ui/screens/
-  loginScreen.ts        # Login/register UI (new screen)
+SquadScreen / PlayerProfileScreen needs portrait
+    -> portraitGen.getPortrait(player.id)
+    -> if cached: return ImageBitmap from Map
+    -> if not: generateSeed(player) -> deterministic string from id+nationality+shirtNumber
+            -> render(seed, size)  -> draw pixel art layers to OffscreenCanvas
+            -> createImageBitmap() -> store in cache Map
+    -> draw to screen via ctx.drawImage(portrait, x, y)
 ```
 
-## Existing Files to Modify
-
-| File | Change | Impact |
-|------|--------|--------|
-| `src/season/season.ts` | Add `serializeSeason()` / `deserializeSeason()` | Small -- handle Map<->Object conversion for fatigueMap |
-| `src/main.ts` | Add login flow at startup, save/load button wiring, auth state | Medium -- ~60 new lines, no structural changes |
-| `vite.config.ts` | Add `server.proxy` for `/api` -> `localhost:3001` | 3 lines |
-| `package.json` | Add server deps + scripts | Small |
-| `.github/workflows/deploy.yml` | Add `pm2 restart` after build | Small |
-| `index.html` | Add login screen container div | Small |
-
----
-
-## Data Flow
-
-### Registration Flow
+### Training Day Flow
 
 ```
-User enters team name + password
-  -> POST /api/auth/register { teamName, password }
-  -> Express: hash password (bcrypt), INSERT into users table
-  -> Return { token: JWT }
-  -> Frontend: store token in localStorage, proceed to createSeason()
+[After matchday, before finalizeMatchday]
+Manager clicks "Training" (up to 3 times)
+    -> TrainingScreen opens
+    -> Manager selects DrillType
+    -> "Run Drill" clicked
+    -> training.applyDrill(playerTeam.squad, drill, matchday, seed)
+         -> rebuilds PlayerState[] with updated attribute values
+    -> training.nudgePersonality(squad, drill)
+         -> rebuilds PlayerState[] with bounded personality shifts
+    -> SeasonState.teams[playerTeamIndex].squad updated via main.ts
+    -> TrainingState.trainingDaysThisWeek incremented
+    -> SeasonState auto-saved (existing auto-save hook)
+
+Manager clicks "Play Match" (or 3 training days used)
+    -> finalizeMatchday() called
+    -> TrainingState.trainingDaysThisWeek reset to 0
+    -> matchday advances
 ```
 
-### Login + Load Flow
+### Sandbox Match Flow
 
 ```
-User enters team name + password
-  -> POST /api/auth/login { teamName, password }
-  -> Express: verify bcrypt hash, generate JWT, check for saved game
-  -> Return { token, hasSave: true/false }
-  -> If hasSave: GET /api/games/load (with Bearer token)
-    -> Express: SELECT season_data FROM saves WHERE user_id = ?
-    -> Return { seasonData: SerializedSeasonState, playerStats: [...] }
-    -> Frontend: deserializeSeason(data) -> SeasonState
-    -> Set module-level seasonState, show hub screen
-  -> If !hasSave: proceed to createSeason(), show hub screen
+Manager clicks "Training Ground" in Hub
+    -> SandboxScreen opens
+    -> Manager configures Team A, Team B, formations
+    -> "Run Simulation" clicked
+        -> isSandboxMode = true
+        -> Build MatchConfig from sandbox config (same shape as live match)
+        -> new SimulationEngine(matchConfig)
+        -> startGameLoop(engine, renderer) -- identical to live match
+        -> Canvas shows sandbox match at normal speed
+    -> FULL_TIME event fires
+        -> isSandboxMode check: true
+        -> showSandboxResultsOverlay(snap)  -- score, stats, no season state write
+        -> isSandboxMode = false
+        -> Return to SandboxScreen (or Hub)
 ```
 
-### Save Flow
+### Modified SeasonState Serialization Flow
 
 ```
-User clicks "Save Game" in hub
-  -> serializeSeason(seasonState) -> JSON-safe object
-  -> POST /api/games/save { seasonData, playerStats }
-    (with Bearer token)
-  -> Express: validate token, UPSERT into saves table
-  -> Return { success: true }
-  -> Frontend: show "Game Saved" toast
-```
-
-### Auto-Save (Recommended)
-
-Trigger save automatically after each matchday completes (after `finalizeMatchday()` returns). This prevents data loss without requiring the user to remember to save. Keep the manual "Save Game" button as well.
-
-### Name Fetch Flow
-
-```
-Season creation needs 19 teams x 25 players = 475 names
-  -> GET /api/names/batch?count=500&nat=gb
-  -> Express: check name_cache table
-    -> If enough cached names: return from cache
-    -> If not: fetch from randomuser.me, cache results, return
-  -> Frontend: use names for player generation
+SeasonState now includes trainingState: TrainingState
+  TrainingState {
+    trainingDaysThisWeek: number,     // 0..3
+    history: TrainingDay[],           // array of plain objects
+    pendingDrill: string | null
+  }
+  -> No Maps in TrainingState -> no serialize.ts changes needed
+  -> Existing mapReplacer/mapReviver handles SeasonState.fatigueMap etc.
+  -> Blob size increase: minimal (~1-2KB for history array)
 ```
 
 ---
 
-## SeasonState Serialization
+## New vs Modified Files Summary
 
-The `SeasonState` interface uses `Map<string, number>` for `fatigueMap`. JavaScript Maps do not survive `JSON.stringify()`. This is the single serialization challenge.
+### New Files
 
-**Solution: Explicit conversion at the boundary.**
+| File | Purpose |
+|------|---------|
+| `src/ui/portrait/portraitGen.ts` | Deterministic pixel art generator + session cache |
+| `src/season/training.ts` | Pure training logic — drills, attribute gain, personality nudge |
+| `src/ui/screens/trainingScreen.ts` | Training week UI — drill picker, day counter |
+| `src/ui/screens/sandboxScreen.ts` | Sandbox config UI — team/formation picker |
 
-```typescript
-// In season.ts
+### Modified Files
 
-export interface SerializedSeasonState {
-  readonly seasonNumber: number;
-  readonly playerTeamId: string;
-  teams: SeasonTeam[];
-  fixtures: Fixture[];
-  table: TeamRecord[];
-  currentMatchday: number;
-  fatigueMap: Record<string, number>;  // Object, not Map
-  readonly seed: string;
-}
+| File | Change | Scale |
+|------|--------|-------|
+| `src/simulation/types.ts` | Add `portraitSeed?: string` to `PlayerState` | 1 line |
+| `src/season/season.ts` | Add `trainingState: TrainingState` to `SeasonState`, extend `createSeason()` and `finalizeMatchday()` | ~30 lines |
+| `src/ui/screens/playerProfileScreen.ts` | Replace initials avatar with `portraitGen` output | ~20 lines |
+| `src/ui/screens/squadScreen.ts` | Add portrait thumbnail to player row | ~15 lines |
+| `src/ui/screens/hubScreen.ts` | Add "Training" + "Training Ground" nav buttons | ~20 lines |
+| `src/main.ts` | Add `isSandboxMode` flag, sandbox FULL_TIME handler, new screen routing | ~60 lines |
 
-export function serializeSeason(state: SeasonState): SerializedSeasonState {
-  return {
-    ...state,
-    fatigueMap: Object.fromEntries(state.fatigueMap),
-  };
-}
+### Unchanged Files
 
-export function deserializeSeason(data: SerializedSeasonState): SeasonState {
-  return {
-    ...data,
-    fatigueMap: new Map(Object.entries(data.fatigueMap)),
-  };
-}
-```
-
-**Critical: Write round-trip tests.** Create a season, serialize it, deserialize it, verify every field matches. The fatigueMap conversion is the obvious risk, but also verify that `readonly` fields, nested arrays (fixtures, teams), and the table array survive intact. Zod validation on the deserialized shape adds a safety net.
+| Component | Why Unchanged |
+|-----------|--------------|
+| `src/simulation/engine.ts` | Portraits and training are season-level, invisible to tick simulation |
+| `src/season/quickSim.ts` | AI matches don't use training; sandbox uses engine directly |
+| `server/` (all files) | All new data fits in existing JSON blob, no new endpoints needed |
+| `server/db.ts` | No schema changes |
+| `src/api/client.ts` | No new API calls |
+| `src/loop/gameLoop.ts` | Sandbox reuses existing game loop |
+| `src/renderer/canvas.ts` | Portraits are UI-only, not rendered on the pitch canvas |
 
 ---
 
-## Database Schema
+## Suggested Build Order
 
-```sql
-CREATE TABLE IF NOT EXISTS users (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  team_name TEXT UNIQUE NOT NULL,
-  password_hash TEXT NOT NULL,
-  created_at TEXT DEFAULT (datetime('now'))
-);
+Dependencies determine order. Each step is independently testable.
 
-CREATE TABLE IF NOT EXISTS saves (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id INTEGER NOT NULL REFERENCES users(id),
-  season_data TEXT NOT NULL,          -- Full SeasonState as JSON blob
-  saved_at TEXT DEFAULT (datetime('now')),
-  UNIQUE(user_id)                     -- One save per user
-);
+### Step 1: Pixel Art Portrait Generator
 
-CREATE TABLE IF NOT EXISTS name_cache (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  nationality TEXT NOT NULL,
-  first_name TEXT NOT NULL,
-  last_name TEXT NOT NULL,
-  fetched_at TEXT DEFAULT (datetime('now'))
-);
+**Why first:** Self-contained, no dependencies on other new features. Provides immediate visible value. Can be tested in isolation by rendering portraits to a debug page.
 
-CREATE TABLE IF NOT EXISTS player_stats (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  save_id INTEGER NOT NULL REFERENCES saves(id) ON DELETE CASCADE,
-  player_id TEXT NOT NULL,
-  season_number INTEGER NOT NULL,
-  appearances INTEGER DEFAULT 0,
-  goals INTEGER DEFAULT 0,
-  assists INTEGER DEFAULT 0,
-  clean_sheets INTEGER DEFAULT 0,
-  UNIQUE(save_id, player_id, season_number)
-);
-```
+**What to build:**
+- `src/ui/portrait/portraitGen.ts` — pure rendering function
+- Deterministic seeding: `hash(player.id + nationality + shirtNumber)`
+- Layered pixel art: base face shape, skin tone (nationality-derived), hair (seeded), shirt color (team color passed in), eyes
+- Test by rendering 25 portraits for a squad, verify determinism (same seed = same output)
 
-### Why JSON Blob for SeasonState
+**Integration:** Wire into `PlayerProfileScreen` first (one portrait, large). Then `SquadScreen` thumbnails.
 
-The alternative -- normalizing teams, fixtures, and table records into relational tables -- would mean 5+ tables, complex JOINs for load, and multi-table transactions for save. For a single-player game with one save slot per user, this is pure overhead. The entire SeasonState is roughly 50-80KB of JSON (20 teams x 25 players + 380 fixtures + 20 table rows + fatigue entries). SQLite handles this trivially.
-
-Player stats get their own table because they accumulate across seasons and benefit from queries (career totals, season leaderboards).
+**Risk:** Canvas API pixel manipulation is straightforward. Main risk is visual quality — iterate on the art generation algorithm. No architectural risk.
 
 ---
 
-## API Design
+### Step 2: Training State + Drill Logic (no UI yet)
 
-### Endpoints
+**Why second:** Pure logic, easy to unit test before building UI.
 
-| Method | Path | Auth | Request Body | Response |
-|--------|------|------|-------------|----------|
-| POST | `/api/auth/register` | No | `{ teamName: string, password: string }` | `{ token: string }` |
-| POST | `/api/auth/login` | No | `{ teamName: string, password: string }` | `{ token: string, hasSave: boolean }` |
-| POST | `/api/games/save` | JWT | `{ seasonData: SerializedSeasonState, playerStats?: PlayerStatRow[] }` | `{ success: true }` |
-| GET | `/api/games/load` | JWT | -- | `{ seasonData: SerializedSeasonState, playerStats: PlayerStatRow[] }` |
-| GET | `/api/names/batch` | No | Query: `?count=50&nat=gb` | `{ names: Array<{first: string, last: string}> }` |
+**What to build:**
+- `src/season/training.ts` — `DrillType` definitions, `applyDrill()`, `nudgePersonality()`, `resetTrainingWeek()`
+- Extend `SeasonState` with `trainingState`
+- Extend `createSeason()` to initialise `trainingState`
+- Extend `finalizeMatchday()` to reset training week counter
+- Unit tests: apply drill → verify attributes increased, verify personality nudge bounded, verify reset
 
-### Auth: JWT
+**No UI yet.** Training logic works independently and is verified by tests.
 
-Use `jsonwebtoken`. Token payload: `{ userId: number, teamName: string }`. Expiry: 30 days. Stored in `localStorage` on the client. No refresh tokens -- if expired, user logs in again.
+**Risk:** Attribute gain tuning will need iteration. The formula is correct architecturally; the numeric constants need playtesting. This is expected — build first, tune later.
 
-**Why JWT over sessions:** No server-side session store. Express can restart without losing sessions. For a personal single-player game, this is the right simplicity level.
+---
 
-### Validation
+### Step 3: Training Screen UI
 
-Use `zod` (already in the project's dependencies) for request body validation on the server. The game state blob needs only shallow validation (is it valid JSON? does it have the expected top-level keys?). Deep validation of the SeasonState structure happens in `deserializeSeason()` on the client.
+**Why third:** Depends on Step 2 training logic existing.
+
+**What to build:**
+- `src/ui/screens/trainingScreen.ts` — drill list, day counter, "Run Drill" button
+- Wire into `main.ts`: add TrainingScreen, add navigation from HubScreen
+- Update `HubScreen` to show training day count and "Training" button (only shown between matchdays)
+
+**Integration test:** Pick 3 drills in a week, verify attributes change, verify counter resets after matchday.
+
+---
+
+### Step 4: Sandbox Screen + Mode
+
+**Why fourth:** Last because it's self-contained relative to the training feature, and sandbox mode only requires adding a flag to `main.ts` and a configuration UI.
+
+**What to build:**
+- `src/ui/screens/sandboxScreen.ts` — team/formation picker
+- Add `isSandboxMode` flag to `main.ts`
+- Add sandbox FULL_TIME handler (show results overlay, no season mutations)
+- Add "Training Ground" button to HubScreen
+
+**Integration test:** Run sandbox match, verify league table not changed, verify player stats not changed, verify portraits appear in team displays.
 
 ---
 
 ## Patterns to Follow
 
-### Pattern 1: Vite Dev Proxy
+### Pattern 1: Immutable PlayerState Rebuilt at Season Level
 
-During development, Vite runs on port 5173 and Express on port 3001. Configure Vite to proxy `/api` so the frontend uses relative URLs that work identically in dev and production.
+**What:** `PlayerState` is readonly in the simulation type. Training attribute changes are applied by rebuilding the entire `PlayerState` object, not mutating it in place.
 
+**When to use:** Whenever training modifies player attributes.
+
+**Example:**
 ```typescript
-// vite.config.ts
-import { defineConfig } from 'vite';
-
-export default defineConfig({
-  server: {
-    proxy: {
-      '/api': 'http://localhost:3001',
+// training.ts
+function applyDrillToPlayer(player: PlayerState, gain: Partial<PlayerAttributes>): PlayerState {
+  return {
+    ...player,
+    attributes: {
+      ...player.attributes,
+      ...Object.fromEntries(
+        Object.entries(gain).map(([k, v]) => [k, Math.min(1, player.attributes[k as keyof PlayerAttributes] + v)])
+      ),
     },
-  },
-  build: { target: 'es2022' },
-});
-```
-
-In production, nginx handles the same `/api` routing. Zero code changes between environments.
-
-### Pattern 2: Separate TypeScript Configs
-
-The server runs in Node (no DOM, needs `node:` built-ins). The frontend runs in the browser (DOM types, bundler resolution). They need separate configs.
-
-```
-tsconfig.json              # Frontend (existing -- DOM, noEmit, bundler resolution)
-server/tsconfig.json       # Server (NodeNext, node types, emit or use tsx)
-```
-
-**Use `tsx` to run the server** in both development and production. The server is trivially small (5 route handlers). The JIT overhead of tsx is negligible. This avoids maintaining a server build step entirely.
-
-### Pattern 3: better-sqlite3
-
-Use `better-sqlite3` because:
-- **Synchronous API** -- no callbacks/promises for simple queries, matches the project's style
-- **Fastest Node SQLite binding** -- native C++ addon
-- **WAL mode** -- enables concurrent reads (though this game is single-user, it's free)
-
-Do NOT use `sqlite3` (callback-based, slower), `sql.js` (WASM, meant for browser), or Prisma/Drizzle (ORM overhead for 4 tables is absurd).
-
-### Pattern 4: Thin API Client
-
-Create `src/api/client.ts` as pure async functions. No classes, no state management, no caching. Just fetch wrappers that return typed results.
-
-```typescript
-// src/api/client.ts
-const BASE = '/api';
-
-let authToken: string | null = localStorage.getItem('fergie-token');
-
-export function setToken(token: string): void {
-  authToken = token;
-  localStorage.setItem('fergie-token', token);
-}
-
-export function clearToken(): void {
-  authToken = null;
-  localStorage.removeItem('fergie-token');
-}
-
-export function hasToken(): boolean {
-  return authToken !== null;
-}
-
-async function apiFetch<T>(path: string, opts: RequestInit = {}): Promise<T> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
   };
-  const res = await fetch(`${BASE}${path}`, { ...opts, headers });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || `API error ${res.status}`);
-  }
-  return res.json();
-}
-
-export function login(teamName: string, password: string) {
-  return apiFetch<{ token: string; hasSave: boolean }>('/auth/login', {
-    method: 'POST',
-    body: JSON.stringify({ teamName, password }),
-  });
-}
-
-export function register(teamName: string, password: string) {
-  return apiFetch<{ token: string }>('/auth/register', {
-    method: 'POST',
-    body: JSON.stringify({ teamName, password }),
-  });
-}
-
-export function saveGame(seasonData: SerializedSeasonState) {
-  return apiFetch<{ success: boolean }>('/games/save', {
-    method: 'POST',
-    body: JSON.stringify({ seasonData }),
-  });
-}
-
-export function loadGame() {
-  return apiFetch<{ seasonData: SerializedSeasonState }>('/games/load');
 }
 ```
 
-### Pattern 5: Database Migration on Startup
+This is consistent with how the rest of the codebase handles PlayerState (transfer market, fatigue application).
 
-Run `CREATE TABLE IF NOT EXISTS` statements when the server starts. No migration framework needed for 4 tables. If the schema needs to change later, add versioned migration files.
+---
 
+### Pattern 2: Deterministic Seeding for Portrait Generation
+
+**What:** All visual randomness in portrait generation flows from a deterministic seed derived from stable player data. Same player always gets same portrait.
+
+**When to use:** Portrait generation and any future procedural visual content.
+
+**Example:**
 ```typescript
-// server/db.ts
-import Database from 'better-sqlite3';
-import path from 'node:path';
-import fs from 'node:fs';
+// portraitGen.ts
+function generatePortraitSeed(player: PlayerState): string {
+  // Stable fields: id never changes, nationality never changes, shirtNumber rarely changes
+  return `portrait:${player.id}:${player.nationality ?? 'XX'}:${player.shirtNumber ?? 0}`;
+}
 
-const DB_PATH = path.join(process.cwd(), 'data', 'games.db');
+function seededRng(seed: string): () => number {
+  // Use seedrandom (already a project dependency)
+  return seedrandom(seed);
+}
+```
 
-// Ensure data directory exists
-fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+---
 
-const db = new Database(DB_PATH);
+### Pattern 3: Sandbox Mode as a Post-Match Callback Switch
 
-// Performance settings
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+**What:** Sandbox mode is implemented by changing what happens at FULL_TIME, not by building a separate rendering or simulation pipeline.
 
-// Schema init
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users ( ... );
-  CREATE TABLE IF NOT EXISTS saves ( ... );
-  CREATE TABLE IF NOT EXISTS name_cache ( ... );
-  CREATE TABLE IF NOT EXISTS player_stats ( ... );
-`);
+**When to use:** The sandbox match itself. Do not build a parallel game loop or renderer.
 
-export default db;
+**Example:**
+```typescript
+// main.ts — minimal sandbox integration
+let isSandboxMode = false;
+
+function onMatchFullTime(snap: SimSnapshot): void {
+  if (isSandboxMode) {
+    stopGameLoop();
+    isSandboxMode = false;
+    showSandboxResultsOverlay(snap);
+    return;
+  }
+  // ... existing live match handling
+}
+```
+
+---
+
+### Pattern 4: Training as a Pure Function with Season-Level Application
+
+**What:** Training logic (`applyDrill`, `nudgePersonality`) is a pure function: takes state, returns new state, no side effects. Application happens in `main.ts` where it updates `SeasonState`.
+
+**When to use:** All training logic. Enables unit testing without UI setup.
+
+**Example:**
+```typescript
+// In trainingScreen.ts event handler (wired via main.ts):
+function onDrillSelected(drill: DrillType): void {
+  const playerTeam = seasonState.teams.find(t => t.isPlayerTeam)!;
+  const updatedSquad = applyDrill(playerTeam.squad, drill, seasonState.currentMatchday, seasonState.seed);
+  const updatedTeams = seasonState.teams.map(t =>
+    t.isPlayerTeam ? { ...t, squad: updatedSquad } : t
+  );
+  const updatedTraining = incrementTrainingDay(seasonState.trainingState, drill.id);
+  seasonState = { ...seasonState, teams: updatedTeams, trainingState: updatedTraining };
+  autoSave();  // existing auto-save hook
+}
 ```
 
 ---
 
 ## Anti-Patterns to Avoid
 
-### Anti-Pattern 1: Moving Simulation Server-Side
+### Anti-Pattern 1: Generating Portraits Inside the Simulation Loop
 
-**What:** Running the match engine on Express and streaming results to the client.
-**Why bad:** The entire game is built around real-time Canvas rendering of a simulation running at 30Hz in the browser. Moving it server-side would require WebSocket streaming, a complete rewrite of the rendering pipeline, and eliminate the direct Canvas interaction. The match engine handles 22 agents evaluating utility functions every tick -- this works well in the browser.
-**Instead:** Keep simulation client-side. The server is only a persistence layer.
+**What people do:** Call `portraitGen.render()` inside the Canvas render callback or on every frame.
 
-### Anti-Pattern 2: Normalizing Game State into Relational Tables
+**Why it's wrong:** Portrait generation involves pixel-level Canvas operations and seeded RNG. Even cached, checking the cache on every frame per player adds overhead. The render loop runs at 60fps for 22 players — this is 1320 calls per second.
 
-**What:** Separate tables for teams, players, fixtures, table_records with JOINs to reconstruct SeasonState.
-**Why bad:** The game has one save slot per user. The entire state is ~50-80KB JSON. Five-table JOINs and multi-table transactions add complexity for zero benefit. If you need to query individual player data, that is what the separate `player_stats` table is for.
-**Instead:** One `saves` row per user with a `season_data TEXT` column.
-
-### Anti-Pattern 3: Overengineered Auth
-
-**What:** OAuth providers, email verification, password reset flows, session stores with Redis.
-**Why bad:** This is a personal single-player game. Auth exists to associate a save file with a name+password pair. Nothing more.
-**Instead:** Simple JWT + bcrypt. No email, no OAuth, no password reset. If a user forgets their password, reset it at the database level.
-
-### Anti-Pattern 4: Shared Monorepo Tooling
-
-**What:** Turborepo, Nx, or Lerna to share types between frontend and server.
-**Why bad:** You are sharing approximately 3 type definitions (SerializedSeasonState, request schemas, response shapes). Monorepo tooling adds CI complexity, workspace config, and hoisted dependency headaches for a solo project.
-**Instead:** Duplicate the small number of shared types. Or create a `shared/` directory and manually include it in both tsconfigs.
-
-### Anti-Pattern 5: ORM for 4 Tables
-
-**What:** Prisma, Drizzle, or TypeORM for the database layer.
-**Why bad:** The entire database has 4 tables. The most complex query is `SELECT season_data FROM saves WHERE user_id = ?`. An ORM adds schema generation, migration tooling, client generation, and dependency weight for queries that are one-liners in raw SQL.
-**Instead:** `better-sqlite3` with raw SQL. Wrap queries in typed functions in `db.ts`.
+**Do this instead:** Generate and cache on first access per session. The `Map<playerId, ImageBitmap>` cache in `portraitGen.ts` means generation happens once. The renderer draws from the cache.
 
 ---
 
-## Deployment Changes
+### Anti-Pattern 2: Modifying PlayerState Directly in the Simulation Engine
 
-### nginx Addition
+**What people do:** Try to apply training gains inside `SimulationEngine` by modifying agent attributes mid-match.
 
-Add to the existing server block for `ft.psybob.uk`:
+**Why it's wrong:** Training happens between matches at the season level. The engine treats `PlayerState` as immutable input per match. Mixing training state into the simulation creates an impossible-to-reason-about state machine.
 
-```nginx
-location /api/ {
-    proxy_pass http://127.0.0.1:3001;
-    proxy_http_version 1.1;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-}
-```
-
-### Updated deploy.yml
-
-```yaml
-script: |
-  cd /var/www/vhosts/psybob.uk/ft.psybob.uk
-  git pull
-  export NVM_DIR="$HOME/.nvm"
-  [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-  npm install
-  npm run build
-  npx pm2 restart fergie-api 2>/dev/null || npx pm2 start server/index.ts --name fergie-api --interpreter $(which npx) --interpreter-args tsx
-```
-
-### pm2 Ecosystem File (Recommended)
-
-```javascript
-// ecosystem.config.cjs
-module.exports = {
-  apps: [{
-    name: 'fergie-api',
-    script: 'server/index.ts',
-    interpreter: 'npx',
-    interpreter_args: 'tsx',
-    env: {
-      NODE_ENV: 'production',
-      PORT: 3001,
-      JWT_SECRET: 'generate-a-real-secret-here',
-    },
-  }],
-};
-```
-
-### SQLite Backup
-
-Add a daily cron on the VPS:
-
-```bash
-0 3 * * * cp /var/www/vhosts/psybob.uk/ft.psybob.uk/data/games.db /var/www/vhosts/psybob.uk/ft.psybob.uk/data/backups/games-$(date +\%Y\%m\%d).db
-```
+**Do this instead:** Training changes `SeasonState.teams[i].squad[j]` attributes. The next kickoff passes the updated `PlayerState[]` to the engine. Clean separation: engine receives final attributes, simulation runs.
 
 ---
 
-## Suggested Build Order
+### Anti-Pattern 3: Persisting Portraits to the Backend
 
-Order minimizes risk and provides testable checkpoints. Each step can be deployed and verified before starting the next.
+**What people do:** Serialize portrait pixel data (as base64 or arrays) into `SeasonState` to avoid regeneration.
 
-### Step 1: SeasonState Serialization + Tests
+**Why it's wrong:** A 48x48 pixel portrait as base64 is ~3KB. 500 players (20 teams x 25) is 1.5MB added to the save blob. The backend has a 1MB request limit. Generation is deterministic — there is no information to persist.
 
-Add `serializeSeason()` / `deserializeSeason()` to `season.ts`. Write round-trip tests verifying Map<->Object conversion, nested arrays, all fields. This is the riskiest piece -- if serialization loses data, everything downstream breaks.
+**Do this instead:** Session cache in `portraitGen.ts`. Portraits regenerate on page load (fast) and are cached for the session (no repeated generation).
 
-**Deliverable:** Proven serialization with passing tests.
-**Risk:** LOW but must be verified. The only non-trivial conversion is `Map<string, number>` -> `Record<string, number>`.
+---
 
-### Step 2: Express Skeleton + Database + Health Check
+### Anti-Pattern 4: Per-Player Drill Assignment in the First Pass
 
-Create `server/` directory with Express app, better-sqlite3 connection, schema creation, and `GET /api/health` endpoint. Run locally with `tsx`.
+**What people do:** Build granular per-player training where each player gets a different drill.
 
-**Deliverable:** Express starts, creates SQLite file, responds to health check.
+**Why it's wrong:** The scope explicitly defers this: "Per-player drill assignment — squad-level training first, granularity later if needed." Per-player assignment requires a more complex UI (25 individual pickers), more complex application logic, and more complex SeasonState (a Map<playerId, drillId> per day).
 
-### Step 3: Auth Endpoints
+**Do this instead:** One drill per day, squad-wide. The `DrillType.attributeTargets` list applies to all players, with individual variation handled by player age and current attribute values.
 
-Add register and login with bcrypt + JWT. Test with curl. No frontend changes.
+---
 
-**Deliverable:** Can create account and receive JWT via API.
+### Anti-Pattern 5: Building a Separate Sandbox Renderer or Engine
 
-### Step 4: Save/Load Endpoints
+**What people do:** Create `SandboxEngine` or `SandboxRenderer` that duplicates the existing simulation and rendering infrastructure.
 
-Add save and load endpoints accepting JWT auth. Store/retrieve JSON blobs.
+**Why it's wrong:** The existing engine already runs headlessly and is configured per match via `MatchConfig`. The renderer already renders any `SimSnapshot`. There is nothing simulation-specific about "sandbox" — it's just a match that doesn't write results back to the season.
 
-**Deliverable:** Can POST serialized SeasonState and GET it back via API.
+**Do this instead:** One boolean flag in `main.ts`. The sandbox reuses 100% of the existing simulation and rendering code.
 
-### Step 5: Frontend Integration
+---
 
-Add API client module. Add login screen. Wire save/load into hub screen. Add Vite dev proxy. Add auto-save after matchday completion.
+## Integration Points Summary
 
-**Deliverable:** Full save/load flow working in browser during development.
+| New Feature | Reads From | Writes To | API Calls |
+|-------------|------------|-----------|-----------|
+| Portrait gen | `PlayerState.id`, `.nationality`, `.shirtNumber` | Session cache Map | None |
+| Training logic | `PlayerState.attributes`, `.personality`, `.age` | Rebuilt `PlayerState[]` in SeasonState | None |
+| Training state | `SeasonState.trainingState` | `SeasonState.trainingState`, `.teams` | None (auto-save reuses existing) |
+| Sandbox mode | `SeasonState.teams` (read config) | Nothing (read-only) | None |
 
-### Step 6: Deploy to VPS
-
-Update deploy.yml. Configure nginx reverse proxy. Set up pm2. Verify end-to-end on production VPS.
-
-**Deliverable:** Game persistence working on ft.psybob.uk.
-
-### Step 7: Name Cache
-
-Add `/api/names/batch` endpoint that proxies randomuser.me and caches results in SQLite. Modify team generation to use cached names instead of the procedural name generator.
-
-**Deliverable:** Realistic player names from randomuser.me.
-
-### Step 8: Player Stats Table
-
-Add player_stats recording after each match. Add stats display to squad screen. Stats accumulate across seasons within a save.
-
-**Deliverable:** Career stats visible in squad screen.
+All three features are **purely additive** to the existing data model. No existing interfaces break. No backend changes. The auto-save mechanism persists all new state automatically through the existing JSON blob.
 
 ---
 
 ## Sources
 
-- Codebase analysis: `src/main.ts`, `src/season/season.ts`, `src/ui/tacticStore.ts`, `vite.config.ts`, `package.json`, `.github/workflows/deploy.yml`, `tsconfig.json`
-- Deployment target: `deploy.yml` shows VPS at 185.230.218.116, path `/var/www/vhosts/psybob.uk/ft.psybob.uk`, nginx serving static files
-- Architecture decisions driven by existing constraints: single VPS, solo developer, static frontend, browser-based simulation engine, existing localStorage patterns for tactics/tuning
-- Confidence: HIGH -- Express+SQLite+nginx reverse proxy is a standard, well-documented pattern. The only project-specific risk is SeasonState serialization fidelity (Map conversion), which is mitigated by tests in Step 1.
+- Codebase analysis (all files read): `src/simulation/types.ts`, `src/season/season.ts`, `src/season/teamGen.ts`, `src/season/quickSim.ts`, `src/main.ts`, `src/loop/gameLoop.ts`, `src/renderer/canvas.ts`, `src/api/client.ts`, `src/ui/screens/playerProfileScreen.ts`, `src/ui/screens/squadScreen.ts`, `src/ui/screens/hubScreen.ts`, `server/db.ts`, `server/index.ts`, `server/serialize.ts`
+- Integration constraints identified from actual type definitions and function signatures in the codebase
+- Build order derived from dependency analysis (portrait has no deps; training logic before training UI; sandbox last as self-contained)
+
+---
+*Architecture research for: v1.2 Player Development (portraits, training, sandbox)*
+*Researched: 2026-03-07*

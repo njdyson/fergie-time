@@ -1,188 +1,221 @@
 # Pitfalls Research
 
-**Domain:** Adding Express+SQLite backend to existing client-only browser game
-**Project:** Fergie Time v1.1 Data Layer
-**Researched:** 2026-03-06
-**Confidence:** HIGH (codebase-specific analysis + established backend patterns)
+**Domain:** Adding pixel art portraits, drill scheduling, and training sandbox to an agent-based football management game
+**Project:** Fergie Time v1.2 Player Development
+**Researched:** 2026-03-07
+**Confidence:** HIGH (codebase-specific analysis + established patterns from existing implementation)
 
 ---
 
 ## Critical Pitfalls
 
-Mistakes that cause data loss, broken saves, or deployment failures.
+Mistakes that cause rewrites, broken saves, or performance regressions that require major refactoring.
 
 ---
 
-### Pitfall 1: SeasonState Contains Non-Serializable Types (Map)
+### Pitfall 1: Non-Deterministic Portrait Generation — Same Player Gets Different Faces
 
 **What goes wrong:**
-`SeasonState.fatigueMap` is a `Map<string, number>` (see `src/season/season.ts` line 45). `JSON.stringify()` silently converts Maps to `{}`. If you persist season state by serializing to JSON and storing in SQLite, all fatigue data is silently lost. The game loads back with zero fatigue for every player, breaking the fatigue/recovery system. No error is thrown -- the data vanishes.
+The portrait generator draws from multiple sources of randomness (Math.random(), Date.now(), unordered object iteration) instead of a seeded PRNG derived from the player ID. The player sees a different face every time they open the squad screen. With 500 players across 20 teams, faces are inconsistent between sessions and after save/load. Portraits stored in SQLite as seeds become useless because they no longer reproduce the same image.
 
 **Why it happens:**
-The game was built as a client-only app where state lives in memory. Maps are natural for in-memory lookups but are invisible to `JSON.stringify()`. This is JavaScript's most common serialization trap and it hits hardest when retrofitting persistence onto existing code.
+`Math.random()` is the default in browser JS. Developers reach for it instinctively. The problem is silent — generation succeeds, a portrait is drawn, it looks plausible. The non-determinism only surfaces across sessions when the player notices their striker has changed ethnicity since the last match.
+
+Portrait generators also often use arrays of layer options that are iterated with `Object.keys()` or property enumeration — these are not guaranteed insertion-order in all engines, meaning the same numeric seed produces different feature selections when the layer option arrays are reordered during development.
 
 **How to avoid:**
-- Convert `fatigueMap` to `Record<string, number>` before serializing, or store fatigue as rows in a `player_fatigue` table keyed by `(game_id, player_id)`.
-- Better: refactor `SeasonState` to use `Record<string, number>` instead of `Map` throughout. Maps provide no meaningful advantage here (string keys, simple lookups) and create a serialization landmine.
-- Add a mandatory round-trip test: `deepEqual(deserialize(serialize(state)), state)` must pass before save/load is considered done.
+- Use `createRng(playerId)` from the existing `src/simulation/math/random.ts` — this already wraps seedrandom and is proven deterministic.
+- Seed formula: `createRng(player.id)`. The player ID is a stable `teamId-player-index` string. Never use `player.name` as the seed — names can change (name cache updates, randomuser.me returns different data).
+- Never call `Math.random()` inside the portrait generator. Pass the seeded RNG as a parameter.
+- Use ordered arrays, not object property enumeration, for feature option tables. Array index is stable; property enumeration order is not guaranteed to match source code order across engines.
+- Round-trip test: generate portrait for player `team1-player-0`, save state, load state, generate again — pixel buffers must be identical.
 
 **Warning signs:**
-- Fatigue values are always 0 after loading a saved game.
-- Tests pass but only exercise in-memory flow, never serialize/deserialize.
+- Portrait looks different after browser refresh without a game-state change.
+- "Why does my striker look different today?" as a player observation.
+- Portrait generation function imports or calls anything from `Math.random` globally.
+- Layer option tables use `Object.keys(featureConfig)` or `Object.entries()` for iteration order.
 
 **Phase to address:**
-Phase 1 (Database Schema + Save/Load). Must be caught during schema design before any persistence code is written.
+Phase 1 (Portrait Generator). Determinism must be verified in the first working portrait, not discovered later when saves break.
 
 ---
 
-### Pitfall 2: Dual State Ownership -- Client and Server Disagree on Truth
+### Pitfall 2: Portrait Seed Stored as Player Field — Breaks When Player Object Evolves
 
 **What goes wrong:**
-The current game generates all state client-side: `createSeason()` builds 20 teams, 380 fixtures, a full league table, and a fatigue map entirely in the browser (see `src/season/season.ts` lines 94-147). If you add a backend but keep the client generating state while also having the server validate or transform it, you create two sources of truth. The client creates a season, the server persists a different version, and saves corrupt silently.
+A `portraitSeed` field is added to `PlayerState` and stored to SQLite. When attributes or personality change (training progression does this), the player object changes, but the portrait seed is expected to stay constant. If the generation function derives any visual features from live attributes (e.g., "high strength → thicker neck") rather than the fixed seed, portraits morph as the player develops. Alternatively, if `portraitSeed` is forgotten during player object construction in `createAITeam()`, new players get undefined seeds and fall back to Math.random().
 
 **Why it happens:**
-The instinct when adding a backend is "the server should be authoritative." That is correct for multiplayer games. For a single-player game where all game logic already runs client-side, attempting to move authority to the server means duplicating the entire simulation engine on the server -- a massive scope expansion for zero user benefit.
+The temptation to make portraits "reflect" current attributes is strong — it feels like the portrait should update as the player develops. But this couples two systems that should be independent: visual identity (fixed, seeded from ID) and physical development (mutable). Mixing them means portrait redraws on every training tick.
 
 **How to avoid:**
-- Explicitly decide: the client owns game logic and state, the server is a dumb persistence layer. Document this contract.
-- API design: `POST /api/games/:id/save` accepts the full serialized state blob. `GET /api/games/:id/load` returns it verbatim. No server-side validation of game logic.
-- The server validates only: auth (is this your save?), payload shape (is this valid JSON/meets size limits?), and schema version.
-- Do NOT try to make the server replay or validate match results -- that requires porting the simulation engine to the server.
+- The portrait is derived only from: `player.id` (stable) + `player.nationality` (stable) + a small set of fixed cosmetic traits (hair colour, skin tone, face shape) that are generated once and never change.
+- Do NOT derive any portrait feature from `attributes` or `personality` — those change via training. If you want "big striker" to look strong, encode it in the fixed cosmetic traits at generation time, not by reading `attributes.strength` at render time.
+- If you need `portraitSeed` at all in `PlayerState`, make it optional and fall back to `createRng(player.id)` — this means portrait generation works correctly even for players created before the field was added, with zero migration cost.
+- Add `portraitSeed?: string` to `PlayerState` in `src/simulation/types.ts`, mark it optional. Existing save files continue to work because `PlayerState.portraitSeed` is absent → falls back to ID-derived seed.
 
 **Warning signs:**
-- You find yourself importing game logic modules into server code.
-- API endpoints accept partial state updates before full save/load works.
-- Bug reports where "my league table doesn't match my fixtures."
+- Portrait generator function signature takes `attributes: PlayerAttributes` as a parameter.
+- Player's face changes when training improves a stat.
+- Existing AI team players (created before the field was added) have undefined portraits on load.
 
 **Phase to address:**
-Phase 1 (API Design). The save/load contract must be defined before any endpoint is built.
+Phase 1 (Portrait Generator). Interface decisions made in Phase 1 prevent save-format migrations in Phase 2.
 
 ---
 
-### Pitfall 3: Static-Site Deploy Becomes a Process Management Problem
+### Pitfall 3: Training Stat Gain Too Fast — The Economy Collapses in Season 1
 
 **What goes wrong:**
-The current deploy (`deploy.yml`) is simple: SSH in, `git pull`, `npm run build`. This produces static files served by the web server at `ft.psybob.uk`. Adding Express means you now need: a Node.js process running permanently, a process manager (pm2 or systemd), a reverse proxy (nginx) routing `/api/*` to Express while serving static files directly, port management, log rotation, crash recovery, and environment variable management. The deployment pipeline triples in complexity.
+With even conservative-seeming numbers, a young player on a focused drill can exceed the attribute cap in one season. Example: player age 19, talent multiplier 1.0, drilling passing 3 days/week for 30 weeks = 90 training sessions. If each session adds `0.003` to passing, that's `+0.27` in a single season — pushing a 0.55-passing player to 0.82, or a strong player through the 1.0 cap. After two seasons every young player is maxed. Transfer market collapses, no reason to buy anyone. The game loses strategic depth permanently.
 
 **Why it happens:**
-The operational gap between "serve static files" and "run a live process" is massive but invisible until deploy day. The existing `deploy.yml` has no concept of "restart the server" or "is the old process still running on port 3000?" The first deploy will fail because there is no mechanism to manage the Express lifecycle.
+Developers test with one player over a few in-game weeks and the gain feels too slow. They increase the rate. They never simulate a full season or the 3-season arc. The problem only surfaces when the game is played long-term.
 
 **How to avoid:**
-- Use pm2 for process management. Create an `ecosystem.config.cjs` defining the Express app, env vars, log paths, and restart policy.
-- Configure nginx as reverse proxy: static files from `dist/` served directly, `/api/*` proxied to Express on a local port.
-- Update `deploy.yml` to: `git pull && npm install --production && npm run build && pm2 restart ecosystem.config.cjs`.
-- Add `pm2 startup` and `pm2 save` on the VPS so the Express process survives server reboots.
-- Test the full deploy cycle manually before automating. The first deploy will fail at least once -- do it interactively via SSH.
-- Store the SQLite database file OUTSIDE the web root (e.g., `/var/data/fergie-time/game.db`), not in the project directory. The web server must never serve the `.db` file.
+- Model the full season before writing any gain numbers. 38 matchdays, ~3 training days between matches = ~90 training sessions/season. A player peaking after 3 full seasons (ages 20→23) should gain ~0.15 per attribute. Per-session gain = 0.15 / (3 × 90) ≈ **0.00056 per session** at peak development rate.
+- Apply a hard cap: no attribute above 1.0. No session gain above 0.003 (even for exceptional talent — this is the ceiling for a prodigy).
+- Age multiplier curve: peak gain at 18-22 (1.0×), sharp decline after 27, near-zero after 32. Peak gain ≠ fast gain — peak means the curve peaks there, not that numbers are large.
+- Test by simulating 5 full seasons programmatically before any UI work. Log the attribute distribution of the squad at season end.
 
 **Warning signs:**
-- 502 errors on the VPS after deploy.
-- Express process dies silently and nobody notices until the next play session.
-- "Port 3000 already in use" from a previous crashed process.
-- The `.db` file is downloadable via a direct URL.
+- A young player's attribute rises by more than 0.05 in a single season during playtesting.
+- Transfer market players become obsolete faster than they can be bought.
+- "All my players are 90+ after two seasons" in early playtests.
+- The gain per session looks reasonable in isolation but was never multiplied out across a full season.
 
 **Phase to address:**
-Phase 2 (Deployment). But plan the deployment model in Phase 1 -- API design should match the deploy architecture.
+Phase 2 (Drill Scheduling). Balance numbers must be modelled before implementation, not after. Build a spreadsheet or a headless simulation test that runs 5 seasons and outputs attribute histograms.
 
 ---
 
-### Pitfall 4: randomuser.me Dependency Becomes a Game-Breaking Boot Blocker
+### Pitfall 4: Age Regression Not Modelled — Veterans Never Decline
 
 **What goes wrong:**
-The plan is to replace the procedural `nameGen.ts` with realistic names from randomuser.me. If this API call happens during season creation (the critical path), a slow response or outage blocks the "new game" flow entirely. randomuser.me is a free community service with no SLA -- it has documented outages (502 Bad Gateway errors reported on GitHub issues #42 and #66). If the API is down when someone starts a new game, the game is broken.
+The training system improves attributes but never decreases them for aging players. A 34-year-old who was trained well at 24 retains peak-era attributes indefinitely. There is no incentive to buy or develop young players to replace veterans. The season cycle with youth graduates becomes pointless because veterans never need replacing.
 
 **Why it happens:**
-External API dependencies feel harmless during development because the API is almost always up when you are testing. The failure mode only appears in production at the worst possible time. Developers treat "fetch names from API" as a simple call without considering the unhappy path.
+Regression is the complement of progression, but it's easy to build only the positive half. Age regression requires defining a second curve (when decline starts, how steep) and applying it even when the manager does nothing — which feels punishing when first encountered.
 
 **How to avoid:**
-- Never call randomuser.me on the critical path of game creation.
-- Pre-fetch and cache: create a `name_cache` table in SQLite. On server startup (or via a scheduled job), bulk-fetch names and store them. Draw from the cache when creating players.
-- Batch API calls efficiently: `https://randomuser.me/api/?results=50&nat=gb,es,fr,de,br` fetches 50 names in one request with nationality filtering that matches the existing weight distribution in `nameGen.ts`.
-- Keep the existing procedural `nameGen.ts` as a hard fallback. If the cache is empty AND the API is down, generate names locally. The game must always be playable.
-- Add a cache refill threshold: when the cache drops below 100 unused names, trigger a background refill. Never let it hit zero.
+- Model decline as a passive force applied at season boundary (not per training session — that's too granular).
+- Curve: no decline before 29. Mild from 29-32 (pace, acceleration affected first — physical attrs). Moderate from 32-35. Sharp 35+. Technical and mental attributes decline later and slower than physical.
+- Decline is capped at `−0.04` per attribute per season maximum, regardless of age — prevents 35-year-olds from instantly becoming useless.
+- Apply the decline calculation in the same season-boundary function as training gains to keep them in one place. Never apply decline per training session.
+- Physical attributes (`pace`, `acceleration`, `stamina`) decline first and fastest. Mental (`positioning`, `vision`, `concentration`) decline last. This matches real football patterns and makes experienced players strategically valuable in later years.
 
 **Warning signs:**
-- "New game" takes 3+ seconds (waiting for API response).
-- Intermittent failures creating new games that nobody can reproduce.
-- Tests mock the API and never exercise the fallback path.
+- After 5 in-game seasons, no player in the squad has declined from their peak attributes.
+- All 35-year-old players have the same or higher attributes than when they were 28.
+- Youth graduates have no strategic incentive over veterans.
 
 **Phase to address:**
-Phase 3 (randomuser.me Integration). But the `name_cache` table schema should be designed in Phase 1.
+Phase 2 (Drill Scheduling / Season Boundary). Decline is part of the same balance model as gain — they must be designed together.
 
 ---
 
-### Pitfall 5: better-sqlite3 Synchronous Calls Blocking the Express Event Loop
+### Pitfall 5: Sandbox Mode Runs a Third Concurrent Simulation Loop — Match Performance Degrades
 
 **What goes wrong:**
-better-sqlite3 is fully synchronous by design. Every database call blocks the Node.js event loop until completion. For a single-player game this is generally fine, but if the save operation serializes the full season state (20 teams x 25 players = 500 player records, 380 fixtures, league table, fatigue map) and writes it in individual INSERT statements without a transaction, the synchronous write blocks all other requests for potentially hundreds of milliseconds.
+The main game already runs one simulation loop (the match engine, 30 ticks/sec, 22 agents). The sandbox adds a second full SimulationEngine instance running simultaneously. If the sandbox runs its own `requestAnimationFrame` loop alongside the match loop, and the player has a match running while opening the sandbox, two engines both tick every frame. The match engine drops below 30 ticks/sec. At 22 agents × 10 actions × multiple consideration functions per action per tick, the CPU budget is already tight.
+
+The deeper problem: the sandbox and the main gameLoop both call `requestAnimationFrame`, and if they aren't carefully gated, both loops continue even when they should be dormant.
 
 **Why it happens:**
-better-sqlite3 is correctly recommended as "the best SQLite library for Node.js" -- it genuinely is faster than async alternatives for most patterns. But developers assume "fast" means "negligible." Without WAL mode and without wrapping bulk operations in transactions, the default rollback journal mode locks the entire database for every write, and individual inserts each incur fsync overhead.
+The sandbox is described in PROJECT.md as "training ground sandbox — free-to-use, custom scenarios on the engine, observation only." The natural instinct is to create a new `SimulationEngine` instance and wire it to a new Canvas with its own rAF loop. This works in isolation. It fails when both loops are alive simultaneously due to a state management oversight (navigating to the sandbox without stopping the match, or the match continuing in background state).
 
 **How to avoid:**
-- Enable WAL mode immediately after opening the database: `db.pragma('journal_mode = WAL')`. This allows concurrent reads during writes.
-- Wrap all bulk inserts in explicit transactions: `const insertMany = db.transaction((items) => { for (const item of items) insertStmt.run(item); })`. Transaction batching is 100x+ faster than individual inserts.
-- For Fergie Time's scale (1 concurrent user, <1000 rows total): store season state as a single JSON blob in a `saves` table column rather than normalizing into many tables. One INSERT is always faster than 500.
-- Normalize only what you need to query independently: player stats for leaderboards, name cache for lookup.
-- Use async bcrypt for password operations -- bcrypt is CPU-intensive and will block the event loop if used synchronously.
+- The sandbox is a mode, not a screen you navigate to alongside an active match. Enforce mutual exclusion: entering sandbox mode stops any running match loop; leaving sandbox resumes or discards match state.
+- The sandbox must reuse `SimulationEngine` — it already runs headlessly (see `quickSim.ts`). Instantiate a new `SimulationEngine` with a custom `MatchConfig` and drive it with the same fixed-timestep loop from `src/loop/gameLoop.ts`. Do not create a new rAF loop.
+- The sandbox canvas can be a separate `<canvas>` element but must share the same rendering frame budget. Use a single rAF callback that either ticks the match engine OR the sandbox engine — never both concurrently.
+- "Observation only" means no stat mutations. Implement this by not calling the training progression functions after sandbox matches complete. The engine itself is unmodified — only the consumer code differs.
 
 **Warning signs:**
-- Save operation takes >200ms (measure with `console.time`).
-- API becomes unresponsive briefly during save.
-- Login feels sluggish (synchronous bcrypt).
+- Match framerate drops when sandbox screen is open.
+- Two separate `requestAnimationFrame` callbacks active simultaneously (visible in Chrome DevTools Performance tab).
+- `SimulationEngine` constructor called more than once in the same game session without the previous instance being stopped.
+- `setInterval` or `setTimeout` loops persisting after sandbox screen is closed.
 
 **Phase to address:**
-Phase 1 (Database Setup). WAL mode and transaction patterns from the first line of database code.
+Phase 3 (Training Sandbox). The loop lifecycle must be explicitly designed — which mode owns the game loop at any given time.
 
 ---
 
-### Pitfall 6: Auth Scope Creep -- Overengineering Security for a Personal Project
+### Pitfall 6: Sandbox Stat Changes Leak Into Real Season State
 
 **What goes wrong:**
-The requirement is "simple login -- team name + password, create new game / continue existing." Developers instinctively reach for JWT, refresh tokens, OAuth, passport.js, CSRF protection, rate limiting, and session stores. A week of auth work produces an overengineered system for a single-player personal project that only needs "which save file is mine?"
+The sandbox is supposed to be "observation only — no stat changes." But if the sandbox shares references to the real `PlayerState` objects from `SeasonState`, any mutations during the sandbox simulation (fatigue accumulation, potential personality nudges from the training system) modify the real season state. The manager plays a "practice match" and the squad arrives at their next league fixture already fatigued.
 
 **Why it happens:**
-Every auth tutorial teaches production-grade patterns. "Never roll your own auth" is good advice for commercial apps but inappropriate context for a personal game server. The threat model here is a personal VPS, not a banking application. Auth exists to separate save files, not protect sensitive data.
+JavaScript passes objects by reference. If you do `sandboxEngine = new SimulationEngine({ homeRoster: season.playerTeam.players, ... })`, the engine's internal mutations to `position`, `velocity`, and `fatigue` fields are happening on the same objects that live in `SeasonState`. This is a classic aliasing bug that is invisible until someone plays a sandbox match and checks their squad's fitness before the next fixture.
+
+Note: `PlayerState` is typed `readonly` in `src/simulation/types.ts` but readonly in TypeScript is compile-time only — it does not prevent runtime mutation. The engine uses immutable snapshot pattern for `SimSnapshot` but the internal mutable state is separate.
 
 **How to avoid:**
-- Implement the minimum: team name + bcrypt-hashed password. Store in a `games` table with `(id, team_name, password_hash, created_at)`.
-- Use `express-session` with a cookie. No JWT -- sessions are simpler for same-origin apps.
-- No email, no password reset, no OAuth. If someone forgets their password, they start a new game. Acceptable for a personal project.
-- Do use bcrypt (salt rounds >= 12). Hashing passwords is trivial and non-negotiable, even for personal projects.
-- Use async `bcrypt.compare()` and `bcrypt.hash()` to avoid blocking the event loop.
-- Time-box auth implementation to 4 hours. If it takes longer, scope is wrong.
+- Deep-clone the player roster before passing it to the sandbox engine: `JSON.parse(JSON.stringify(season.playerTeam.players))` is sufficient and cheap for 25 players.
+- Do NOT pass the live `SeasonState` players to the sandbox engine. Always pass a clone. The clone is discarded when the sandbox session ends.
+- Add an assertion in the sandbox setup function: `sandboxPlayers !== season.playerTeam.players` — this catches the aliasing bug at the call site.
+- The sandbox `MatchConfig` must use cloned rosters for both home and away.
 
 **Warning signs:**
-- You are reading about refresh token rotation for a single-player game.
-- Auth implementation takes more than a day.
-- More auth middleware files than game logic endpoints.
+- Squad fitness decreases after a sandbox session without playing a real match.
+- Players who were injured in the sandbox appear injured in the squad screen.
+- Stats (pass count, appearance count) increment after a sandbox match.
 
 **Phase to address:**
-Phase 2 (Auth + Login Screen). Keep it simple.
+Phase 3 (Training Sandbox). The isolation invariant must be enforced at the data layer before any sandbox UI is built.
 
 ---
 
-### Pitfall 7: Hardcoded Squad Size of 16 Breaking with 25-Man Expansion
+### Pitfall 7: Personality Vector Nudges Drift Out of Bounds Without Clamping
 
 **What goes wrong:**
-The current codebase has squads of 16 players (`src/season/season.ts` line 28: `squad: PlayerState[] // 16 players`). The v1.1 goal is 25-man squads. If squad size assumptions are scattered throughout the codebase (slicing arrays at index 11 for starters and 11-16 for bench, validation expecting exactly 5 bench players), the expansion silently breaks selection logic, AI team simulation, and save/load.
+Training nudges the personality vector as described in PROJECT.md ("personality vector nudges from training — slight, bounded shifts over time"). If the nudge accumulates over many seasons without hard clamping to `[0, 1]`, values drift outside the personality range. A composure of `1.03` causes all composure-dependent calculations to produce results above the expected ceiling. The utility AI begins selecting actions it was never tuned for. The simulation breaks in ways that are extremely hard to trace back to personality drift.
 
 **Why it happens:**
-Magic numbers are embedded throughout the game logic. `quickSimMatch` slices at index 11 for starters and uses `slice(11)` for bench. Validation expects `bench.length === 5`. These hardcoded values work for 16-man squads but break for 25.
+Personality nudges are small (0.001–0.003 per training session). Developers add a clamp after initially forgetting it because the values look fine in unit testing. Without a full-season simulation test, the drift accumulates undetected. By season 3 values are out of range and producing subtle AI behaviour changes that look like bugs in the action scoring, not in the personality values.
 
 **How to avoid:**
-- Search the entire codebase for hardcoded `16`, `5` (bench size), and `slice(11)` patterns. Replace with named constants: `SQUAD_SIZE = 25`, `STARTING_XI = 11`, `BENCH_SIZE = 7` (matching PL rules for 25-man squads).
-- Update `validateSquadSelection` to accept the new bench size.
-- Update AI team simulation (`simOneAIFixture`) which currently does `homeSquad.slice(0, 11)` for starters and `slice(11)` for bench -- this will include 14 bench players with 25-man squads, which may or may not be intentional.
-- Add a test that generates a 25-man squad, saves it, loads it, and verifies all 25 players survive.
+- Clamp every personality trait to `[0, 1]` at the moment the nudge is applied — not as a post-processing step. The nudge function signature should be: `nudgePersonality(p: PersonalityVector, trait: keyof PersonalityVector, delta: number): PersonalityVector` and the return value enforces clamping before returning.
+- The personality bounds are enforced in `generatePersonality()` in `teamGen.ts` (see lines 72-83 with `clamp()` calls) — the nudge function must use the same `clamp()` utility.
+- Bound the total shift per trait per season, not just per session. A trait should not move more than `0.10` in any single season regardless of training intensity.
+- Write a test: apply maximum nudge in one direction every session for 5 seasons — verify all traits remain in `[0, 1]`.
 
 **Warning signs:**
-- AI teams field different bench sizes than the player team.
-- Save files contain 16 players when they should contain 25.
-- `validateSquadSelection` rejects valid 25-man selections.
+- Any personality trait value outside `[0, 1]` in serialised save data.
+- Unusual agent behaviour emerging in season 3-4 that wasn't present in season 1.
+- Utility AI scores behaving unexpectedly in matches where affected players are fielded.
+- Gaussian noise calculations producing NaN (composure nudged to a value that breaks the noise formula).
 
 **Phase to address:**
-Phase 1 (Schema Design). Squad size constants must be updated before the database schema encodes assumptions.
+Phase 2 (Drill Scheduling). Nudge bounds must be established when nudge values are first defined — not as a later fix.
+
+---
+
+### Pitfall 8: Oscillation Worsens in Sandbox Due to Hysteresis Bypass
+
+**What goes wrong:**
+PROJECT.md documents a known oscillation/jitter issue in the utility AI (action scores flip each tick). The hysteresis bonus (`TUNING.hysteresisBonus = 0.36`) partially mitigates this by giving the previously chosen action a sticky bonus. In the sandbox, developers may reset the engine's internal state between custom scenarios without carrying over each agent's `previousAction` tracking. Every new sandbox scenario starts with all agents having `previousAction = undefined`, which means the hysteresis bonus never applies for the first several ticks of each scenario. Oscillation is much more visible in the sandbox than in a real match, making it look like the sandbox has introduced a new bug when it hasn't.
+
+**Why it happens:**
+The sandbox re-instantiates the engine for each custom scenario (different formations, custom player configs). The `SimulationEngine` constructor starts with fresh agent state including no `previousAction`. In a real match this resolves within a few ticks as hysteresis kicks in. But when managers watch short sandbox clips (5-10 second scenarios to test a tactic), the first few ticks of visible jitter dominate their perception.
+
+The deeper issue: the existing oscillation is cosmetic but noticeable (documented in PROJECT.md). The sandbox makes it impossible to defer fixing because it's on-screen and front-and-centre.
+
+**How to avoid:**
+- Warm up the sandbox engine: run 30 ticks silently before starting the observable simulation. This gives hysteresis time to stabilise each agent before the manager sees any output.
+- Document the known oscillation issue prominently in the sandbox UI ("Agents settle into positions within the first few seconds of each scenario"). Set manager expectations rather than trying to hide it.
+- Use the sandbox as an opportunity to finally fix the oscillation: the root cause is scores on adjacent actions being within the hysteresis window simultaneously. Consider increasing `TUNING.hysteresisBonus` from `0.36` to `0.45-0.50` as a first fix attempt, testable headlessly against the existing agent tests.
+- Do NOT attempt to fix oscillation by adding cooldown timers to the engine — that would change simulation semantics for real matches too. Any fix must go through TUNING parameters.
+
+**Warning signs:**
+- Players visibly jittering at the start of every sandbox scenario.
+- Managers reporting the sandbox is "broken" when it actually reflects pre-existing oscillation.
+- Temptation to add scenario-specific hacks (`if (isSandbox) suppressJitter()`) that create a fork between sandbox and match engine behaviour.
+
+**Phase to address:**
+Phase 3 (Training Sandbox). Plan for the warmup period in sandbox design. Consider addressing oscillation fix as part of the sandbox phase since it becomes highly visible.
 
 ---
 
@@ -190,114 +223,119 @@ Phase 1 (Schema Design). Squad size constants must be updated before the databas
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| Store full state as JSON blob instead of normalized tables | Fast to implement, matches existing in-memory structure | Cannot query individual records (e.g., "top scorers across all saves") | v1.1 -- normalize only what needs querying |
-| Skip input validation on save endpoint | Faster development | Corrupted saves if client sends malformed data | Never -- Zod is already a dependency, use it |
-| Hardcode API port and DB path | Works immediately | Breaks when deploy environment differs | Never -- use environment variables from day one |
-| Skip database migrations framework | No tooling to learn | Schema changes require manual SQL on the VPS | v1.1 with <5 tables -- add migrations before v1.2 |
-| No API versioning | Simpler URLs | Breaking API changes break existing client | Acceptable -- single client, personal project |
-| MemoryStore for sessions | No extra dependency | Sessions lost on server restart | Acceptable for v1.1 -- user re-enters password |
+| Derive portrait from live attributes instead of seed | "Portraits feel alive" | Portrait redraws on every training update; portrait changes on save/load; hard to cache | Never — visual identity must be stable |
+| Store portrait as a PNG/data URL in SQLite | No re-generation needed on load | 500 players × ~2KB per portrait = 1MB minimum in DB; save files balloon | Never — always regenerate from seed at render time |
+| Per-session stat gain without season model | Quick to implement | Game economy collapses in first season; requires save migration to rebalance | Never — model the full season first |
+| Single training rate for all ages | Simpler code | No strategic depth; young players train identically to 35-year-olds | Never for ages, but a flat rate per attribute is fine for MVP |
+| Personality nudges applied to `PlayerState` in-place | Simpler mutation path | Easy to forget clamping; harder to test; violates the readonly contract on PlayerState | Acceptable MVP if clamping is enforced at point of call |
+| Sandbox reuses the same `SimulationEngine` instance without reset | Less code | Previous match state bleeds into sandbox scenarios; corrupted positions/ball state | Never — always instantiate fresh engine for sandbox |
+| Skip the 30-tick warmup in sandbox | Faster scenario start | Oscillation is immediately visible and looks like a sandbox bug | Acceptable for internal testing; required fix before any user-facing release |
+| Training gains stored as floating-point deltas accumulated over time | Precise long-term tracking | Floating point drift after 100+ seasons; attribute value is `0.7999999998` not `0.8` | Acceptable — clamp to 2dp on serialization and display |
+
+---
 
 ## Integration Gotchas
 
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
-| randomuser.me | Calling API during game creation (critical path) | Pre-fetch into cache table; fallback to local `nameGen.ts` |
-| randomuser.me | Not filtering by nationality | Use `?nat=gb,es,fr,de,br` to match existing nationality weights |
-| randomuser.me | Assuming API always returns 200 | Wrap in try/catch, retry once with 2s backoff, then fallback |
-| better-sqlite3 | Opening DB without WAL mode | First statement: `db.pragma('journal_mode = WAL')` |
-| better-sqlite3 | String concatenation in SQL queries | Always use parameterized statements with `?` placeholders |
-| express-session | Hardcoding session secret in source code | Use environment variable: `process.env.SESSION_SECRET` |
-| Vite dev server | API calls hit wrong origin in development | Configure `vite.config.ts` server proxy: `'/api': 'http://localhost:3000'` |
-| nginx | Serving project root instead of `dist/` only | Explicit `root /path/to/dist;` with no directory listing |
-| pm2 | Process not surviving server reboot | Run `pm2 startup` and `pm2 save` after first successful start |
+| Portrait generator + existing RNG | Using `Math.random()` instead of `createRng()` | Always pass `createRng(player.id)` to portrait generator — never import Math.random directly |
+| Portrait generator + PlayerState | Adding `portraitSeed` as required field | Make it `optional` — fall back to `createRng(player.id)` to preserve backward compatibility with existing saves |
+| Sandbox + SimulationEngine | Passing live `SeasonState` players by reference | Deep-clone the roster with `JSON.parse(JSON.stringify(...))` before constructing sandbox MatchConfig |
+| Sandbox + game loop | Creating a second `requestAnimationFrame` loop | Reuse the existing game loop infrastructure from `src/loop/gameLoop.ts`; sandbox mode replaces match mode, not runs beside it |
+| Training gains + SQLite | Storing training progress as separate table rows per session | Store cumulative attribute deltas in the existing player save blob; only persist what changed at season boundary |
+| Drill scheduler + existing season flow | Inserting training days as fake fixtures in the fixtures array | Keep training as a separate data structure from fixtures; mixing them breaks the fixture-count assertions and display logic |
+| Personality nudges + agent.ts | Nudging personality inside the simulation tick | Nudges belong in the training resolution phase (post-match, post-training), never inside the simulation tick itself |
+| Age regression + transfer market | Applying decline to all 500 players on every save | Apply decline only at season boundary, not per-session; for AI teams apply lazily when a match is about to start |
+
+---
 
 ## Performance Traps
 
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|----------------|
-| Individual INSERT per player (no transaction) | Save takes 500ms+ | Wrap in `db.transaction()` | Immediately with 500+ rows |
-| Loading full state on every page navigation | Slow transitions between screens | Load once on login, cache in memory, save on explicit action | Unlikely at this scale but wasteful |
-| Synchronous bcrypt on login | Login blocks event loop for ~100ms | Use async `bcrypt.compare()` | Multiple concurrent logins |
-| No indexes on lookup columns | Query time grows with saves | Add index on `games(team_name)` | >50 saved games |
-| Auto-saving on every user action | Constant write pressure | Save at matchday boundaries or explicit "save game" | Immediately noticeable as lag |
+| Rendering portraits on every squad screen repaint | Squad screen stutters when scrolling 25 players | Cache rendered portraits as `ImageBitmap` or `OffscreenCanvas` per player; regenerate only if player ID changes | Immediately visible with 25 players |
+| Redrawing portrait canvas on every animation frame | GPU overload, battery drain | Portrait is a static image; render once to `OffscreenCanvas`, blit to screen canvas as a texture | Immediately on any device |
+| Running sandbox engine at full 30-tick speed during warmup | Extra CPU during scenario load | Warmup runs headlessly (no render), exits as soon as 30 ticks complete | Only an issue if warmup is rendered |
+| Training progress recalculated for all 500 players per tick | CPU spike during training day resolution | Training resolution runs once per training day event, not per tick; 500 players × simple arithmetic is ~1ms, acceptable at once-per-day frequency | Not an issue at per-day; critical issue if accidentally per-tick |
+| Portrait generation triggered on every `PlayerState` reference | Cascading redraws through squad/profile screens | Portrait generation reads only `player.id` and `player.nationality` — neither changes after player creation; one-time generation is safe | Any screen that re-renders on state change |
+| Both sandbox canvas and main canvas active simultaneously | Double GPU buffer allocation, double draw calls | Sandbox canvas replaces main canvas in DOM; do not keep both canvases attached and rendering | Immediately visible on any device |
 
-## Security Mistakes
-
-| Mistake | Risk | Prevention |
-|---------|------|------------|
-| Storing passwords in plain text | Anyone with VPS/DB access reads all passwords | `bcrypt.hash(password, 12)` -- non-negotiable |
-| No CORS configuration | Other sites make API calls to the game server | `cors({ origin: 'https://ft.psybob.uk' })` |
-| SQLite file in web-accessible directory | Database downloadable via direct URL | Store `.db` outside web root; nginx serves only `dist/` |
-| No session-based ownership check on save | Player A overwrites Player B's save | Verify session game_id matches save target on every write |
-| Secrets in source code or deploy.yml | Credentials in git history | GitHub Secrets for deploy; `.env` on VPS (gitignored) |
+---
 
 ## UX Pitfalls
 
 | Pitfall | User Impact | Better Approach |
 |---------|-------------|-----------------|
-| No loading indicator during save/load | User thinks game is frozen | Show "Saving..." overlay; saves should be <200ms but always indicate |
-| Silent save failure | User plays for hours, data lost | Show error toast on save failure; offer retry |
-| Login screen blocks all access | Friction before fun | Allow "play without saving" using existing client-only flow |
-| Losing in-progress match on refresh | Frustrating data loss | Save state at matchday boundaries; do not attempt mid-match saves (too complex for v1.1) |
-| API errors shown as raw text | Confusing for the player | Map errors to friendly messages: "Could not connect. Playing offline." |
-| Different player names on reload | randomuser.me returns different names | Cache names in DB and never re-fetch for existing players |
+| Portrait looks identical for players of different nationalities | Squad feels homogenous, no visual identity | Nationality must gate hair/skin/facial-feature probability distributions — Spanish player has different palette to Brazilian player even with the same seed |
+| Training progress bar advances too slowly to see | Manager feels training has no effect | Show cumulative gain per attribute each week, not absolute values. "Passing: +0.03 this week" is informative; "Passing: 0.723" is not |
+| Sandbox has no scenario presets | Manager abandons it as too complex to set up | Ship with 3-5 presets: "High press vs 4-5-1 low block", "Striker vs CBs 1v2", "Counter-attack from deep". Custom scenarios are secondary |
+| Drill choice UI has no indication of which attributes are affected | Manager assigns wrong drills, doesn't understand why players improve in unintended areas | Each drill card must list affected attributes and the approximate gain rate at the current squad's average age |
+| Age decline invisible until it's too late | Manager is blindsided when a 33-year-old collapses | Show an aging curve indicator on player profiles for players over 28. "Expected decline: pace −0.03/season from age 30" |
+| No confirmation that sandbox results did not affect real squad | Manager unsure if their squad is fatigued after sandbox | Show explicit "Sandbox complete — no changes to your squad" toast when returning to hub |
+
+---
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **Save/Load:** `fatigueMap` (Map type) round-trips correctly through serialize/deserialize -- test with non-zero fatigue values
-- [ ] **Save/Load:** Loading a corrupted/truncated JSON blob does not crash the client -- Zod validates loaded state, shows error message
-- [ ] **Save/Load:** All 25 players per team survive save/load -- not truncated to 16
-- [ ] **Auth:** Passwords are bcrypt hashes in the database -- query the DB and verify no plain text
-- [ ] **Deploy:** `pm2 restart` is in the deploy script AND the process survives a VPS reboot (`pm2 save && pm2 startup`)
-- [ ] **Deploy:** nginx routes `/api/*` to Express AND serves `dist/` for everything else -- test both paths
-- [ ] **Deploy:** The `.db` file is NOT downloadable via browser -- attempt direct URL access, must return 404
-- [ ] **Name cache:** Game creation works when randomuser.me is unreachable -- disable network adapter and test new game flow
-- [ ] **CORS:** Production build makes API calls to correct origin -- not `localhost:3000`
-- [ ] **Database:** WAL mode is active -- verify with `PRAGMA journal_mode` query
-- [ ] **Vite proxy:** Dev mode API calls reach the Express server -- test save/load in `npm run dev`
-- [ ] **Session:** Logging in, closing the browser tab, reopening -- session persists (or re-login works cleanly)
+- [ ] **Portrait determinism:** Generate portrait for the same player in two separate browser sessions — pixel output is identical. Verify using `canvas.toDataURL()` comparison.
+- [ ] **Portrait backward compatibility:** Load a save file created before the portrait system existed — all players generate valid portraits without a migration step.
+- [ ] **Training balance:** Run a headless 5-season simulation and verify no attribute in the player's squad exceeds 0.95 for any player starting below 0.70.
+- [ ] **Age regression:** Verify that a player aged 33 at season start has lower pace at season end than at season start.
+- [ ] **Personality bounds:** After 5 simulated seasons of training, verify all personality traits are in `[0, 1]` in the serialized save state.
+- [ ] **Sandbox isolation:** Play a full sandbox match (11v11 to full time), return to hub, verify squad fatigue is unchanged from before the sandbox session.
+- [ ] **No stat leak:** Verify player stats (goals, appearances) do not increment from sandbox matches — query the stats DB table before and after a sandbox session.
+- [ ] **Sandbox loop cleanup:** Open sandbox, play scenario, close sandbox, verify no lingering `requestAnimationFrame` or `setInterval` callbacks in DevTools Performance panel.
+- [ ] **Drill scheduling persists:** Save game during a training week, reload, verify the current drill selection and remaining training days are preserved — not reset to defaults.
+- [ ] **Oscillation warmup:** Sandbox scenarios have 30-tick headless warmup before visible simulation starts — jitter is not visible in the first frame of any scenario.
+
+---
 
 ## Recovery Strategies
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| Lost fatigue data from Map serialization | LOW | Fix serializer; re-initialize all fatigue to 0 (acceptable mid-season) |
-| Corrupted save file from malformed JSON | MEDIUM | Add Zod validation on load; if invalid, offer "start new season" not crash |
-| Express process dies on VPS | LOW | pm2 auto-restarts; `pm2 startup` for reboot survival |
-| randomuser.me goes down permanently | LOW | Fall back to `nameGen.ts`; cached names in DB still work for existing games |
-| Plain text passwords discovered | MEDIUM | One-time migration: hash all passwords with bcrypt |
-| Client/server state divergence | HIGH | Must pick one source of truth and rebuild saves; prevention far cheaper |
-| nginx exposes .db file | HIGH | Move DB outside web root immediately; assume data compromised |
-| Squad size mismatch (16 vs 25) | MEDIUM | Migration script to backfill missing players; update all hardcoded sizes |
+| Non-deterministic portraits (detected early) | LOW | Remove `Math.random()` calls, replace with seeded RNG; portraits auto-correct next load |
+| Non-deterministic portraits (detected after users save) | MEDIUM | Add migration: regenerate all portraits from `player.id` seed; warn users "portrait update on next load" |
+| Training too fast (detected mid-season) | MEDIUM | Halve all gain constants; apply penalty to existing save: clamp all trained attributes to `baseline + 0.15 max` |
+| Training too fast (detected after multiple seasons) | HIGH | Requires balance recalibration and save migration; attribute values above expected ceiling need to be gently walked back over future seasons |
+| Sandbox fatigue leak (detected after one session) | LOW | Fix aliasing bug; no data loss since sandbox state was never intended to persist |
+| Personality out of bounds (detected in season 2-3) | MEDIUM | One-time migration: clamp all personality values to `[0, 1]` in save file; add clamping at point of nudge going forward |
+| Oscillation visible in sandbox | LOW | Implement 30-tick warmup — no engine changes required; addresses perception without changing simulation |
+| Second rAF loop (performance regression) | LOW | Cancel stray `requestAnimationFrame` handles on sandbox exit; add lifecycle assertion that only one loop is active |
+
+---
 
 ## Pitfall-to-Phase Mapping
 
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| Map serialization | Phase 1: Schema + Save/Load | Round-trip test: `deepEqual(deserialize(serialize(state)), state)` |
-| Dual state ownership | Phase 1: API Design | Documented contract: "client is authority, server is storage" |
-| Squad size hardcoding | Phase 1: Schema Design | Grep for hardcoded 16/5; all replaced with constants; 25-man squad test passes |
-| WAL mode + transactions | Phase 1: Database Setup | `console.time` on save; completes in <200ms; `PRAGMA journal_mode` returns `wal` |
-| Deploy complexity | Phase 2: Deployment | Full deploy cycle: push to main, verify API responds, verify static files load |
-| Auth scope creep | Phase 2: Auth | Time-box to 4 hours; bcrypt hashing verified in DB |
-| CORS + DB exposure | Phase 2: Deployment | Test from production domain; attempt to download `.db` file |
-| randomuser.me dependency | Phase 3: Name Integration | Disable network, create new game -- must succeed with fallback names |
-| Vite dev proxy | Phase 1: Project Setup | Save/load works in `npm run dev` mode |
+| Non-deterministic portrait generation | Phase 1: Portrait Generator | `canvas.toDataURL()` comparison across two sessions for same player ID |
+| Portrait seed in PlayerState (optional vs required) | Phase 1: Portrait Generator | Load pre-portrait save file — no crash, valid portrait generated |
+| Training rate too fast | Phase 2: Drill Scheduling | 5-season headless simulation; attribute ceiling test |
+| Age regression absent | Phase 2: Drill Scheduling / Season Boundary | 5-season test: 33-year-old player has lower pace at end than start |
+| Personality drift out of bounds | Phase 2: Drill Scheduling | 5-season test: all traits in `[0, 1]`; max per-season delta ≤ 0.10 |
+| Sandbox loop isolation | Phase 3: Training Sandbox | DevTools: only one rAF callback active; sandbox exit cleans up |
+| Sandbox roster aliasing (stat leak) | Phase 3: Training Sandbox | Fatigue and stats unchanged after sandbox session |
+| Oscillation visible in sandbox | Phase 3: Training Sandbox | 30-tick warmup implemented; first visible frame shows settled agents |
+
+---
 
 ## Sources
 
-- [SQLite WAL mode documentation](https://sqlite.org/wal.html)
-- [SQLite file locking and concurrency](https://sqlite.org/lockingv3.html)
-- [better-sqlite3 GitHub](https://github.com/WiseLibs/better-sqlite3) -- synchronous design rationale and performance claims
-- [randomuser.me API documentation](https://randomuser.me/documentation)
-- [randomuser.me downtime -- GitHub Issue #42](https://github.com/RandomAPI/Randomuser.me-old-source/issues/42)
-- [randomuser.me downtime -- GitHub Issue #66](https://github.com/RandomAPI/Randomuser.me-old-source/issues/66) -- 502 Bad Gateway, Feb 2020
-- [Node.js built-in SQLite module documentation](https://nodejs.org/api/sqlite.html)
-- [better-sqlite3 concurrency discussion](https://github.com/TryGhost/node-sqlite3/issues/1761) -- unsafe with multiple async scopes
-- [Poor Express authentication patterns](https://lirantal.com/blog/poor-express-authentication-patterns-nodejs)
-- [Uptrends State of API Reliability 2025](https://www.uptrends.com/state-of-api-reliability-2025) -- API uptime fell from 99.66% to 99.46% industry-wide
-- Existing codebase analysis: `src/season/season.ts` (Map usage, squad size), `src/season/nameGen.ts` (fallback names), `.github/workflows/deploy.yml` (static deploy)
+- Codebase analysis: `src/simulation/ai/agent.ts` — hysteresis implementation, TUNING.hysteresisBonus
+- Codebase analysis: `src/simulation/math/random.ts` — createRng / seedrandom implementation
+- Codebase analysis: `src/season/teamGen.ts` — player generation, nationality handling, clamp() usage
+- Codebase analysis: `src/simulation/types.ts` — PlayerState definition, readonly fields
+- Codebase analysis: `src/season/quickSim.ts` — headless engine usage pattern
+- Codebase analysis: `src/simulation/tuning.ts` — TUNING.hysteresisBonus = 0.36, noiseScale = 0.06
+- `PROJECT.md` — known oscillation/jitter issue documented, sandbox "observation only" requirement, personality vector nudges requirement
+- [Game AI Pro Chapter 9: An Introduction to Utility Theory](http://www.gameaipro.com/GameAIPro/GameAIPro_Chapter09_An_Introduction_to_Utility_Theory.pdf) — hysteresis and momentum bonus patterns
+- [Football Manager player development stages by age](https://fm-base.co.uk/threads/player-development-stages-by-age.93326/) — age-progression reference for balance
+- [Football Manager 11 reasons players won't develop](https://www.passion4fm.com/11-reasons-why-your-players-wont-develop-in-football-manager/) — game economy pitfalls
+- [MDN Game Loop Anatomy](https://developer.mozilla.org/en-US/docs/Games/Anatomy) — requestAnimationFrame lifecycle
+- [Optimizing HTML5 Canvas](https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API/Tutorial/Optimizing_canvas) — OffscreenCanvas and caching patterns
+- [Runtime Procedural Character Generation](https://dev.to/goals/runtime-procedural-character-generation-161d) — modular sprite assembly patterns
 
 ---
-*Pitfalls research for: Fergie Time v1.1 Data Layer*
-*Researched: 2026-03-06*
+*Pitfalls research for: Fergie Time v1.2 Player Development (pixel art portraits, drill scheduling, training sandbox)*
+*Researched: 2026-03-07*
