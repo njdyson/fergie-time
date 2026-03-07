@@ -25,11 +25,15 @@ import { SquadScreen } from './ui/screens/squadScreen.ts';
 import { StatsScreen } from './ui/screens/statsScreen.ts';
 import { LoginScreen } from './ui/screens/loginScreen.ts';
 import { PlayerProfileScreen } from './ui/screens/playerProfileScreen.ts';
+import { TransferScreen } from './ui/screens/transferScreen.ts';
+import { InboxScreen } from './ui/screens/inboxScreen.ts';
 import { createSeason, validateSquadSelection, isSeasonComplete, getChampion, startNewSeason, recordPlayerResult, simOneAIFixture, finalizeMatchday } from './season/season.ts';
 import type { SeasonState } from './season/season.ts';
 import { mergeAllMatchStats } from './season/playerStats.ts';
 import { saveGame, loadGame, logout } from './api/client.ts';
 import { serializeState, deserializeState } from '../server/serialize.ts';
+import { transferListPlayer, removeFromTransferList, processPlayerBid, formatMoney, generateFreeAgents, createTransferMarket } from './season/transferMarket.ts';
+import { markAsRead, archiveMessage, deleteMessage, getUnreadCount, createInbox } from './season/inbox.ts';
 
 // ============================================================
 // Canvas setup
@@ -95,7 +99,7 @@ function hideTacticsCanvas(): void {
 // Screen routing + Season state
 // ============================================================
 
-const ScreenId = { LOGIN: 'LOGIN', HUB: 'HUB', SQUAD: 'SQUAD', STATS: 'STATS', FIXTURES: 'FIXTURES', TABLE: 'TABLE', TACTICS: 'TACTICS', MATCH: 'MATCH', PROFILE: 'PROFILE' } as const;
+const ScreenId = { LOGIN: 'LOGIN', HUB: 'HUB', SQUAD: 'SQUAD', STATS: 'STATS', FIXTURES: 'FIXTURES', TABLE: 'TABLE', TACTICS: 'TACTICS', MATCH: 'MATCH', PROFILE: 'PROFILE', TRANSFER: 'TRANSFER', INBOX: 'INBOX' } as const;
 type ScreenId = (typeof ScreenId)[keyof typeof ScreenId];
 let currentScreen: ScreenId = ScreenId.HUB;
 let previousScreen: ScreenId = ScreenId.HUB;
@@ -112,6 +116,14 @@ const hubScreenView = new HubScreen(hubScreenEl);
 const statsScreenView = new StatsScreen(statsScreenEl);
 const fixturesScreenView = new FixturesScreen(fixturesScreenEl);
 const tableScreenView = new TableScreen(tableScreenEl);
+
+// Transfer screen
+const transferScreenEl = document.getElementById('transfer-screen')!;
+const transferScreenView = new TransferScreen(transferScreenEl);
+
+// Inbox screen
+const inboxScreenEl = document.getElementById('inbox-screen')!;
+const inboxScreenView = new InboxScreen(inboxScreenEl);
 
 // Login screen
 const loginScreenEl = document.getElementById('login-screen')!;
@@ -164,6 +176,11 @@ function updateCurrentScreen(): void {
   if (currentScreen === ScreenId.STATS) statsScreenView.update(seasonState);
   if (currentScreen === ScreenId.FIXTURES) fixturesScreenView.update(seasonState, seasonState.playerTeamId);
   if (currentScreen === ScreenId.TABLE) tableScreenView.update(seasonState, seasonState.playerTeamId);
+  if (currentScreen === ScreenId.TRANSFER) transferScreenView.update(seasonState);
+  if (currentScreen === ScreenId.INBOX) {
+    inboxScreenView.update(seasonState.inbox);
+    updateInboxBadge();
+  }
   if (currentScreen === ScreenId.PROFILE && profilePlayerId) {
     // Find player across all teams
     let foundPlayer = null;
@@ -193,7 +210,7 @@ function showScreen(screen: ScreenId): void {
   const map: Record<string, string> = {
     LOGIN: 'login-screen', HUB: 'hub-screen', SQUAD: 'squad-screen', STATS: 'stats-screen',
     FIXTURES: 'fixtures-screen', TABLE: 'table-screen', TACTICS: 'tactics-screen', MATCH: 'pitch-area',
-    PROFILE: 'profile-screen',
+    PROFILE: 'profile-screen', TRANSFER: 'transfer-screen', INBOX: 'inbox-screen',
   };
   const flexScreens = new Set(['MATCH', 'SQUAD', 'LOGIN', 'TACTICS']);
   for (const [key, id] of Object.entries(map)) {
@@ -256,7 +273,120 @@ document.getElementById('nav-squad')?.addEventListener('click', () => showScreen
 document.getElementById('nav-stats')?.addEventListener('click', () => showScreen(ScreenId.STATS));
 document.getElementById('nav-fixtures')?.addEventListener('click', () => showScreen(ScreenId.FIXTURES));
 document.getElementById('nav-table')?.addEventListener('click', () => showScreen(ScreenId.TABLE));
+document.getElementById('nav-transfer')?.addEventListener('click', () => showScreen(ScreenId.TRANSFER));
+document.getElementById('nav-inbox')?.addEventListener('click', () => showScreen(ScreenId.INBOX));
 document.getElementById('nav-tactics')?.addEventListener('click', () => showScreen(ScreenId.TACTICS));
+
+// --- Inbox badge ---
+function updateInboxBadge(): void {
+  const badge = document.getElementById('inbox-badge');
+  if (!badge || !seasonState) return;
+  const count = getUnreadCount(seasonState.inbox);
+  if (count > 0) {
+    badge.style.display = 'inline-block';
+    badge.textContent = `${count}`;
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+// --- Transfer screen callbacks ---
+transferScreenView.onPlayerClick((playerId) => showPlayerProfile(playerId));
+
+transferScreenView.onBid((playerId, toTeamId, amount) => {
+  if (!seasonState) return;
+  const playerTeam = seasonState.teams.find(t => t.isPlayerTeam)!;
+  const budget = seasonState.transferMarket.teamBudgets.get(playerTeam.id) ?? 0;
+  if (amount > budget) {
+    alert(`Insufficient budget. You have £${formatMoney(budget)} available.`);
+    return;
+  }
+  const rng = seedrandom(`${seasonState.seed}-player-bid-${Date.now()}`);
+  const result = processPlayerBid(
+    seasonState.transferMarket,
+    seasonState.teams,
+    seasonState.playerSeasonStats,
+    seasonState.inbox,
+    { fromTeamId: playerTeam.id, toTeamId, playerId, amount, matchday: seasonState.currentMatchday },
+    rng,
+  );
+  seasonState = {
+    ...seasonState,
+    transferMarket: result.market,
+    teams: result.teams,
+    inbox: result.inbox,
+  };
+  saveGame(serializeState(seasonState), 1).catch(err => console.error('Auto-save failed:', err));
+  updateCurrentScreen();
+  updateInboxBadge();
+});
+
+transferScreenView.onSignFreeAgent((playerId) => {
+  if (!seasonState) return;
+  const playerTeam = seasonState.teams.find(t => t.isPlayerTeam)!;
+  const rng = seedrandom(`${seasonState.seed}-sign-${Date.now()}`);
+  const result = processPlayerBid(
+    seasonState.transferMarket,
+    seasonState.teams,
+    seasonState.playerSeasonStats,
+    seasonState.inbox,
+    { fromTeamId: playerTeam.id, toTeamId: 'free-agent', playerId, amount: 0, matchday: seasonState.currentMatchday },
+    rng,
+  );
+  seasonState = {
+    ...seasonState,
+    transferMarket: result.market,
+    teams: result.teams,
+    inbox: result.inbox,
+  };
+  saveGame(serializeState(seasonState), 1).catch(err => console.error('Auto-save failed:', err));
+  updateCurrentScreen();
+  updateInboxBadge();
+});
+
+transferScreenView.onList((playerId) => {
+  if (!seasonState) return;
+  const playerTeam = seasonState.teams.find(t => t.isPlayerTeam)!;
+  seasonState = {
+    ...seasonState,
+    transferMarket: transferListPlayer(seasonState.transferMarket, playerId, playerTeam.id, seasonState.currentMatchday),
+  };
+  saveGame(serializeState(seasonState), 1).catch(err => console.error('Auto-save failed:', err));
+  updateCurrentScreen();
+});
+
+transferScreenView.onUnlist((playerId) => {
+  if (!seasonState) return;
+  seasonState = {
+    ...seasonState,
+    transferMarket: removeFromTransferList(seasonState.transferMarket, playerId),
+  };
+  saveGame(serializeState(seasonState), 1).catch(err => console.error('Auto-save failed:', err));
+  updateCurrentScreen();
+});
+
+// --- Inbox screen callbacks ---
+inboxScreenView.onMarkRead((messageId) => {
+  if (!seasonState) return;
+  seasonState = { ...seasonState, inbox: markAsRead(seasonState.inbox, messageId) };
+  updateInboxBadge();
+});
+
+inboxScreenView.onArchive((messageId) => {
+  if (!seasonState) return;
+  seasonState = { ...seasonState, inbox: archiveMessage(seasonState.inbox, messageId) };
+  saveGame(serializeState(seasonState), 1).catch(err => console.error('Auto-save failed:', err));
+  updateCurrentScreen();
+  updateInboxBadge();
+});
+
+inboxScreenView.onDelete((messageId) => {
+  if (!seasonState) return;
+  seasonState = { ...seasonState, inbox: deleteMessage(seasonState.inbox, messageId) };
+  saveGame(serializeState(seasonState), 1).catch(err => console.error('Auto-save failed:', err));
+  updateCurrentScreen();
+  updateInboxBadge();
+});
 document.getElementById('nav-logout')?.addEventListener('click', async () => {
   await logout();
   window.location.reload();
@@ -1522,14 +1652,27 @@ hubScreenView.onKickoff(() => {
 // Boot — login gate + session restore
 // ============================================================
 
+/** Migrate old save files that lack transferMarket/inbox fields. */
+function migrateSeasonState(state: SeasonState): SeasonState {
+  if (!state.transferMarket || !state.inbox) {
+    const rng = seedrandom(state.seed + '-migration');
+    const freeAgents = generateFreeAgents(100, rng);
+    const transferMarket = createTransferMarket(state.teams, state.playerTeamId, freeAgents, state.playerSeasonStats, state.currentMatchday);
+    const inbox = createInbox();
+    return { ...state, transferMarket, inbox };
+  }
+  return state;
+}
+
 async function boot(): Promise<void> {
   // Try to resume an existing session (cookie still valid)
   try {
     const loadResult = await loadGame();
     if (loadResult.hasState && loadResult.gameState) {
       const envelope = deserializeState(loadResult.gameState);
-      seasonState = envelope.state;
+      seasonState = migrateSeasonState(envelope.state);
       showScreen(ScreenId.HUB);
+      updateInboxBadge();
       console.log('[Fergie Time] Session restored — welcome back.');
       return;
     }
@@ -1553,10 +1696,11 @@ async function boot(): Promise<void> {
     } else if (gameStateJson) {
       // Restore from loaded state
       const envelope = deserializeState(gameStateJson);
-      seasonState = envelope.state;
+      seasonState = migrateSeasonState(envelope.state);
     }
     loginScreenView.hide();
     showScreen(ScreenId.HUB);
+    updateInboxBadge();
     console.log('[Fergie Time] Season started — navigate to Squad to select your team and Kick Off.');
   });
 }
