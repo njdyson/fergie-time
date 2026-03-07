@@ -57,7 +57,7 @@ function generateAttribute(base: number, spread: number, rng: () => number): num
 function generateFreeAgentAttributes(base: number, spread: number, rng: () => number, role: Role): PlayerState['attributes'] {
   // Re-use teamGen's ROLE_BOOSTS logic inline (simpler than exporting internals)
   const ROLE_BOOSTS: Partial<Record<Role, Partial<Record<keyof PlayerState['attributes'], number>>>> = {
-    GK:  { positioning: 0.15, aerial: 0.10, reflexes: 0.30, handling: 0.28, oneOnOnes: 0.25, distribution: 0.20, concentration: 0.10 },
+    GK:  { positioning: 0.10, aerial: 0.08, reflexes: 0.15, handling: 0.14, oneOnOnes: 0.12, distribution: 0.10, concentration: 0.08 },
     CB:  { tackling: 0.12, strength: 0.10, aerial: 0.10, heading: 0.12, concentration: 0.08 },
     LB:  { pace: 0.10, stamina: 0.08, crossing: 0.10, acceleration: 0.06 },
     RB:  { pace: 0.10, stamina: 0.08, crossing: 0.10, acceleration: 0.06 },
@@ -111,36 +111,52 @@ function generatePersonality(rng: () => number): PlayerState['personality'] {
 const defaultNats = ['GB', 'ES', 'FR', 'DE', 'BR'];
 
 /**
- * Generate a pool of free agent players.
+ * Generate a pool of free agent players across three archetypes:
+ *  - Mid-range squad fillers (~50%): solid players to fill gaps
+ *  - Young prospects (~30%): lower ability now but younger
+ *  - Veteran stop-gaps (~20%): experienced, reliable older players
  */
 export function generateFreeAgents(count: number, rng: () => number): PlayerState[] {
   const agents: PlayerState[] = [];
-  const base = 0.40;
-  const spread = 0.25;
 
-  for (let i = 0; i < count; i++) {
-    const role = FREE_AGENT_ROLES[i % FREE_AGENT_ROLES.length]!;
-    // Free agents skew older (22-34)
-    const age = Math.floor(rng() * 13) + 22;
-    const nationality = defaultNats[Math.floor(rng() * defaultNats.length)]!;
+  // Distribute archetypes
+  const midCount = Math.round(count * 0.5);
+  const youthCount = Math.round(count * 0.3);
+  const vetCount = count - midCount - youthCount;
 
-    agents.push({
-      id: `free-agent-${i}`,
-      teamId: 'home', // placeholder, not used for free agents
-      position: Vec2.zero(),
-      velocity: Vec2.zero(),
-      attributes: generateFreeAgentAttributes(base, spread, rng, role),
-      personality: generatePersonality(rng),
-      fatigue: 0,
-      role,
-      duty: Duty.SUPPORT,
-      formationAnchor: Vec2.zero(),
-      name: generatePlayerName(rng),
-      age,
-      height: Math.floor(rng() * 36) + 165,
-      shirtNumber: i + 1,
-      nationality,
-    });
+  interface Archetype { base: number; spread: number; ageMin: number; ageMax: number }
+  const archetypes: Array<{ type: Archetype; n: number }> = [
+    { type: { base: 0.55, spread: 0.12, ageMin: 24, ageMax: 30 }, n: midCount },
+    { type: { base: 0.42, spread: 0.14, ageMin: 17, ageMax: 21 }, n: youthCount },
+    { type: { base: 0.60, spread: 0.10, ageMin: 31, ageMax: 35 }, n: vetCount },
+  ];
+
+  let idx = 0;
+  for (const { type, n } of archetypes) {
+    for (let i = 0; i < n; i++) {
+      const role = FREE_AGENT_ROLES[idx % FREE_AGENT_ROLES.length]!;
+      const age = Math.floor(rng() * (type.ageMax - type.ageMin + 1)) + type.ageMin;
+      const nationality = defaultNats[Math.floor(rng() * defaultNats.length)]!;
+
+      agents.push({
+        id: `free-agent-${idx}`,
+        teamId: 'home', // placeholder, not used for free agents
+        position: Vec2.zero(),
+        velocity: Vec2.zero(),
+        attributes: generateFreeAgentAttributes(type.base, type.spread, rng, role),
+        personality: generatePersonality(rng),
+        fatigue: 0,
+        role,
+        duty: Duty.SUPPORT,
+        formationAnchor: Vec2.zero(),
+        name: generatePlayerName(rng),
+        age,
+        height: Math.floor(rng() * 36) + 165,
+        shirtNumber: idx + 1,
+        nationality,
+      });
+      idx++;
+    }
   }
 
   return agents;

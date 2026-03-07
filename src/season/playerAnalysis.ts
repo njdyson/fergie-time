@@ -17,8 +17,9 @@ const OUTFIELD_GENERAL: Partial<Record<keyof PlayerAttributes, number>> = {
 
 const ROLE_WEIGHTS: Record<Role, Partial<Record<keyof PlayerAttributes, number>>> = {
   GK: {
-    reflexes: 0.25, handling: 0.20, oneOnOnes: 0.15, distribution: 0.10,
-    positioning: 0.10, aerial: 0.08, concentration: 0.07, strength: 0.05,
+    reflexes: 0.18, handling: 0.15, oneOnOnes: 0.12, distribution: 0.10,
+    positioning: 0.12, aerial: 0.10, concentration: 0.10, strength: 0.05,
+    passing: 0.04, pace: 0.04,
   },
   CB: {
     ...OUTFIELD_GENERAL,
