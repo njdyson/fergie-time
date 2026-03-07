@@ -8,6 +8,7 @@ Four phases derived directly from the dependency chain in the match engine: phys
 
 - ✅ **v1.0 Match Engine** — Phases 1-4 (Phases 1, 3 shipped; Phase 2 partial; Phase 4 deferred)
 - ✅ **v1.1 Data Layer** — Phases 5-9 (shipped 2026-03-07)
+- 🚧 **v1.2 Player Development** — Phases 10-13 (in progress)
 
 ## Phases
 
@@ -37,6 +38,15 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 9: Gap Closure** — Shirt number persistence, Hub stats fix, deployment config (completed 2026-03-07)
 
 </details>
+
+### 🚧 v1.2 Player Development (In Progress)
+
+**Milestone Goal:** Add visual identity to players via pixel art portraits, then build a training system with drill scheduling and an observation-only sandbox.
+
+- [ ] **Phase 10: Portraits** — Every player has a deterministic, nationality-influenced pixel art portrait on their profile screen
+- [ ] **Phase 11: Training Logic** — Player attributes improve after drill sessions based on drill type, age, and personality — verified headlessly before any UI
+- [ ] **Phase 12: Training Scheduler** — The hub shows training days until the next match; manager assigns drill or rest and sees stat deltas on player profiles
+- [ ] **Phase 13: Sandbox** — Manager can access a free-to-use training ground sandbox, configure custom scenarios, and observe the real engine running without affecting season state
 
 ## Phase Details
 
@@ -80,10 +90,56 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 </details>
 
+### Phase 10: Portraits
+**Goal**: Every player has a unique, deterministic pixel art portrait on their profile screen, seeded from their player ID and reflecting their nationality
+**Depends on**: Phase 9
+**Requirements**: PORT-01, PORT-02, PORT-03
+**Success Criteria** (what must be TRUE):
+  1. User can see a pixel art portrait on every player's profile screen — no player is portrait-less
+  2. Closing and reopening the game shows the same portrait for each player (deterministic across sessions)
+  3. Players from different nationalities have visibly different skin tones and hair colour palettes
+  4. Portrait generation never slows down navigating to a player profile (session-level cache)
+**Plans**: TBD
+
+### Phase 11: Training Logic
+**Goal**: Player attributes improve after drill sessions in a way that is economically sound, age-gated, and personality-driven — proven by headless simulation before any UI is built
+**Depends on**: Phase 10
+**Requirements**: TRAIN-04, TRAIN-06
+**Success Criteria** (what must be TRUE):
+  1. Applying a drill to a squad of players produces a new PlayerState[] with measurably higher relevant attributes (pure function, testable without UI)
+  2. A young high-potential player gains more from the same drill than an older lower-potential player
+  3. A headless 5-season simulation confirms no attribute exceeds ~0.95 for a player starting below 0.70 — economy is sound
+  4. Attribute growth has no hidden ceiling — a player can keep improving at any age, but the rate naturally decays as age increases
+  5. The "training" personality trait is present on all players and visibly affects per-session gain magnitude
+**Plans**: TBD
+
+### Phase 12: Training Scheduler
+**Goal**: The manager can see and assign training days between matches from the hub, pick squad-wide drill types, and observe attribute improvements on player profiles afterward
+**Depends on**: Phase 11
+**Requirements**: TRAIN-01, TRAIN-02, TRAIN-03, TRAIN-05
+**Success Criteria** (what must be TRUE):
+  1. User can see a training scheduler on the hub showing how many days remain until the next match
+  2. User can mark each pre-match day as a drill or rest with a single click
+  3. User can select a squad-wide drill type from a menu of 6-8 labelled categories, each showing which attributes it targets
+  4. After a training block completes, the player profile screen shows the attribute deltas gained (e.g., "+0.02 Pace") from that block
+**Plans**: TBD
+
+### Phase 13: Sandbox
+**Goal**: The manager can launch the training ground sandbox from the hub at any time, configure a custom scenario, watch the real match engine run it, and return to the hub knowing nothing in their season was affected
+**Depends on**: Phase 12
+**Requirements**: SAND-01, SAND-02, SAND-03, SAND-04, SAND-05
+**Success Criteria** (what must be TRUE):
+  1. User can access the training ground sandbox from the game hub without starting a league match
+  2. User can pick two teams, set their formations, and launch the scenario before the engine starts
+  3. Sandbox runs the real match engine on the canvas with speed controls (play, fast-forward)
+  4. After the sandbox match ends, the user's league table, squad attributes, and season state are identical to before — no changes are written
+  5. User can load a named preset scenario (e.g., "High Press vs Low Block") that pre-configures both teams without manual setup
+**Plans**: TBD
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -96,3 +152,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Squads + Names | v1.1 | 2/2 | Complete | 2026-03-07 |
 | 8. Stats + Deployment | v1.1 | 3/3 | Complete | 2026-03-07 |
 | 9. Gap Closure | v1.1 | 2/2 | Complete | 2026-03-07 |
+| 10. Portraits | v1.2 | 0/TBD | Not started | - |
+| 11. Training Logic | v1.2 | 0/TBD | Not started | - |
+| 12. Training Scheduler | v1.2 | 0/TBD | Not started | - |
+| 13. Sandbox | v1.2 | 0/TBD | Not started | - |

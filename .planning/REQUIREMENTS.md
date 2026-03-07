@@ -78,26 +78,26 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PORT-01 | — | Pending |
-| PORT-02 | — | Pending |
-| PORT-03 | — | Pending |
-| TRAIN-01 | — | Pending |
-| TRAIN-02 | — | Pending |
-| TRAIN-03 | — | Pending |
-| TRAIN-04 | — | Pending |
-| TRAIN-05 | — | Pending |
-| TRAIN-06 | — | Pending |
-| SAND-01 | — | Pending |
-| SAND-02 | — | Pending |
-| SAND-03 | — | Pending |
-| SAND-04 | — | Pending |
-| SAND-05 | — | Pending |
+| PORT-01 | Phase 10 | Pending |
+| PORT-02 | Phase 10 | Pending |
+| PORT-03 | Phase 10 | Pending |
+| TRAIN-04 | Phase 11 | Pending |
+| TRAIN-06 | Phase 11 | Pending |
+| TRAIN-01 | Phase 12 | Pending |
+| TRAIN-02 | Phase 12 | Pending |
+| TRAIN-03 | Phase 12 | Pending |
+| TRAIN-05 | Phase 12 | Pending |
+| SAND-01 | Phase 13 | Pending |
+| SAND-02 | Phase 13 | Pending |
+| SAND-03 | Phase 13 | Pending |
+| SAND-04 | Phase 13 | Pending |
+| SAND-05 | Phase 13 | Pending |
 
 **Coverage:**
 - v1.2 requirements: 14 total
-- Mapped to phases: 0
-- Unmapped: 14
+- Mapped to phases: 14
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-07*
-*Last updated: 2026-03-07 after initial definition*
+*Last updated: 2026-03-07 after roadmap creation (v1.2 phases 10-13)*
