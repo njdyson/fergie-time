@@ -31,7 +31,7 @@ function generateAttribute(base: number, spread: number, rng: () => number): num
 
 // Role-based attribute boosts — makes players feel distinct by position
 const ROLE_BOOSTS: Partial<Record<Role, Partial<Record<keyof PlayerAttributes, number>>>> = {
-  GK:  { positioning: 0.15, aerial: 0.10, reflexes: 0.30, handling: 0.28, oneOnOnes: 0.25, distribution: 0.20, concentration: 0.10 },
+  GK:  { positioning: 0.10, aerial: 0.08, reflexes: 0.15, handling: 0.14, oneOnOnes: 0.12, distribution: 0.10, concentration: 0.08 },
   CB:  { tackling: 0.12, strength: 0.10, aerial: 0.10, heading: 0.12, concentration: 0.08 },
   LB:  { pace: 0.10, stamina: 0.08, crossing: 0.10, acceleration: 0.06 },
   RB:  { pace: 0.10, stamina: 0.08, crossing: 0.10, acceleration: 0.06 },

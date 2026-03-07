@@ -7,6 +7,8 @@
 import type { PlayerState } from '../../simulation/types.ts';
 import type { PlayerSeasonStats } from '../../season/playerStats.ts';
 import type { SeasonTeam } from '../../season/season.ts';
+import { calculatePlayerRating } from '../../season/playerAnalysis.ts';
+import { formatMoney } from '../../season/transferMarket.ts';
 
 // Color palette (dark theme)
 const PANEL_BG = '#1e293b';
@@ -149,9 +151,21 @@ function renderBar(label: string, value: number): string {
   `;
 }
 
+export interface ProfileTransferInfo {
+  value: number;
+  isPlayerTeam: boolean;
+  isListed: boolean;
+  isFreeAgent: boolean;
+  budget: number;
+}
+
 export class PlayerProfileScreen {
   private container: HTMLElement;
   private backCallbacks: Array<() => void> = [];
+  private bidCallbacks: Array<(playerId: string, toTeamId: string, suggestedAmount: number, budget: number) => void> = [];
+  private listCallbacks: Array<(playerId: string) => void> = [];
+  private unlistCallbacks: Array<(playerId: string) => void> = [];
+  private signFreeAgentCallbacks: Array<(playerId: string) => void> = [];
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -163,17 +177,18 @@ export class PlayerProfileScreen {
     this.container.style.backgroundColor = '#0f172a';
   }
 
-  /** Register a callback for the back button. */
-  onBack(cb: () => void): void {
-    this.backCallbacks.push(cb);
-  }
+  onBack(cb: () => void): void { this.backCallbacks.push(cb); }
+  onBid(cb: (playerId: string, toTeamId: string, suggestedAmount: number, budget: number) => void): void { this.bidCallbacks.push(cb); }
+  onList(cb: (playerId: string) => void): void { this.listCallbacks.push(cb); }
+  onUnlist(cb: (playerId: string) => void): void { this.unlistCallbacks.push(cb); }
+  onSignFreeAgent(cb: (playerId: string) => void): void { this.signFreeAgentCallbacks.push(cb); }
 
   /** Update the profile screen with a specific player's data. */
-  update(player: PlayerState, team: SeasonTeam, seasonStats: PlayerSeasonStats | null, seasonNumber: number): void {
-    this.render(player, team, seasonStats, seasonNumber);
+  update(player: PlayerState, team: SeasonTeam, seasonStats: PlayerSeasonStats | null, seasonNumber: number, transferInfo?: ProfileTransferInfo): void {
+    this.render(player, team, seasonStats, seasonNumber, transferInfo);
   }
 
-  private render(player: PlayerState, team: SeasonTeam, seasonStats: PlayerSeasonStats | null, seasonNumber: number): void {
+  private render(player: PlayerState, team: SeasonTeam, seasonStats: PlayerSeasonStats | null, seasonNumber: number, transferInfo?: ProfileTransferInfo): void {
     const shirtColor = getTeamShirtColor(team);
     const attrs = player.attributes;
     const personality = player.personality;
@@ -252,13 +267,38 @@ export class PlayerProfileScreen {
     const infoRow = (label: string, value: string | number) =>
       `<div><div style="color:${TEXT}; font-size:10px; margin-bottom:2px;">${label}</div><div style="color:${TEXT_BRIGHT}; font-size:13px; font-weight:bold;">${value}</div></div>`;
 
+    const rating = calculatePlayerRating(player);
+    const ratingColor = rating >= 70 ? GREEN : rating >= 50 ? ACCENT_ORANGE : RED;
+
     html += infoRow('Position', player.role);
     html += infoRow('Shirt #', player.shirtNumber ?? '-');
     html += infoRow('Age', player.age ?? '-');
     html += infoRow('Height', player.height ? `${player.height}cm` : '-');
     html += infoRow('Nationality', getNationalityName(player.nationality));
-    html += `</div>`;
-    html += `</div>`;
+    html += `<div><div style="color:${TEXT}; font-size:10px; margin-bottom:2px;">Rating</div><div style="color:${ratingColor}; font-size:13px; font-weight:bold;">${rating}</div></div>`;
+    if (transferInfo) {
+      html += `<div><div style="color:${TEXT}; font-size:10px; margin-bottom:2px;">Value</div><div style="color:${GREEN}; font-size:13px; font-weight:bold;">£${formatMoney(transferInfo.value)}</div></div>`;
+    }
+    html += `</div>`; // end grid
+
+    // Transfer action button
+    if (transferInfo) {
+      html += `<div style="margin-top:12px;">`;
+      if (transferInfo.isPlayerTeam) {
+        if (transferInfo.isListed) {
+          html += `<button data-profile-unlist="${player.id}" style="padding:8px 20px; border-radius:6px; border:2px solid ${RED}; background:transparent; color:${RED}; font:bold 12px/1 'Segoe UI',system-ui,sans-serif; cursor:pointer; width:100%;">Remove from Transfer List</button>`;
+        } else {
+          html += `<button data-profile-list="${player.id}" style="padding:8px 20px; border-radius:6px; border:2px solid ${ACCENT_ORANGE}; background:transparent; color:${ACCENT_ORANGE}; font:bold 12px/1 'Segoe UI',system-ui,sans-serif; cursor:pointer; width:100%;">Add to Transfer List</button>`;
+        }
+      } else if (transferInfo.isFreeAgent) {
+        html += `<button data-profile-sign="${player.id}" style="padding:8px 20px; border-radius:6px; border:2px solid ${GREEN}; background:transparent; color:${GREEN}; font:bold 12px/1 'Segoe UI',system-ui,sans-serif; cursor:pointer; width:100%;">Sign Free Agent</button>`;
+      } else {
+        html += `<button data-profile-bid="${player.id}" data-bid-team="${team.id}" style="padding:8px 20px; border-radius:6px; border:2px solid ${ACCENT_BLUE}; background:transparent; color:${ACCENT_BLUE}; font:bold 12px/1 'Segoe UI',system-ui,sans-serif; cursor:pointer; width:100%;">Place Bid</button>`;
+      }
+      html += `</div>`;
+    }
+
+    html += `</div>`; // end info panel
 
     html += `</div>`; // end main content row
 
@@ -339,6 +379,27 @@ export class PlayerProfileScreen {
       backBtn.addEventListener('click', () => {
         for (const cb of this.backCallbacks) cb();
       });
+    }
+
+    // Transfer action handlers
+    const bidBtn = this.container.querySelector('[data-profile-bid]') as HTMLElement | null;
+    if (bidBtn && transferInfo) {
+      bidBtn.addEventListener('click', () => {
+        const toTeam = bidBtn.dataset.bidTeam!;
+        this.bidCallbacks.forEach(cb => cb(player.id, toTeam, transferInfo.value, transferInfo.budget));
+      });
+    }
+    const listBtn = this.container.querySelector('[data-profile-list]') as HTMLElement | null;
+    if (listBtn) {
+      listBtn.addEventListener('click', () => this.listCallbacks.forEach(cb => cb(player.id)));
+    }
+    const unlistBtn = this.container.querySelector('[data-profile-unlist]') as HTMLElement | null;
+    if (unlistBtn) {
+      unlistBtn.addEventListener('click', () => this.unlistCallbacks.forEach(cb => cb(player.id)));
+    }
+    const signBtn = this.container.querySelector('[data-profile-sign]') as HTMLElement | null;
+    if (signBtn) {
+      signBtn.addEventListener('click', () => this.signFreeAgentCallbacks.forEach(cb => cb(player.id)));
     }
   }
 

@@ -25,6 +25,7 @@ import { SquadScreen } from './ui/screens/squadScreen.ts';
 import { StatsScreen } from './ui/screens/statsScreen.ts';
 import { LoginScreen } from './ui/screens/loginScreen.ts';
 import { PlayerProfileScreen } from './ui/screens/playerProfileScreen.ts';
+import type { ProfileTransferInfo } from './ui/screens/playerProfileScreen.ts';
 import { TransferScreen } from './ui/screens/transferScreen.ts';
 import { InboxScreen } from './ui/screens/inboxScreen.ts';
 import { createSeason, validateSquadSelection, isSeasonComplete, getChampion, startNewSeason, recordPlayerResult, simOneAIFixture, finalizeMatchday } from './season/season.ts';
@@ -136,6 +137,57 @@ playerProfileScreenView.onBack(() => {
   showScreen(previousScreen);
 });
 
+playerProfileScreenView.onBid((playerId, toTeamId, suggestedAmount, budget) => {
+  transferScreenView.openBidModal(
+    seasonState.teams.flatMap(t => t.squad).find(p => p.id === playerId)?.name ?? 'Unknown',
+    playerId, toTeamId, suggestedAmount, budget,
+  );
+});
+
+playerProfileScreenView.onList((playerId) => {
+  if (!seasonState) return;
+  const playerTeam = seasonState.teams.find(t => t.isPlayerTeam)!;
+  seasonState = {
+    ...seasonState,
+    transferMarket: transferListPlayer(seasonState.transferMarket, playerId, playerTeam.id, seasonState.currentMatchday),
+  };
+  saveGame(serializeState(seasonState), 1).catch(err => console.error('Auto-save failed:', err));
+  updateCurrentScreen();
+});
+
+playerProfileScreenView.onUnlist((playerId) => {
+  if (!seasonState) return;
+  seasonState = {
+    ...seasonState,
+    transferMarket: removeFromTransferList(seasonState.transferMarket, playerId),
+  };
+  saveGame(serializeState(seasonState), 1).catch(err => console.error('Auto-save failed:', err));
+  updateCurrentScreen();
+});
+
+playerProfileScreenView.onSignFreeAgent((playerId) => {
+  if (!seasonState) return;
+  const playerTeam = seasonState.teams.find(t => t.isPlayerTeam)!;
+  const rng = seedrandom(`${seasonState.seed}-sign-profile-${Date.now()}`);
+  const result = processPlayerBid(
+    seasonState.transferMarket,
+    seasonState.teams,
+    seasonState.playerSeasonStats,
+    seasonState.inbox,
+    { fromTeamId: playerTeam.id, toTeamId: 'free-agent', playerId, amount: 0, matchday: seasonState.currentMatchday },
+    rng,
+  );
+  seasonState = {
+    ...seasonState,
+    transferMarket: result.market,
+    teams: result.teams,
+    inbox: result.inbox,
+  };
+  saveGame(serializeState(seasonState), 1).catch(err => console.error('Auto-save failed:', err));
+  updateCurrentScreen();
+  updateInboxBadge();
+});
+
 /** Navigate to a player's profile page from any screen. */
 function showPlayerProfile(playerId: string): void {
   profilePlayerId = playerId;
@@ -185,14 +237,33 @@ function updateCurrentScreen(): void {
     // Find player across all teams
     let foundPlayer = null;
     let foundTeam = null;
+    let isFreeAgent = false;
     for (const team of seasonState.teams) {
       const p = team.squad.find(pl => pl.id === profilePlayerId);
       if (p) { foundPlayer = p; foundTeam = team; break; }
     }
+    // Check free agents
+    if (!foundPlayer && seasonState.transferMarket) {
+      const fa = seasonState.transferMarket.freeAgents.find(p => p.id === profilePlayerId);
+      if (fa) {
+        foundPlayer = fa;
+        foundTeam = seasonState.teams.find(t => t.isPlayerTeam)!; // use player team for display
+        isFreeAgent = true;
+      }
+    }
     if (foundPlayer && foundTeam) {
       const statsMap = seasonState.playerSeasonStats ?? new Map();
       const pStats = statsMap.get(profilePlayerId) ?? null;
-      playerProfileScreenView.update(foundPlayer, foundTeam, pStats, seasonState.seasonNumber);
+      const market = seasonState.transferMarket;
+      const playerTeam = seasonState.teams.find(t => t.isPlayerTeam)!;
+      const transferInfo: ProfileTransferInfo = {
+        value: market.playerValues.get(profilePlayerId) ?? 0,
+        isPlayerTeam: !isFreeAgent && foundTeam.id === playerTeam.id,
+        isListed: market.listings.some(l => l.playerId === profilePlayerId),
+        isFreeAgent,
+        budget: market.teamBudgets.get(playerTeam.id) ?? 0,
+      };
+      playerProfileScreenView.update(foundPlayer, foundTeam, pStats, seasonState.seasonNumber, transferInfo);
     }
   }
 }
