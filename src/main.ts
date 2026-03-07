@@ -22,6 +22,7 @@ import { HubScreen } from './ui/screens/hubScreen.ts';
 import { FixturesScreen } from './ui/screens/fixturesScreen.ts';
 import { TableScreen } from './ui/screens/tableScreen.ts';
 import { SquadScreen } from './ui/screens/squadScreen.ts';
+import { StatsScreen } from './ui/screens/statsScreen.ts';
 import { LoginScreen } from './ui/screens/loginScreen.ts';
 import { createSeason, validateSquadSelection, isSeasonComplete, getChampion, startNewSeason, recordPlayerResult, simOneAIFixture, finalizeMatchday } from './season/season.ts';
 import type { SeasonState } from './season/season.ts';
@@ -93,17 +94,19 @@ function hideTacticsCanvas(): void {
 // Screen routing + Season state
 // ============================================================
 
-const ScreenId = { LOGIN: 'LOGIN', HUB: 'HUB', SQUAD: 'SQUAD', FIXTURES: 'FIXTURES', TABLE: 'TABLE', TACTICS: 'TACTICS', MATCH: 'MATCH' } as const;
+const ScreenId = { LOGIN: 'LOGIN', HUB: 'HUB', SQUAD: 'SQUAD', STATS: 'STATS', FIXTURES: 'FIXTURES', TABLE: 'TABLE', TACTICS: 'TACTICS', MATCH: 'MATCH' } as const;
 type ScreenId = (typeof ScreenId)[keyof typeof ScreenId];
 let currentScreen: ScreenId = ScreenId.HUB;
 
 const hubScreenEl = document.getElementById('hub-screen')!;
 const squadScreenEl = document.getElementById('squad-screen')!;
+const statsScreenEl = document.getElementById('stats-screen')!;
 const fixturesScreenEl = document.getElementById('fixtures-screen')!;
 const tableScreenEl = document.getElementById('table-screen')!;
 
 const hubScreenView = new HubScreen(hubScreenEl);
 // SquadScreen is created below with an inner container (see squad kickoff button section)
+const statsScreenView = new StatsScreen(statsScreenEl);
 const fixturesScreenView = new FixturesScreen(fixturesScreenEl);
 const tableScreenView = new TableScreen(tableScreenEl);
 
@@ -139,8 +142,9 @@ function updateCurrentScreen(): void {
   }
   if (currentScreen === ScreenId.SQUAD) {
     squadScreenViewInner.setFormationRoles(tacticsBoard.getPhaseRoles('inPossession'), tacticsBoard.getPhaseRoles('outOfPossession'));
-    squadScreenViewInner.update(playerTeam.squad, seasonState.fatigueMap, seasonState.squadSelectionMap);
+    squadScreenViewInner.update(playerTeam.squad, seasonState.fatigueMap, seasonState.squadSelectionMap, seasonState.playerSeasonStats);
   }
+  if (currentScreen === ScreenId.STATS) statsScreenView.update(seasonState);
   if (currentScreen === ScreenId.FIXTURES) fixturesScreenView.update(seasonState, seasonState.playerTeamId);
   if (currentScreen === ScreenId.TABLE) tableScreenView.update(seasonState, seasonState.playerTeamId);
 }
@@ -156,7 +160,7 @@ const rightPanelParent = document.getElementById('pitch-area')!;
 
 function showScreen(screen: ScreenId): void {
   const map: Record<string, string> = {
-    LOGIN: 'login-screen', HUB: 'hub-screen', SQUAD: 'squad-screen',
+    LOGIN: 'login-screen', HUB: 'hub-screen', SQUAD: 'squad-screen', STATS: 'stats-screen',
     FIXTURES: 'fixtures-screen', TABLE: 'table-screen', TACTICS: 'tactics-screen', MATCH: 'pitch-area',
   };
   const flexScreens = new Set(['MATCH', 'SQUAD', 'LOGIN', 'TACTICS']);
@@ -217,6 +221,7 @@ function showScreen(screen: ScreenId): void {
 // Nav tab click handlers
 document.getElementById('nav-hub')?.addEventListener('click', () => showScreen(ScreenId.HUB));
 document.getElementById('nav-squad')?.addEventListener('click', () => showScreen(ScreenId.SQUAD));
+document.getElementById('nav-stats')?.addEventListener('click', () => showScreen(ScreenId.STATS));
 document.getElementById('nav-fixtures')?.addEventListener('click', () => showScreen(ScreenId.FIXTURES));
 document.getElementById('nav-table')?.addEventListener('click', () => showScreen(ScreenId.TABLE));
 document.getElementById('nav-tactics')?.addEventListener('click', () => showScreen(ScreenId.TACTICS));
@@ -1319,7 +1324,7 @@ document.addEventListener('keydown', (e) => {
 
 function showVidiprinter(aiFixtures: import('./season/fixtures.ts').Fixture[]): void {
   // Hide all screens and nav
-  for (const id of ['hub-screen', 'squad-screen', 'fixtures-screen', 'table-screen', 'pitch-area']) {
+  for (const id of ['hub-screen', 'squad-screen', 'stats-screen', 'fixtures-screen', 'table-screen', 'pitch-area']) {
     const el = document.getElementById(id);
     if (el) el.style.display = 'none';
   }

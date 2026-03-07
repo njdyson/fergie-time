@@ -7,6 +7,7 @@
 import type { PlayerState } from '../../simulation/types.ts';
 import { validateSquadSelection } from '../../season/season.ts';
 import type { SquadSelection, SquadSlot } from '../../season/season.ts';
+import type { PlayerSeasonStats } from '../../season/playerStats.ts';
 
 // Re-export for consumer convenience
 export type { SquadSelection } from '../../season/season.ts';
@@ -90,6 +91,7 @@ export class SquadScreen {
   private container: HTMLElement;
   private players: PlayerState[] = [];
   private fatigueMap: Map<string, number> = new Map();
+  private playerSeasonStats: Map<string, PlayerSeasonStats> = new Map();
   private selections: Map<string, SelectionState> = new Map();
   private slotIndices: Map<string, number> = new Map(); // playerId → formation slot index (0-10)
   private shirtNumbers: Map<string, number> = new Map();
@@ -170,8 +172,11 @@ export class SquadScreen {
     this.render();
   }
 
-  /** Update display with new player data, optionally restoring saved selection. */
-  update(players: PlayerState[], fatigueMap: Map<string, number>, savedSelection?: Map<string, SquadSlot>): void {
+  /** Update display with new player data, optionally restoring saved selection and season stats. */
+  update(players: PlayerState[], fatigueMap: Map<string, number>, savedSelection?: Map<string, SquadSlot>, playerSeasonStats?: Map<string, PlayerSeasonStats>): void {
+    if (playerSeasonStats !== undefined) {
+      this.playerSeasonStats = playerSeasonStats;
+    }
     this.setPlayers(players, fatigueMap, savedSelection);
   }
 
@@ -554,8 +559,8 @@ export class SquadScreen {
     html += `<button data-clear-all style="padding: 4px 12px; border-radius: 4px; border: 1px solid #475569; background: #0f172a; color: ${TEXT_BRIGHT}; font-size: 11px; cursor: pointer;">Clear All</button>`;
     html += `</div>`;
 
-    // Grid column template
-    const gridCols = `56px 36px 140px 48px 36px 40px 48px ${ATTR_NAMES.map(() => '32px').join(' ')} 48px`;
+    // Grid column template (badge, #, name, pos, nat, age, ht, 10 attrs, fit, G, A, App)
+    const gridCols = `56px 36px 140px 48px 36px 40px 48px ${ATTR_NAMES.map(() => '32px').join(' ')} 48px 28px 28px 32px`;
 
     // Sortable header helper
     const sortArrow = (col: string) => this.sortColumn === col ? (this.sortAscending ? ' ▲' : ' ▼') : '';
@@ -574,6 +579,9 @@ export class SquadScreen {
       html += `<span data-sort="${attr}" style="text-align: center; ${hdrStyle}" title="${attr}">${ATTR_SHORT[attr]}${sortArrow(attr)}</span>`;
     }
     html += `<span data-sort="fit" style="text-align: center; ${hdrStyle}">FIT${sortArrow('fit')}</span>`;
+    html += `<span style="text-align: center; color: #4ade80; font-weight: bold;" title="Goals this season">G</span>`;
+    html += `<span style="text-align: center; color: #60a5fa; font-weight: bold;" title="Assists this season">A</span>`;
+    html += `<span style="text-align: center;" title="Appearances this season">App</span>`;
     html += '</div>';
 
     // Player rows
@@ -632,6 +640,15 @@ export class SquadScreen {
       html += `<div style="width: ${fitPct}%; height: 100%; background: ${fitColor}; border-radius: 2px;"></div>`;
       html += `</div>`;
       html += `</span>`;
+
+      // Season stats: Goals, Assists, Appearances
+      const pStat = this.playerSeasonStats.get(p.id);
+      const goals = pStat?.goals ?? null;
+      const assists = pStat?.assists ?? null;
+      const apps = pStat?.appearances ?? null;
+      html += `<span style="text-align: center; color: ${goals ? '#4ade80' : TEXT}; font-weight: ${goals ? 'bold' : 'normal'}; font-size: 11px;">${goals !== null ? goals : '-'}</span>`;
+      html += `<span style="text-align: center; color: ${assists ? '#60a5fa' : TEXT}; font-size: 11px;">${assists !== null ? assists : '-'}</span>`;
+      html += `<span style="text-align: center; color: ${TEXT}; font-size: 11px;">${apps !== null ? apps : '-'}</span>`;
 
       html += '</div>';
     }
