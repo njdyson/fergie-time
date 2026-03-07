@@ -6,7 +6,8 @@
 
 import { describe, it, expect } from 'vitest';
 import seedrandom from 'seedrandom';
-import { applyDrill, DrillType, DRILL_ATTRIBUTE_MAP, ALL_DRILL_TYPES } from './training.ts';
+import { applyDrill, applyTrainingBlock, DrillType, DRILL_ATTRIBUTE_MAP, DRILL_LABELS, ALL_DRILL_TYPES, TRAINING_DAYS_PER_MATCHDAY } from './training.ts';
+import type { TrainingSchedule } from './season.ts';
 import { createAITeam } from './teamGen.ts';
 import type { PlayerState, PlayerAttributes, PersonalityVector } from '../simulation/types.ts';
 import { Duty } from '../simulation/types.ts';
@@ -306,5 +307,130 @@ describe('Training economy — 5-season headless simulation', () => {
         expect(value).toBeLessThanOrEqual(0.95);
       }
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TRAINING_DAYS_PER_MATCHDAY constant
+// ---------------------------------------------------------------------------
+
+describe('TRAINING_DAYS_PER_MATCHDAY', () => {
+  it('equals 3 (matches Phase 11 economy tuning assumption)', () => {
+    expect(TRAINING_DAYS_PER_MATCHDAY).toBe(3);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DRILL_LABELS — human-readable labels for all DrillType values
+// ---------------------------------------------------------------------------
+
+describe('DRILL_LABELS', () => {
+  it('has an entry for every DrillType', () => {
+    for (const drill of ALL_DRILL_TYPES) {
+      expect(DRILL_LABELS[drill]).toBeDefined();
+      expect(typeof DRILL_LABELS[drill]).toBe('string');
+      expect(DRILL_LABELS[drill]!.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('maps fitness to "Fitness"', () => {
+    expect(DRILL_LABELS['fitness']).toBe('Fitness');
+  });
+
+  it('maps set_pieces to "Set Pieces"', () => {
+    expect(DRILL_LABELS['set_pieces']).toBe('Set Pieces');
+  });
+
+  it('covers all 8 drill types', () => {
+    expect(Object.keys(DRILL_LABELS)).toHaveLength(8);
+  });
+
+  it('all labels are title-cased non-empty strings', () => {
+    for (const label of Object.values(DRILL_LABELS)) {
+      expect(label).toMatch(/^[A-Z]/); // starts with uppercase
+      expect(label.trim().length).toBeGreaterThan(0);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// applyTrainingBlock — full schedule execution
+// ---------------------------------------------------------------------------
+
+describe('applyTrainingBlock', () => {
+  it('applies passing and fitness drills, skips rest day — updatedSquad has improved attributes', () => {
+    const players = [makePlayer({ id: 'p1', attributes: { passing: 0.50, pace: 0.50 }, age: 25, personality: { work_rate: 0.5 } })];
+    const schedule: TrainingSchedule = { 0: 'passing', 1: 'rest', 2: 'fitness' };
+    const { updatedSquad } = applyTrainingBlock(players, schedule);
+
+    expect(updatedSquad[0]!.attributes.passing).toBeGreaterThan(0.50);
+    expect(updatedSquad[0]!.attributes.pace).toBeGreaterThan(0.50);
+  });
+
+  it('rest-only schedule returns identical squad (no attribute changes)', () => {
+    const players = [makePlayer({ id: 'p1', age: 25 })];
+    const schedule: TrainingSchedule = { 0: 'rest', 1: 'rest', 2: 'rest' };
+    const { updatedSquad } = applyTrainingBlock(players, schedule);
+
+    expect(updatedSquad[0]!.attributes.passing).toBe(players[0]!.attributes.passing);
+    expect(updatedSquad[0]!.attributes.pace).toBe(players[0]!.attributes.pace);
+  });
+
+  it('empty schedule returns identical squad and zero-entry deltas', () => {
+    const players = [makePlayer({ id: 'p1', age: 25 })];
+    const schedule: TrainingSchedule = {};
+    const { updatedSquad, deltas } = applyTrainingBlock(players, schedule);
+
+    expect(updatedSquad[0]!.attributes.passing).toBe(players[0]!.attributes.passing);
+    const playerDeltas = deltas.get('p1');
+    expect(Object.keys(playerDeltas ?? {})).toHaveLength(0);
+  });
+
+  it('deltas map contains accumulated gains per player across all drill days', () => {
+    const players = [makePlayer({ id: 'p1', attributes: { passing: 0.50 }, age: 25, personality: { work_rate: 0.5 } })];
+    const schedule: TrainingSchedule = { 0: 'passing', 1: 'passing' };
+    const { deltas } = applyTrainingBlock(players, schedule);
+
+    const playerDeltas = deltas.get('p1');
+    expect(playerDeltas).toBeDefined();
+    expect(playerDeltas!['passing']).toBeGreaterThan(0);
+  });
+
+  it('multiple drills of same type accumulate gains (diminishing returns apply, values >= 0)', () => {
+    const players = [makePlayer({ id: 'p1', attributes: { passing: 0.50 }, age: 25, personality: { work_rate: 0.5 } })];
+    const schedule: TrainingSchedule = { 0: 'passing', 1: 'passing', 2: 'passing' };
+    const { deltas } = applyTrainingBlock(players, schedule);
+
+    const playerDeltas = deltas.get('p1');
+    const totalPassingGain = playerDeltas?.['passing'] ?? 0;
+    // Gain must be positive (we drilled 3 times)
+    expect(totalPassingGain).toBeGreaterThan(0);
+    // Delta values are always >= 0
+    for (const val of Object.values(playerDeltas ?? {})) {
+      expect(val).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('rest-only schedule returns zero-entry deltas (no gains recorded)', () => {
+    const players = [makePlayer({ id: 'p1', age: 25 })];
+    const schedule: TrainingSchedule = { 0: 'rest', 1: 'rest' };
+    const { deltas } = applyTrainingBlock(players, schedule);
+
+    const playerDeltas = deltas.get('p1');
+    expect(Object.keys(playerDeltas ?? {})).toHaveLength(0);
+  });
+
+  it('deltas are tracked per player — two players have independent delta entries', () => {
+    const p1 = makePlayer({ id: 'p1', attributes: { passing: 0.40 }, age: 22 });
+    const p2 = makePlayer({ id: 'p2', attributes: { passing: 0.70 }, age: 30 });
+    const schedule: TrainingSchedule = { 0: 'passing' };
+    const { deltas } = applyTrainingBlock([p1, p2], schedule);
+
+    expect(deltas.has('p1')).toBe(true);
+    expect(deltas.has('p2')).toBe(true);
+    // p1 starts lower → should gain more than p2 (diminishing returns)
+    const p1Gain = deltas.get('p1')!['passing'] ?? 0;
+    const p2Gain = deltas.get('p2')!['passing'] ?? 0;
+    expect(p1Gain).toBeGreaterThan(p2Gain);
   });
 });
