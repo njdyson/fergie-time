@@ -194,4 +194,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. Auth + Persistence | 2/2 | Complete   | 2026-03-07 | - |
 | 7. Squads + Names | 2/2 | Complete   | 2026-03-07 | - |
 | 8. Stats + Deployment | 3/3 | Complete   | 2026-03-07 | - |
-| 9. Gap Closure | v1.1 | 0/TBD | Pending | - |
+| 9. Gap Closure | 1/2 | In Progress|  | - |

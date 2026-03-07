@@ -62,7 +62,7 @@ Requirements for the Data Layer milestone.
 
 - [x] **SERV-01**: Express API server with SQLite via better-sqlite3
 - [x] **SERV-02**: Vite dev proxy routes /api/* to Express during development
-- [ ] **SERV-03**: VPS deployment with systemd service + nginx reverse proxy
+- [x] **SERV-03**: VPS deployment with systemd service + nginx reverse proxy
 - [x] **SERV-04**: CORS and session management configured
 
 ### Squad Expansion
@@ -196,7 +196,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | STAT-03 | Phase 8 | Complete |
 | STAT-04 | Phase 8 | Complete |
 | STAT-05 | Phase 8 | Complete |
-| SERV-03 | Phase 9 | Pending |
+| SERV-03 | Phase 9 | Complete |
 
 **Coverage:**
 - v1.0 requirements: 26 total (26 complete)

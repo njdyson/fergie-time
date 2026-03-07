@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Data Layer
 status: unknown
-last_updated: "2026-03-07T08:16:40.595Z"
+last_updated: "2026-03-07T08:48:31.008Z"
 progress:
-  total_phases: 7
+  total_phases: 8
   completed_phases: 7
-  total_plans: 29
-  completed_plans: 29
+  total_plans: 31
+  completed_plans: 30
 ---
 
 ---
@@ -38,12 +38,12 @@ See: .planning/PROJECT.md (updated 2026-03-06)
 
 ## Current Position
 
-Phase: 8 of 8 (Stats + Deployment) — COMPLETE
-Plan: 3 of 3 complete
-Status: Complete
-Last activity: 2026-03-07 — Plan 08-03 complete (player profile screen with avatar, attribute bars, click-through navigation from all player name occurrences)
+Phase: 9 of 9 (Gap Closure) — In Progress
+Plan: 2 of 2 complete
+Status: In Progress
+Last activity: 2026-03-07 — Plan 09-02 complete (systemd unit file and nginx reverse proxy config for VPS deployment, SERV-03 closed)
 
-Progress: [████████████████] 100% — Milestone v1.1 Data Layer complete
+Progress: [████████████████] Phase 9 in progress — 2/2 plans complete
 
 ## Performance Metrics
 
@@ -75,6 +75,7 @@ Progress: [████████████████] 100% — Milestone 
 | Phase 08-stats-deployment P01 | 206 | 4 tasks | 5 files |
 | Phase 08-stats-deployment P02 | 304 | 2 tasks | 5 files |
 | Phase 08-stats-deployment P03 | ~30min | 2 tasks | 4 files |
+| Phase 09-gap-closure P02 | 2 | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -109,6 +110,8 @@ Recent decisions affecting current work:
 - [Phase 08-03]: Stats tab moved after Tactics in nav order (hub, squad, tactics, stats) for better UX flow
 - [Phase 08-03]: Profile screen hides nav tabs — functions as full-page overlay with its own back button
 - [Phase 08-03]: setOnPlayerClick callback pattern used on SquadScreen and StatsScreen for loose coupling
+- [Phase 09-gap-closure]: Proxy-all nginx approach (not split static/API) — Express serves dist/ so single location block is correct
+- [Phase 09-gap-closure]: SESSION_SECRET commented out in systemd unit — operator must uncomment with real value
 
 ### Pending Todos
 
@@ -122,6 +125,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-07T08:30:00Z
-Stopped at: Completed 08-03-PLAN.md — Milestone v1.1 Data Layer complete
+Last session: 2026-03-07T08:49:00Z
+Stopped at: Completed 09-02-PLAN.md — Phase 9 Gap Closure, both plans complete
 Resume file: None
