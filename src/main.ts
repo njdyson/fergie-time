@@ -227,7 +227,7 @@ function showScreen(screen: ScreenId): void {
   const navEl = document.getElementById('nav-tabs');
   if (navEl) navEl.style.display = hideNav ? 'none' : 'flex';
   const hamburgerEl = document.getElementById('nav-hamburger');
-  if (hamburgerEl) hamburgerEl.style.display = hideNav ? 'none' : '';
+  if (hamburgerEl) hamburgerEl.classList.toggle('nav-hidden', hideNav);
   // Mark active nav tab
   document.querySelectorAll('.nav-tab').forEach(btn => {
     btn.classList.toggle('active', (btn as HTMLElement).dataset.screen === screen);

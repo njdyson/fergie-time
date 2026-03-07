@@ -177,7 +177,7 @@ export class TransferScreen {
 
     const cols = `minmax(120px,2fr) 36px 48px 52px minmax(80px,1.5fr) 72px 72px 80px`;
 
-    let html = `<div style="overflow-x: auto;"><div style="min-width: 600px;">`;
+    let html = `<div style="overflow-x: auto;"><div class="mobile-no-minwidth" style="min-width: 600px;">`;
 
     // Header
     html += `<div class="transfer-grid" style="display: grid; grid-template-columns: ${cols}; gap: 4px; padding: 6px 8px; font-size: 10px; border-bottom: 1px solid #334155; align-items: center;">`;
@@ -244,7 +244,7 @@ export class TransferScreen {
 
     const cols = `minmax(120px,2fr) 36px 48px 52px 72px 80px`;
 
-    let html = `<div style="overflow-x: auto;"><div style="min-width: 500px;">`;
+    let html = `<div style="overflow-x: auto;"><div class="mobile-no-minwidth" style="min-width: 500px;">`;
 
     html += `<div style="display: grid; grid-template-columns: ${cols}; gap: 4px; padding: 6px 8px; font-size: 10px; border-bottom: 1px solid #334155; align-items: center;">`;
     html += this.sortHeader('name', 'Name');
@@ -337,7 +337,7 @@ export class TransferScreen {
 
     const cols = `minmax(120px,2fr) 36px 48px 52px minmax(80px,1.5fr) 72px 44px 80px`;
 
-    html += `<div style="overflow-x: auto;"><div style="min-width: 600px;">`;
+    html += `<div style="overflow-x: auto;"><div class="mobile-no-minwidth" style="min-width: 600px;">`;
 
     html += `<div class="transfer-grid" style="display: grid; grid-template-columns: ${cols}; gap: 4px; padding: 6px 8px; font-size: 10px; border-bottom: 1px solid #334155; align-items: center;">`;
     html += this.sortHeader('name', 'Name');
