@@ -165,7 +165,7 @@ export class StatsScreen {
 
     let html = '';
     html += `<div style="overflow-x: auto;">`;
-    html += `<div style="min-width: 700px;">`;
+    html += `<div class="mobile-no-minwidth" style="min-width: 700px;">`;
 
     // Header row
     html += `<div class="stats-grid" style="display: grid; grid-template-columns: ${cols}; gap: 4px; padding: 6px 8px; font-size: 10px; border-bottom: 1px solid #334155; align-items: center;">`;
@@ -268,7 +268,7 @@ export class StatsScreen {
 
     let html = '';
     html += `<div style="overflow-x: auto;">`;
-    html += `<div style="min-width: 500px;">`;
+    html += `<div class="mobile-no-minwidth" style="min-width: 500px;">`;
 
     // Header
     html += `<div style="display: grid; grid-template-columns: ${cols}; gap: 4px; padding: 6px 8px; font-size: 10px; color: ${TEXT}; border-bottom: 1px solid #334155; align-items: center;">`;
