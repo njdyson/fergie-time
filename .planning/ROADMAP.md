@@ -43,7 +43,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 **Milestone Goal:** Add visual identity to players via pixel art portraits, then build a training system with drill scheduling and an observation-only sandbox.
 
-- [ ] **Phase 10: Portraits** — Every player has a deterministic, nationality-influenced pixel art portrait on their profile screen
+- [x] **Phase 10: Portraits** — Every player has a deterministic, nationality-influenced pixel art portrait on their profile screen (completed 2026-03-07)
 - [ ] **Phase 11: Training Logic** — Player attributes improve after drill sessions based on drill type, age, and personality — verified headlessly before any UI
 - [ ] **Phase 12: Training Scheduler** — The hub shows training days until the next match; manager assigns drill or rest and sees stat deltas on player profiles
 - [ ] **Phase 13: Sandbox** — Manager can access a free-to-use training ground sandbox, configure custom scenarios, and observe the real engine running without affecting season state
@@ -152,7 +152,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Squads + Names | v1.1 | 2/2 | Complete | 2026-03-07 |
 | 8. Stats + Deployment | v1.1 | 3/3 | Complete | 2026-03-07 |
 | 9. Gap Closure | v1.1 | 2/2 | Complete | 2026-03-07 |
-| 10. Portraits | 1/2 | In Progress|  | - |
+| 10. Portraits | 2/2 | Complete   | 2026-03-07 | - |
 | 11. Training Logic | v1.2 | 0/TBD | Not started | - |
 | 12. Training Scheduler | v1.2 | 0/TBD | Not started | - |
 | 13. Sandbox | v1.2 | 0/TBD | Not started | - |

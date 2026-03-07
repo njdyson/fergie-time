@@ -2,6 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Player Development
+status: unknown
+last_updated: "2026-03-07T20:46:35.550Z"
+progress:
+  total_phases: 4
+  completed_phases: 4
+  total_plans: 21
+  completed_plans: 21
+---
+
+---
+gsd_state_version: 1.0
+milestone: v1.2
+milestone_name: Player Development
 status: active
 last_updated: "2026-03-07T20:44:00Z"
 progress:
@@ -59,6 +72,7 @@ Recent decisions affecting v1.2:
 - [10-01] RNG namespaced with 'portrait-' prefix to prevent cross-system seed collisions
 - [10-01] Fixed RNG call order (skin, hairStyle, hairCol, eyeCol, facialHair) is append-only contract — inserting earlier calls changes all portraits
 - [10-01] getPalette() uses ternary guard not && short-circuit to ensure undefined nationality returns FALLBACK_PALETTE
+- [Phase 10-portraits]: Deleted drawAvatar, getInitials, and shiftColor entirely after portrait swap — no dead code left in playerProfileScreen.ts
 
 ### Pending Todos
 
