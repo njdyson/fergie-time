@@ -45,7 +45,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 10: Portraits** — Every player has a deterministic, nationality-influenced pixel art portrait on their profile screen (completed 2026-03-07)
 - [x] **Phase 11: Training Logic** — Player attributes improve after drill sessions based on drill type, age, and personality — verified headlessly before any UI (completed 2026-03-07)
-- [ ] **Phase 12: Training Scheduler** — The hub shows training days until the next match; manager assigns drill or rest and sees stat deltas on player profiles
+- [x] **Phase 12: Training Scheduler** — The hub shows training days until the next match; manager assigns drill or rest and sees stat deltas on player profiles (completed 2026-03-07)
 - [ ] **Phase 13: Sandbox** — Manager can access a free-to-use training ground sandbox, configure custom scenarios, and observe the real engine running without affecting season state
 
 ## Phase Details
@@ -159,5 +159,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 9. Gap Closure | v1.1 | 2/2 | Complete | 2026-03-07 |
 | 10. Portraits | 2/2 | Complete    | 2026-03-07 | - |
 | 11. Training Logic | 1/1 | Complete    | 2026-03-07 | - |
-| 12. Training Scheduler | 1/2 | In Progress|  | - |
+| 12. Training Scheduler | 2/2 | Complete   | 2026-03-07 | - |
 | 13. Sandbox | v1.2 | 0/TBD | Not started | - |

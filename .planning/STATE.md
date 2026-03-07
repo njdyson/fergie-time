@@ -63,18 +63,18 @@ See: .planning/PROJECT.md (updated 2026-03-07)
 ## Current Position
 
 Phase: 12 of 13 — Training Scheduler
-Plan: 1 of 2 complete
-Status: In progress
-Last activity: 2026-03-07 — Training block computation complete (Plan 01 complete, 30 tests passing, applyTrainingBlock + DRILL_LABELS + types)
+Plan: 2 of 2 complete
+Status: Phase 12 complete
+Last activity: 2026-03-07 — Training scheduler UI complete (Plan 02 complete, hub card + profile deltas + kickoff integration)
 
-Progress: [████░░░░░░] 18% (v1.2)
+Progress: [████░░░░░░] 22% (v1.2)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4 (v1.2)
+- Total plans completed: 5 (v1.2)
 - Average duration: 9 min
-- Total execution time: 29 min
+- Total execution time: 44 min
 
 **By Phase:**
 
@@ -82,7 +82,7 @@ Progress: [████░░░░░░] 18% (v1.2)
 |-------|-------|-------|----------|
 | 10-portraits | 2/2 | 23 min | 12 min |
 | 11-training-logic | 1/3 | 3 min | 3 min |
-| 12-training-scheduler | 1/2 | 3 min | 3 min |
+| 12-training-scheduler | 2/2 | 18 min | 9 min |
 
 ## Accumulated Context
 
@@ -111,6 +111,10 @@ Recent decisions affecting v1.2:
 - [12-01] TrainingDeltas typed as Map (not plain object) for correct serialization via existing serialize.ts Map reviver/replacer
 - [12-01] Schedule entries sorted by numeric key in applyTrainingBlock for deterministic processing order
 - [12-01] DRILL_LABELS is single source of truth for display labels — both hub scheduler and profile delta panel import from training.ts
+- [12-02] Training scheduler card only renders when a next fixture exists — no card shown when season is complete
+- [12-02] Training applied exactly once in onKickoff handler before startMatchFromSquad() — not on render or revisit
+- [12-02] Schedule reset to {} after kickoff — clean state for next training block
+- [12-02] Delta display threshold 0.0005 to filter floating-point noise; gains may appear as 0 after single block at BASE_DELTA=0.004
 
 ### Pending Todos
 
@@ -126,5 +130,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-07
-Stopped at: Completed 12-01-PLAN.md — Training block computation (applyTrainingBlock, DRILL_LABELS, TrainingSchedule types), 30 tests passing.
+Stopped at: Completed 12-02-PLAN.md — Training scheduler UI (hub card, profile deltas, kickoff integration). Phase 12 complete.
 Resume file: None

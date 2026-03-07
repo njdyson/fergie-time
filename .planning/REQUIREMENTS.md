@@ -15,7 +15,7 @@ Requirements for milestone v1.2 Player Development. Each maps to roadmap phases.
 
 ### Training
 
-- [ ] **TRAIN-01**: User can see a training scheduler on the hub showing days until the next match
+- [x] **TRAIN-01**: User can see a training scheduler on the hub showing days until the next match
 - [x] **TRAIN-02**: User can assign each day before the next match as either a drill or rest
 - [x] **TRAIN-03**: User can select a squad-wide drill type for each training day from a menu of 6-8 drill categories
 - [x] **TRAIN-04**: Player attributes improve after training based on drill type, age, and a "training" personality trait
@@ -83,7 +83,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PORT-03 | Phase 10 | Complete |
 | TRAIN-04 | Phase 11 | Complete |
 | TRAIN-06 | Phase 11 | Complete |
-| TRAIN-01 | Phase 12 | Pending |
+| TRAIN-01 | Phase 12 | Complete |
 | TRAIN-02 | Phase 12 | Complete |
 | TRAIN-03 | Phase 12 | Complete |
 | TRAIN-05 | Phase 12 | Complete |
