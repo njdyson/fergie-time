@@ -111,7 +111,9 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. A headless 5-season simulation confirms no attribute exceeds ~0.95 for a player starting below 0.70 — economy is sound
   4. Attribute growth has no hidden ceiling — a player can keep improving at any age, but the rate naturally decays as age increases
   5. The "training" personality trait is present on all players and visibly affects per-session gain magnitude
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 11-01-PLAN.md — TDD: applyDrill pure function with age/personality factors, diminishing returns, and 5-season economy sim
 
 ### Phase 12: Training Scheduler
 **Goal**: The manager can see and assign training days between matches from the hub, pick squad-wide drill types, and observe attribute improvements on player profiles afterward
