@@ -207,6 +207,12 @@ const canvasWrapperParent = canvasWrapperEl.parentElement!;
 const rightPanelParent = document.getElementById('pitch-area')!;
 
 function showScreen(screen: ScreenId): void {
+  // Guard mobile-blocked screens
+  const mobileBlocked = new Set(['MATCH', 'TACTICS']);
+  if (window.innerWidth <= 768 && mobileBlocked.has(screen)) {
+    screen = ScreenId.HUB;
+  }
+
   const map: Record<string, string> = {
     LOGIN: 'login-screen', HUB: 'hub-screen', SQUAD: 'squad-screen', STATS: 'stats-screen',
     FIXTURES: 'fixtures-screen', TABLE: 'table-screen', TACTICS: 'tactics-screen', MATCH: 'pitch-area',
@@ -217,8 +223,11 @@ function showScreen(screen: ScreenId): void {
     const el = document.getElementById(id);
     if (el) el.style.display = key === screen ? (flexScreens.has(key) ? 'flex' : 'block') : 'none';
   }
+  const hideNav = screen === ScreenId.MATCH || screen === ScreenId.LOGIN || screen === ScreenId.PROFILE;
   const navEl = document.getElementById('nav-tabs');
-  if (navEl) navEl.style.display = (screen === ScreenId.MATCH || screen === ScreenId.LOGIN || screen === ScreenId.PROFILE) ? 'none' : 'flex';
+  if (navEl) navEl.style.display = hideNav ? 'none' : 'flex';
+  const hamburgerEl = document.getElementById('nav-hamburger');
+  if (hamburgerEl) hamburgerEl.style.display = hideNav ? 'none' : '';
   // Mark active nav tab
   document.querySelectorAll('.nav-tab').forEach(btn => {
     btn.classList.toggle('active', (btn as HTMLElement).dataset.screen === screen);
@@ -276,6 +285,17 @@ document.getElementById('nav-table')?.addEventListener('click', () => showScreen
 document.getElementById('nav-transfer')?.addEventListener('click', () => showScreen(ScreenId.TRANSFER));
 document.getElementById('nav-inbox')?.addEventListener('click', () => showScreen(ScreenId.INBOX));
 document.getElementById('nav-tactics')?.addEventListener('click', () => showScreen(ScreenId.TACTICS));
+
+// Hamburger menu toggle
+document.getElementById('nav-hamburger')?.addEventListener('click', () => {
+  document.getElementById('nav-tabs')?.classList.toggle('menu-open');
+});
+// Close menu when any nav tab is clicked
+for (const tab of document.querySelectorAll('.nav-tab')) {
+  tab.addEventListener('click', () =>
+    document.getElementById('nav-tabs')?.classList.remove('menu-open')
+  );
+}
 
 // --- Inbox badge ---
 function updateInboxBadge(): void {

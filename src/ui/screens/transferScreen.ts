@@ -180,14 +180,14 @@ export class TransferScreen {
     let html = `<div style="overflow-x: auto;"><div style="min-width: 600px;">`;
 
     // Header
-    html += `<div style="display: grid; grid-template-columns: ${cols}; gap: 4px; padding: 6px 8px; font-size: 10px; border-bottom: 1px solid #334155; align-items: center;">`;
+    html += `<div class="transfer-grid" style="display: grid; grid-template-columns: ${cols}; gap: 4px; padding: 6px 8px; font-size: 10px; border-bottom: 1px solid #334155; align-items: center;">`;
     html += this.sortHeader('name', 'Name');
-    html += this.sortHeader('age', 'Age', true);
+    html += this.sortHeader('age', 'Age', true, 'transfer-col-age');
     html += this.sortHeader('pos', 'Pos', true);
     html += this.sortHeader('rating', 'Rtg', true);
-    html += this.sortHeader('team', 'Team');
+    html += this.sortHeader('team', 'Team', false, 'transfer-col-team');
     html += this.sortHeader('price', 'Ask', true);
-    html += this.sortHeader('value', 'Value', true);
+    html += this.sortHeader('value', 'Value', true, 'transfer-col-value');
     html += `<span style="text-align:center; color: ${TEXT};">Action</span>`;
     html += `</div>`;
 
@@ -196,14 +196,14 @@ export class TransferScreen {
       const rowBg = i % 2 === 0 ? PANEL_BG : '#151f2e';
       const ratingColor = r.rating >= 70 ? GREEN : r.rating >= 50 ? ACCENT_ORANGE : RED;
 
-      html += `<div style="display: grid; grid-template-columns: ${cols}; gap: 4px; padding: 6px 8px; font-size: 12px; background: ${rowBg}; border-radius: 2px; align-items: center;">`;
+      html += `<div class="transfer-grid" style="display: grid; grid-template-columns: ${cols}; gap: 4px; padding: 6px 8px; font-size: 12px; background: ${rowBg}; border-radius: 2px; align-items: center;">`;
       html += `<span data-player-click="${r.player.id}" style="color: ${ACCENT_BLUE}; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${r.player.name ?? 'Unknown'}</span>`;
-      html += `<span style="text-align:center; color: ${TEXT_BRIGHT};">${r.player.age ?? '?'}</span>`;
+      html += `<span class="transfer-col-age" style="text-align:center; color: ${TEXT_BRIGHT};">${r.player.age ?? '?'}</span>`;
       html += `<span style="text-align:center; color: ${ACCENT_ORANGE}; font-weight: bold; font-size: 11px;">${r.player.role}</span>`;
       html += `<span style="text-align:center; color: ${ratingColor}; font-weight: bold;">${r.rating}</span>`;
-      html += `<span style="color: ${TEXT}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px;">${r.teamName}</span>`;
+      html += `<span class="transfer-col-team" style="color: ${TEXT}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px;">${r.teamName}</span>`;
       html += `<span style="text-align:center; color: ${TEXT_BRIGHT};">£${formatMoney(r.askingPrice)}</span>`;
-      html += `<span style="text-align:center; color: ${TEXT};">£${formatMoney(r.value)}</span>`;
+      html += `<span class="transfer-col-value" style="text-align:center; color: ${TEXT};">£${formatMoney(r.value)}</span>`;
 
       // Action button
       if (r.teamId === playerTeam.id) {
@@ -339,13 +339,13 @@ export class TransferScreen {
 
     html += `<div style="overflow-x: auto;"><div style="min-width: 600px;">`;
 
-    html += `<div style="display: grid; grid-template-columns: ${cols}; gap: 4px; padding: 6px 8px; font-size: 10px; border-bottom: 1px solid #334155; align-items: center;">`;
+    html += `<div class="transfer-grid" style="display: grid; grid-template-columns: ${cols}; gap: 4px; padding: 6px 8px; font-size: 10px; border-bottom: 1px solid #334155; align-items: center;">`;
     html += this.sortHeader('name', 'Name');
-    html += this.sortHeader('age', 'Age', true);
+    html += this.sortHeader('age', 'Age', true, 'transfer-col-age');
     html += this.sortHeader('pos', 'Pos', true);
     html += this.sortHeader('rating', 'Rtg', true);
-    html += this.sortHeader('team', 'Team');
-    html += this.sortHeader('value', 'Value', true);
+    html += this.sortHeader('team', 'Team', false, 'transfer-col-team');
+    html += this.sortHeader('value', 'Value', true, 'transfer-col-value');
     html += `<span style="text-align:center; color: ${TEXT};">TL</span>`;
     html += `<span style="text-align:center; color: ${TEXT};">Action</span>`;
     html += `</div>`;
@@ -355,13 +355,13 @@ export class TransferScreen {
       const rowBg = i % 2 === 0 ? PANEL_BG : '#151f2e';
       const ratingColor = r.rating >= 70 ? GREEN : r.rating >= 50 ? ACCENT_ORANGE : RED;
 
-      html += `<div style="display: grid; grid-template-columns: ${cols}; gap: 4px; padding: 6px 8px; font-size: 12px; background: ${rowBg}; border-radius: 2px; align-items: center;">`;
+      html += `<div class="transfer-grid" style="display: grid; grid-template-columns: ${cols}; gap: 4px; padding: 6px 8px; font-size: 12px; background: ${rowBg}; border-radius: 2px; align-items: center;">`;
       html += `<span data-player-click="${r.player.id}" style="color: ${ACCENT_BLUE}; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${r.player.name ?? 'Unknown'}</span>`;
-      html += `<span style="text-align:center; color: ${TEXT_BRIGHT};">${r.player.age ?? '?'}</span>`;
+      html += `<span class="transfer-col-age" style="text-align:center; color: ${TEXT_BRIGHT};">${r.player.age ?? '?'}</span>`;
       html += `<span style="text-align:center; color: ${ACCENT_ORANGE}; font-weight: bold; font-size: 11px;">${r.player.role}</span>`;
       html += `<span style="text-align:center; color: ${ratingColor}; font-weight: bold;">${r.rating}</span>`;
-      html += `<span style="color: ${TEXT}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px;">${r.teamName}</span>`;
-      html += `<span style="text-align:center; color: ${TEXT_BRIGHT};">£${formatMoney(r.value)}</span>`;
+      html += `<span class="transfer-col-team" style="color: ${TEXT}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px;">${r.teamName}</span>`;
+      html += `<span class="transfer-col-value" style="text-align:center; color: ${TEXT_BRIGHT};">£${formatMoney(r.value)}</span>`;
       html += `<span style="text-align:center; color: ${r.isListed ? GREEN : TEXT};">${r.isListed ? 'Yes' : '-'}</span>`;
 
       if (r.teamId === playerTeam.id) {
@@ -382,11 +382,12 @@ export class TransferScreen {
     return html;
   }
 
-  private sortHeader(col: SortColumn, label: string, center = false): string {
+  private sortHeader(col: SortColumn, label: string, center = false, className = ''): string {
     const active = this.sortCol === col;
     const arrow = active ? (this.sortAsc ? ' ▲' : ' ▼') : '';
     const style = `cursor: pointer; user-select: none; color: ${active ? ACCENT_BLUE : TEXT}; white-space: nowrap;${center ? ' text-align: center;' : ''}`;
-    return `<span data-sort-col="${col}" style="${style}">${label}${arrow}</span>`;
+    const cls = className ? ` class="${className}"` : '';
+    return `<span data-sort-col="${col}"${cls} style="${style}">${label}${arrow}</span>`;
   }
 
   private attachHandlers(seasonState: SeasonState): void {

@@ -101,8 +101,8 @@ export class InboxScreen {
     html += unreadDot;
     html += catBadge;
     html += `<span style="flex: 1; color: ${subjectColor}; font-weight: ${fontWeight}; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${msg.subject}</span>`;
-    html += `<span style="color: ${TEXT}; font-size: 10px; flex-shrink: 0;">From: ${msg.from}</span>`;
-    html += `<span style="color: ${TEXT}; font-size: 10px; flex-shrink: 0;">MD ${msg.matchday}</span>`;
+    html += `<span class="msg-meta" style="color: ${TEXT}; font-size: 10px; flex-shrink: 0;">From: ${msg.from}</span>`;
+    html += `<span class="msg-meta" style="color: ${TEXT}; font-size: 10px; flex-shrink: 0;">MD ${msg.matchday}</span>`;
 
     // Action buttons
     if (this.folder === 'inbox') {

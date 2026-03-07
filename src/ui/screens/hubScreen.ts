@@ -121,7 +121,7 @@ export class HubScreen {
           </div>
 
           <!-- Two-column row -->
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+          <div class="hub-two-col" style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
             <div style="${cardStyle}">
               <div style="${labelStyle}">Next Fixture</div>
               <div style="color: ${TEXT_BRIGHT}; font-size: 17px; font-weight: 600;">${nextText}</div>
@@ -136,7 +136,7 @@ export class HubScreen {
           </div>
 
           <!-- Kick Off button -->
-          ${!isSeasonComplete(state) ? `<button id="hub-kickoff-btn" style="display:block; width:100%; margin-top:4px; padding:16px 32px; background: linear-gradient(135deg, #166534 0%, #14532d 100%); color:#bbf7d0; border:2px solid #22c55e; border-radius:12px; font:bold 18px/1 'Segoe UI',system-ui,sans-serif; cursor:pointer; text-transform:uppercase; letter-spacing:0.1em; box-shadow: 0 4px 20px rgba(34,197,94,0.2); transition: transform 0.1s, box-shadow 0.1s;" onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 6px 24px rgba(34,197,94,0.3)'" onmouseout="this.style.transform='';this.style.boxShadow='0 4px 20px rgba(34,197,94,0.2)'">Kick Off</button>` : `<div style="${cardStyle} text-align: center;"><div style="color: ${ACCENT_ORANGE}; font-size: 20px; font-weight: bold;">Season Complete</div></div>`}
+          ${!isSeasonComplete(state) ? `<button id="hub-kickoff-btn" class="hub-kickoff" style="display:block; width:100%; margin-top:4px; padding:16px 32px; background: linear-gradient(135deg, #166534 0%, #14532d 100%); color:#bbf7d0; border:2px solid #22c55e; border-radius:12px; font:bold 18px/1 'Segoe UI',system-ui,sans-serif; cursor:pointer; text-transform:uppercase; letter-spacing:0.1em; box-shadow: 0 4px 20px rgba(34,197,94,0.2); transition: transform 0.1s, box-shadow 0.1s;" onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 6px 24px rgba(34,197,94,0.3)'" onmouseout="this.style.transform='';this.style.boxShadow='0 4px 20px rgba(34,197,94,0.2)'">Kick Off</button>` : `<div style="${cardStyle} text-align: center;"><div style="color: ${ACCENT_ORANGE}; font-size: 20px; font-weight: bold;">Season Complete</div></div>`}
         </div>
       </div>
     `;

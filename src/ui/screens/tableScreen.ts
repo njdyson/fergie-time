@@ -33,15 +33,15 @@ export class TableScreen {
     html += `<h2 style="color: ${TEXT_BRIGHT}; font-size: 22px; margin: 0 0 16px 0; font-family: 'Segoe UI', system-ui, sans-serif;">League Table</h2>`;
 
     // Table header
-    html += `<div style="display: grid; grid-template-columns: 32px 1fr repeat(9, 40px); padding: 8px 12px; font-size: 12px; color: ${HEADER_TEXT}; border-bottom: 1px solid #334155;">`;
+    html += `<div class="table-grid" style="display: grid; grid-template-columns: 32px 1fr repeat(9, 40px); padding: 8px 12px; font-size: 12px; color: ${HEADER_TEXT}; border-bottom: 1px solid #334155;">`;
     html += '<span>Pos</span><span>Team</span>';
     html += '<span style="text-align: center;">P</span>';
     html += '<span style="text-align: center;">W</span>';
     html += '<span style="text-align: center;">D</span>';
     html += '<span style="text-align: center;">L</span>';
-    html += '<span style="text-align: center;">GF</span>';
-    html += '<span style="text-align: center;">GA</span>';
-    html += '<span style="text-align: center;">GD</span>';
+    html += '<span class="table-col-gf" style="text-align: center;">GF</span>';
+    html += '<span class="table-col-ga" style="text-align: center;">GA</span>';
+    html += '<span class="table-col-gd" style="text-align: center;">GD</span>';
     html += '<span style="text-align: center;">Pts</span>';
     html += '</div>';
 
@@ -54,16 +54,16 @@ export class TableScreen {
       const gd = row.goalsFor - row.goalsAgainst;
       const gdStr = gd > 0 ? `+${gd}` : `${gd}`;
 
-      html += `<div style="display: grid; grid-template-columns: 32px 1fr repeat(9, 40px); padding: 8px 12px; font-size: 13px; color: ${textColor}; background: ${bg}; border-radius: 2px;">`;
+      html += `<div class="table-grid" style="display: grid; grid-template-columns: 32px 1fr repeat(9, 40px); padding: 8px 12px; font-size: 13px; color: ${textColor}; background: ${bg}; border-radius: 2px;">`;
       html += `<span>${i + 1}</span>`;
       html += `<span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${row.teamName}</span>`;
       html += `<span style="text-align: center;">${row.played}</span>`;
       html += `<span style="text-align: center;">${row.won}</span>`;
       html += `<span style="text-align: center;">${row.drawn}</span>`;
       html += `<span style="text-align: center;">${row.lost}</span>`;
-      html += `<span style="text-align: center;">${row.goalsFor}</span>`;
-      html += `<span style="text-align: center;">${row.goalsAgainst}</span>`;
-      html += `<span style="text-align: center;">${gdStr}</span>`;
+      html += `<span class="table-col-gf" style="text-align: center;">${row.goalsFor}</span>`;
+      html += `<span class="table-col-ga" style="text-align: center;">${row.goalsAgainst}</span>`;
+      html += `<span class="table-col-gd" style="text-align: center;">${gdStr}</span>`;
       html += `<span style="text-align: center; font-weight: bold;">${row.points}</span>`;
       html += '</div>';
     }

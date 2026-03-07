@@ -1362,6 +1362,107 @@
         border-radius: 50%;
         margin-top: -5px;
       }
+      /* ── Mobile responsive (view-only mode) ────────────── */
+
+      /* Rating column: hidden on desktop */
+      .squad-col-rating { display: none; }
+
+      @media (max-width: 768px) {
+        /* Allow body scroll on mobile */
+        html, body { overflow: auto !important; height: auto !important; }
+
+        /* Reduce screen padding */
+        .screen-bg { padding: 8px !important; }
+
+        /* Never show match/tactics/debug on mobile */
+        #pitch-area, #tactics-screen, .debug-sidebar, #tuning-panel {
+          display: none !important;
+        }
+
+        /* ── Hamburger nav ── */
+        #nav-hamburger {
+          display: flex !important;
+          background: #0a0a0a;
+          color: #e2e8f0;
+          padding: 10px 16px;
+          justify-content: space-between;
+          align-items: center;
+          border-bottom: 1px solid #1e293b;
+          cursor: pointer;
+          font: 600 16px/1 'Segoe UI', system-ui, sans-serif;
+        }
+        #nav-tabs {
+          flex-direction: column;
+          display: none !important;
+        }
+        #nav-tabs.menu-open {
+          display: flex !important;
+        }
+        #nav-tabs .nav-tab {
+          width: 100%;
+          padding: 12px 16px;
+          text-align: left;
+          border-bottom: 1px solid #1e293b;
+          border-right: none;
+          font-size: 13px;
+          letter-spacing: 0.05em;
+        }
+        #nav-tactics { display: none !important; }
+        #nav-logout {
+          position: static !important;
+          transform: none !important;
+          width: 100%;
+          text-align: left;
+          padding: 12px 16px !important;
+          border-top: 1px solid #334155;
+          font-size: 13px !important;
+        }
+
+        /* ── Hub screen ── */
+        .hub-two-col { grid-template-columns: 1fr !important; }
+        .hub-kickoff { display: none !important; }
+
+        /* ── Squad screen ── */
+        .squad-grid {
+          grid-template-columns: 1fr 40px 36px 40px 44px !important;
+        }
+        .squad-col-badge,
+        .squad-col-shirt,
+        .squad-col-nat,
+        .squad-col-ht,
+        .squad-col-attr,
+        .squad-col-stat { display: none !important; }
+        .squad-col-rating { display: block !important; }
+        .squad-summary { display: none !important; }
+
+        /* ── Table screen ── */
+        .table-grid {
+          grid-template-columns: 28px 1fr repeat(5, 32px) !important;
+          font-size: 11px !important;
+        }
+        .table-col-gf, .table-col-ga, .table-col-gd { display: none !important; }
+
+        /* ── Stats screen ── */
+        .stats-grid {
+          grid-template-columns: 1fr 40px 36px 36px 36px 50px !important;
+        }
+        .stats-col-minor { display: none !important; }
+
+        /* ── Transfer screen ── */
+        .transfer-grid {
+          grid-template-columns: 1fr 40px 40px 60px 70px !important;
+        }
+        .transfer-col-age, .transfer-col-team, .transfer-col-value { display: none !important; }
+
+        /* ── Inbox screen ── */
+        .msg-meta { display: none !important; }
+
+        /* ── Player profile screen ── */
+        .profile-attrs { grid-template-columns: 1fr !important; }
+
+        /* ── Fixtures screen ── */
+        #fixtures-screen { font-size: 12px !important; }
+      }
     </style>
   </head>
   <body>
@@ -1369,6 +1470,12 @@
 
       <!-- ── Login screen (shown before auth, hidden after) ──── -->
       <div id="login-screen" class="screen-bg" style="display:none; flex:1; overflow:auto;"></div>
+
+      <!-- ── Hamburger menu toggle (mobile only) ─────────────── -->
+      <div id="nav-hamburger" style="display:none;">
+        <span>FERGIE TIME</span>
+        <span id="hamburger-icon" style="font-size:22px;">☰</span>
+      </div>
 
       <!-- ── Nav tabs ──────────────────────────────────────────── -->
       <nav id="nav-tabs" style="display:flex; justify-content:center; gap:8px; padding:0; background:#0a0a0a; border-bottom:1px solid #1e293b; position:relative;">

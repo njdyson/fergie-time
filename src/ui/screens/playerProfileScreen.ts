@@ -263,7 +263,7 @@ export class PlayerProfileScreen {
     html += `</div>`; // end main content row
 
     // ── Two-column layout: attributes + personality ──
-    html += `<div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px;">`;
+    html += `<div class="profile-attrs" style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px;">`;
 
     // Core Attributes panel
     html += `<div style="background:${PANEL_BG}; border-radius:8px; padding:14px;">`;

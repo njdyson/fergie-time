@@ -8,6 +8,7 @@ import type { PlayerState } from '../../simulation/types.ts';
 import { validateSquadSelection } from '../../season/season.ts';
 import type { SquadSelection, SquadSlot } from '../../season/season.ts';
 import type { PlayerSeasonStats } from '../../season/playerStats.ts';
+import { calculatePlayerRating } from '../../season/playerAnalysis.ts';
 
 // Re-export for consumer convenience
 export type { SquadSelection } from '../../season/season.ts';
@@ -556,7 +557,7 @@ export class SquadScreen {
     // Selection summary + Clear All button
     const starterCount = [...this.selections.values()].filter(s => isStarterRole(s)).length;
     const benchCount = [...this.selections.values()].filter(s => s === 'bench').length;
-    html += `<div style="color: ${TEXT}; font-size: 13px; margin-bottom: 12px; display: flex; align-items: center; gap: 12px;">`;
+    html += `<div class="squad-summary" style="color: ${TEXT}; font-size: 13px; margin-bottom: 12px; display: flex; align-items: center; gap: 12px;">`;
     html += `<span style="color: ${GREEN};">Starters: ${starterCount}/11</span>`;
     html += `<span>|</span>`;
     html += `<span style="color: ${ACCENT_BLUE};">Bench: ${benchCount}/7</span>`;
@@ -573,21 +574,22 @@ export class SquadScreen {
     const hdrStyle = `cursor: pointer; user-select: none;`;
 
     // Attribute header row
-    html += `<div style="display: grid; grid-template-columns: ${gridCols}; gap: 2px; padding: 4px 8px; font-size: 10px; color: ${TEXT}; border-bottom: 1px solid #334155; align-items: center;">`;
-    html += '<span></span>'; // badge
-    html += `<span data-sort="#" style="${hdrStyle}">#${sortArrow('#')}</span>`;
+    html += `<div class="squad-grid" style="display: grid; grid-template-columns: ${gridCols}; gap: 2px; padding: 4px 8px; font-size: 10px; color: ${TEXT}; border-bottom: 1px solid #334155; align-items: center;">`;
+    html += '<span class="squad-col-badge"></span>'; // badge
+    html += `<span class="squad-col-shirt" data-sort="#" style="${hdrStyle}">#${sortArrow('#')}</span>`;
     html += `<span data-sort="name" style="${hdrStyle}">Name${sortArrow('name')}</span>`;
     html += `<span data-sort="pos" style="${hdrStyle}">Pos${sortArrow('pos')}</span>`;
-    html += '<span>Nat</span>';
+    html += '<span class="squad-col-nat">Nat</span>';
     html += `<span data-sort="age" style="${hdrStyle}">Age${sortArrow('age')}</span>`;
-    html += '<span>Ht</span>';
+    html += '<span class="squad-col-ht">Ht</span>';
     for (const attr of ATTR_NAMES) {
-      html += `<span data-sort="${attr}" style="text-align: center; ${hdrStyle}" title="${attr}">${ATTR_SHORT[attr]}${sortArrow(attr)}</span>`;
+      html += `<span class="squad-col-attr" data-sort="${attr}" style="text-align: center; ${hdrStyle}" title="${attr}">${ATTR_SHORT[attr]}${sortArrow(attr)}</span>`;
     }
+    html += `<span class="squad-col-rating" style="text-align: center; display: none;">Rtg</span>`;
     html += `<span data-sort="fit" style="text-align: center; ${hdrStyle}">FIT${sortArrow('fit')}</span>`;
-    html += `<span style="text-align: center; color: #4ade80; font-weight: bold;" title="Goals this season">G</span>`;
-    html += `<span style="text-align: center; color: #60a5fa; font-weight: bold;" title="Assists this season">A</span>`;
-    html += `<span style="text-align: center;" title="Appearances this season">App</span>`;
+    html += `<span class="squad-col-stat" style="text-align: center; color: #4ade80; font-weight: bold;" title="Goals this season">G</span>`;
+    html += `<span class="squad-col-stat" style="text-align: center; color: #60a5fa; font-weight: bold;" title="Assists this season">A</span>`;
+    html += `<span class="squad-col-stat" style="text-align: center;" title="Appearances this season">App</span>`;
     html += '</div>';
 
     // Player rows
@@ -602,13 +604,13 @@ export class SquadScreen {
       const rowBg = i % 2 === 0 ? PANEL_BG : '#151f2e';
       const shirtNum = this.shirtNumbers.get(p.id) ?? p.shirtNumber ?? '';
 
-      html += `<div data-player-id="${p.id}" style="display: grid; grid-template-columns: ${gridCols}; gap: 2px; padding: 6px 8px; font-size: 12px; background: ${rowBg}; border-radius: 2px; align-items: center; cursor: pointer;" class="squad-row">`;
+      html += `<div data-player-id="${p.id}" style="display: grid; grid-template-columns: ${gridCols}; gap: 2px; padding: 6px 8px; font-size: 12px; background: ${rowBg}; border-radius: 2px; align-items: center; cursor: pointer;" class="squad-row squad-grid">`;
 
       // Selection badge (clickable)
-      html += `<span data-toggle="${p.id}" style="display: inline-block; background: ${badgeColor}; color: #000; font-weight: bold; font-size: 10px; padding: 2px 6px; border-radius: 3px; text-align: center; cursor: pointer; user-select: none;">${badgeLabel}</span>`;
+      html += `<span class="squad-col-badge" data-toggle="${p.id}" style="display: inline-block; background: ${badgeColor}; color: #000; font-weight: bold; font-size: 10px; padding: 2px 6px; border-radius: 3px; text-align: center; cursor: pointer; user-select: none;">${badgeLabel}</span>`;
 
       // Shirt number circle (click to pick)
-      html += `<span data-shirt="${p.id}" style="display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid ${ACCENT_BLUE}; background: #0f172a; color: ${TEXT_BRIGHT}; font: bold 11px/1 'Segoe UI',system-ui,sans-serif; cursor: pointer; user-select: none; margin: 0 auto;" title="Click to change shirt number">${shirtNum}</span>`;
+      html += `<span class="squad-col-shirt" data-shirt="${p.id}" style="display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid ${ACCENT_BLUE}; background: #0f172a; color: ${TEXT_BRIGHT}; font: bold 11px/1 'Segoe UI',system-ui,sans-serif; cursor: pointer; user-select: none; margin: 0 auto;" title="Click to change shirt number">${shirtNum}</span>`;
 
       // Name (clickable for player profile)
       html += `<span data-player-name="${p.id}" style="color: ${ACCENT_BLUE}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer;" title="View player profile">${p.name ?? 'Unknown'}</span>`;
@@ -618,25 +620,30 @@ export class SquadScreen {
 
       // Nationality
       const nat = getNat(p.nationality);
-      html += `<span style="color: ${TEXT}; font-size: 10px;" title="${nat.name}">${nat.abbr}</span>`;
+      html += `<span class="squad-col-nat" style="color: ${TEXT}; font-size: 10px;" title="${nat.name}">${nat.abbr}</span>`;
 
       // Age
       html += `<span style="color: ${TEXT};">${p.age ?? '-'}</span>`;
 
       // Height
-      html += `<span style="color: ${TEXT};">${p.height ? `${p.height}cm` : '-'}</span>`;
+      html += `<span class="squad-col-ht" style="color: ${TEXT};">${p.height ? `${p.height}cm` : '-'}</span>`;
 
       // 10 attribute mini-bars
       for (const attr of ATTR_NAMES) {
         const val = p.attributes[attr];
         const pct = Math.round(val * 100);
         const barColor = getAttrBarColor(val);
-        html += `<span style="text-align: center;" title="${attr}: ${pct}%">`;
+        html += `<span class="squad-col-attr" style="text-align: center;" title="${attr}: ${pct}%">`;
         html += `<div style="width: 24px; height: 6px; background: #334155; border-radius: 2px; margin: 0 auto;">`;
         html += `<div style="width: ${pct}%; height: 100%; background: ${barColor}; border-radius: 2px;"></div>`;
         html += `</div>`;
         html += `</span>`;
       }
+
+      // Rating (hidden on desktop, shown on mobile)
+      const playerRating = calculatePlayerRating(p);
+      const ratingColor = playerRating >= 70 ? GREEN : playerRating >= 50 ? ACCENT_ORANGE : RED;
+      html += `<span class="squad-col-rating" style="text-align: center; display: none; color: ${ratingColor}; font-weight: bold; font-size: 11px;">${playerRating}</span>`;
 
       // Fitness bar (inverted fatigue)
       const fitPct = Math.round(fitness * 100);
@@ -652,9 +659,9 @@ export class SquadScreen {
       const goals = pStat?.goals ?? null;
       const assists = pStat?.assists ?? null;
       const apps = pStat?.appearances ?? null;
-      html += `<span style="text-align: center; color: ${goals ? '#4ade80' : TEXT}; font-weight: ${goals ? 'bold' : 'normal'}; font-size: 11px;">${goals !== null ? goals : '-'}</span>`;
-      html += `<span style="text-align: center; color: ${assists ? '#60a5fa' : TEXT}; font-size: 11px;">${assists !== null ? assists : '-'}</span>`;
-      html += `<span style="text-align: center; color: ${TEXT}; font-size: 11px;">${apps !== null ? apps : '-'}</span>`;
+      html += `<span class="squad-col-stat" style="text-align: center; color: ${goals ? '#4ade80' : TEXT}; font-weight: ${goals ? 'bold' : 'normal'}; font-size: 11px;">${goals !== null ? goals : '-'}</span>`;
+      html += `<span class="squad-col-stat" style="text-align: center; color: ${assists ? '#60a5fa' : TEXT}; font-size: 11px;">${assists !== null ? assists : '-'}</span>`;
+      html += `<span class="squad-col-stat" style="text-align: center; color: ${TEXT}; font-size: 11px;">${apps !== null ? apps : '-'}</span>`;
 
       html += '</div>';
     }
