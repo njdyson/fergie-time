@@ -62,7 +62,7 @@ Requirements for the Data Layer milestone.
 
 - [x] **SERV-01**: Express API server with SQLite via better-sqlite3
 - [x] **SERV-02**: Vite dev proxy routes /api/* to Express during development
-- [ ] **SERV-03**: VPS deployment with systemd service + nginx reverse proxy
+- [x] **SERV-03**: VPS deployment with systemd service + nginx reverse proxy
 - [x] **SERV-04**: CORS and session management configured
 
 ### Squad Expansion
@@ -83,8 +83,8 @@ Requirements for the Data Layer milestone.
 - [x] **STAT-01**: Per-player per-season stats tracked (goals, assists, appearances minimum)
 - [x] **STAT-02**: Extensible stats schema — easy to add pass completion, shot/goal ratio, tackles etc.
 - [x] **STAT-03**: Quick-sim exposes goalscorer data from GameEventLog
-- [ ] **STAT-04**: Post-match stats hook captures player performance before screen transition
-- [ ] **STAT-05**: League-wide stat views (top scorers at minimum)
+- [x] **STAT-04**: Post-match stats hook captures player performance before screen transition
+- [x] **STAT-05**: League-wide stat views (top scorers at minimum)
 
 ## Future Requirements
 
@@ -194,9 +194,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | STAT-01 | Phase 8 | Complete |
 | STAT-02 | Phase 8 | Complete |
 | STAT-03 | Phase 8 | Complete |
-| STAT-04 | Phase 8 | Pending |
-| STAT-05 | Phase 8 | Pending |
-| SERV-03 | Phase 8 | Pending |
+| STAT-04 | Phase 8 | Complete |
+| STAT-05 | Phase 8 | Complete |
+| SERV-03 | Phase 8 | Complete |
 
 **Coverage:**
 - v1.0 requirements: 26 total (26 complete)

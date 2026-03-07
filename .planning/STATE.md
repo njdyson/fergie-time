@@ -39,11 +39,11 @@ See: .planning/PROJECT.md (updated 2026-03-06)
 ## Current Position
 
 Phase: 8 of 8 (Stats + Deployment) — in progress
-Plan: 1 of 3 complete
+Plan: 2 of 3 complete
 Status: Executing
-Last activity: 2026-03-07 — Plan 08-01 complete (PlayerSeasonStats data layer, TDD, quickSim stats, SeasonState field)
+Last activity: 2026-03-07 — Plan 08-02 complete (stats capture hook, StatsScreen, squad inline stats, top scorers)
 
-Progress: [██████████] ~33% of phase 8
+Progress: [███████████████] ~67% of phase 8
 
 ## Performance Metrics
 
@@ -73,6 +73,7 @@ Progress: [██████████] ~33% of phase 8
 | Phase 07 P02 | pre-committed | 1 task | 3 files |
 | Phase 06-auth-persistence P02 | 10 | 2 tasks | 4 files |
 | Phase 08-stats-deployment P01 | 206 | 4 tasks | 5 files |
+| Phase 08-stats-deployment P02 | 304 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -102,6 +103,8 @@ Recent decisions affecting current work:
 - [Phase 06-02]: Continue tab shows list of saved games via /api/games/list rather than plain text input
 - [Phase 08-stats-deployment]: minutesPlayed fixed at 90 for all players (no sub tracking yet)
 - [Phase 08-stats-deployment]: playerSeasonStats non-optional on SeasonState, always empty Map on season start
+- [Phase 08-02]: Guard simResult.playerStats with empty Map fallback for test mock compatibility
+- [Phase 08-02]: Stats merge at full-time before vidiprinter ensures capture even on early browser close
 
 ### Pending Todos
 
@@ -115,6 +118,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-07T07:38:00Z
-Stopped at: Completed 08-01-PLAN.md
+Last session: 2026-03-07T07:45:26Z
+Stopped at: Completed 08-02-PLAN.md
 Resume file: None
