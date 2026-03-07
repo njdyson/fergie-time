@@ -96,7 +96,7 @@ const HAIR_SHORT_CROP: HairStyle = {
   ],
   front: [
     // top of head, tight crop
-    [7, 3], [8, 3], [9, 3], [10, 3], [11, 3], [12, 3],
+    [6, 3], [7, 3], [8, 3], [9, 3], [10, 3], [11, 3], [12, 3], [13, 3],
     [8, 2], [9, 2], [10, 2], [11, 2],
   ],
 };
@@ -110,8 +110,8 @@ const HAIR_MEDIUM_PART: HairStyle = {
   ],
   front: [
     // slightly wider top
-    [6, 3], [7, 3], [8, 3], [9, 3], [10, 3], [11, 3], [12, 3], [13, 3],
-    [7, 2], [8, 2], [9, 2], [10, 2], [11, 2],
+    [6, 3], [7, 3], [8, 3], [9, 3], [10, 3], [11, 3], [12, 3], [13, 3], [14, 3],
+    [7, 2], [8, 2], [9, 2], [10, 2], [11, 2], [12, 2],
     [8, 1], [9, 1], [10, 1],
     // side part draping left
     [6, 4], [6, 5],
@@ -255,6 +255,13 @@ export function generatePortrait(canvas: HTMLCanvasElement, player: PlayerState)
   ctx.fillStyle = BG_COLOUR;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+  // Centre the portrait within the circular avatar area.
+  // The 20×24 logical grid draws face content mostly in cols 4-15 and rows 2-16.
+  // That maps to canvas x 24-96 (centred at 60) and y 10-85 (centred at ~47).
+  // The canvas circle centre is at (60, 60), so we translate down by 13px to align.
+  ctx.save();
+  ctx.translate(0, 13);
+
   // 5. Draw layers back-to-front
   // Layer 1: Hair back (behind face — neckline, sides visible around head)
   drawLayer(ctx, hairStyle.back, hairColour);
@@ -283,6 +290,8 @@ export function generatePortrait(canvas: HTMLCanvasElement, player: PlayerState)
 
   // Layer 8: Hair front (over face — top of head, falls around forehead)
   drawLayer(ctx, hairStyle.front, hairColour);
+
+  ctx.restore();
 
   // Suppress unused-variable warnings for GRID_W, GRID_H (kept for documentation)
   void (GRID_W + GRID_H);

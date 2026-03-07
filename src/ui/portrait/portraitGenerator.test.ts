@@ -14,6 +14,9 @@ type MockCtxInternal = {
   fillRect: (x: number, y: number, w: number, h: number) => void;
   getImageData: (x: number, y: number, w: number, h: number) => ImageData;
   putImageData: (data: ImageData, x: number, y: number) => void;
+  save: () => void;
+  restore: () => void;
+  translate: (x: number, y: number) => void;
 };
 
 function makeMockCtx(): MockCtxInternal {
@@ -47,6 +50,11 @@ function makeMockCtx(): MockCtxInternal {
       this.calls.push({ method: 'putImageData', args: [data] });
       buffer.set(data.data);
     },
+    // Transformation stubs — mock does not implement a transform matrix; these are
+    // no-ops sufficient for unit tests that verify pixel data correctness/determinism.
+    save() { this.calls.push({ method: 'save', args: [] }); },
+    restore() { this.calls.push({ method: 'restore', args: [] }); },
+    translate(x: number, y: number) { this.calls.push({ method: 'translate', args: [x, y] }); },
   };
   return ctx;
 }
