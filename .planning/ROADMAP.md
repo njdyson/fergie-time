@@ -162,7 +162,11 @@ Plans:
   2. Quick-simulated matches attribute goalscorers — the top scorer table reflects goals from both watched and simulated matches
   3. A league-wide top scorers view shows the leading goalscorers across all 20 teams
   4. The application is accessible on the VPS via nginx reverse proxy, with the Express server running as a systemd service that survives reboots
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 08-01-PLAN.md -- PlayerSeasonStats data layer, accumulation logic, quickSim stats return (TDD)
+- [ ] 08-02-PLAN.md -- Post-match stats capture, Stats screen with sortable table and top scorers, squad inline columns
+- [ ] 08-03-PLAN.md -- Player profile page with avatar, attribute bars, and human verification
 
 ## Progress
 
@@ -178,4 +182,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 5. Server Foundation | 3/3 | Complete   | 2026-03-06 | - |
 | 6. Auth + Persistence | 2/2 | Complete   | 2026-03-07 | - |
 | 7. Squads + Names | 2/2 | Complete   | 2026-03-07 | - |
-| 8. Stats + Deployment | v1.1 | 0/TBD | Not started | - |
+| 8. Stats + Deployment | v1.1 | 0/3 | Not started | - |
