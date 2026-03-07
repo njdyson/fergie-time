@@ -173,7 +173,8 @@ function updateCurrentScreen(): void {
       if (p) { foundPlayer = p; foundTeam = team; break; }
     }
     if (foundPlayer && foundTeam) {
-      const pStats = seasonState.playerSeasonStats.get(profilePlayerId) ?? null;
+      const statsMap = seasonState.playerSeasonStats ?? new Map();
+      const pStats = statsMap.get(profilePlayerId) ?? null;
       playerProfileScreenView.update(foundPlayer, foundTeam, pStats, seasonState.seasonNumber);
     }
   }
@@ -194,7 +195,7 @@ function showScreen(screen: ScreenId): void {
     FIXTURES: 'fixtures-screen', TABLE: 'table-screen', TACTICS: 'tactics-screen', MATCH: 'pitch-area',
     PROFILE: 'profile-screen',
   };
-  const flexScreens = new Set(['MATCH', 'SQUAD', 'LOGIN', 'TACTICS', 'PROFILE']);
+  const flexScreens = new Set(['MATCH', 'SQUAD', 'LOGIN', 'TACTICS']);
   for (const [key, id] of Object.entries(map)) {
     const el = document.getElementById(id);
     if (el) el.style.display = key === screen ? (flexScreens.has(key) ? 'flex' : 'block') : 'none';
@@ -654,7 +655,7 @@ function initMatchWithConfig(config: {
           away: snap.score[0],  // away team concedes home team's goals
         };
         seasonState.playerSeasonStats = mergeAllMatchStats(
-          seasonState.playerSeasonStats,
+          seasonState.playerSeasonStats ?? new Map(),
           playerStats,
           goalsConceded,
         );

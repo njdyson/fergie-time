@@ -135,15 +135,14 @@ function shiftColor(hex: string, amount: number): string {
 }
 
 /** Render a horizontal attribute bar row. */
-function renderBar(label: string, value: number, maxWidth: number = 180): string {
+function renderBar(label: string, value: number): string {
   const pct = Math.round(value * 100);
   const barColor = getAttrBarColor(value);
-  const barWidth = Math.round((value * maxWidth));
   return `
     <div style="display:flex; align-items:center; gap:8px; padding:3px 0;">
-      <span style="color:${TEXT}; font-size:11px; min-width:100px; flex-shrink:0;">${label}</span>
-      <div style="flex:1; height:8px; background:#334155; border-radius:4px; overflow:hidden; min-width:${maxWidth}px; max-width:${maxWidth}px;">
-        <div style="width:${barWidth}px; height:100%; background:${barColor}; border-radius:4px; transition:width .2s;"></div>
+      <span style="color:${TEXT}; font-size:11px; min-width:90px; flex-shrink:0;">${label}</span>
+      <div style="flex:1; height:8px; background:#334155; border-radius:4px; overflow:hidden;">
+        <div style="width:${pct}%; height:100%; background:${barColor}; border-radius:4px; transition:width .2s;"></div>
       </div>
       <span style="color:${TEXT_BRIGHT}; font-size:11px; min-width:26px; text-align:right;">${pct}</span>
     </div>
@@ -225,7 +224,7 @@ export class PlayerProfileScreen {
     const gpg = s && s.appearances > 0 ? (s.goals / s.appearances).toFixed(2) : '-';
 
     let html = '';
-    html += `<div style="max-width: 700px; margin: 0 auto; padding: 16px;">`;
+    html += `<div style="max-width: 800px; margin: 0 auto; padding: 16px;">`;
 
     // ── Header bar with back button ──
     html += `<div style="display:flex; align-items:center; gap:12px; margin-bottom:20px; background:${PANEL_BG}; padding:12px 16px; border-radius:8px;">`;
@@ -264,7 +263,7 @@ export class PlayerProfileScreen {
     html += `</div>`; // end main content row
 
     // ── Two-column layout: attributes + personality ──
-    html += `<div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px; flex-wrap:wrap;">`;
+    html += `<div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px;">`;
 
     // Core Attributes panel
     html += `<div style="background:${PANEL_BG}; border-radius:8px; padding:14px;">`;
