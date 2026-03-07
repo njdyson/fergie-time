@@ -37,7 +37,32 @@ The match engine must produce emergent behavior that feels like real football �
 - ✓ Drill scheduling — training days between matches, squad-wide daily drill, improvement based on drill type × age × personality — v1.2
 - ✓ Training attribute deltas visible on player profiles — v1.2
 
+## Current Milestone: v1.3 Day Cycle
+
+**Goal:** Replace the 3-slot training scheduler with a sequential day-by-day hub loop, improve transfer flow with delayed responses and daily summaries, and polish training/player display.
+
+**Target features:**
+- Day-by-day hub schedule with Continue/Kick Off progression
+- Daily coaching report email summarizing training results
+- Daily rival transfer summary email (replacing per-transfer spam)
+- Delayed transfer acceptance/rejection (next-day responses)
+- Bid tracking on transfers page (status filter for pending/accepted/rejected)
+- Stat change highlighting on squad/player pages (replacing training gains section)
+- Player overall rating on squad and profile screens
+
 ### Active
+
+- [ ] Day-by-day hub schedule replacing 3-slot training scheduler
+- [ ] Continue button processes one day, Kick Off on match day
+- [ ] Remove player training gains section from profile
+- [ ] Highlight recent stat changes on squad/player pages
+- [ ] Daily coaching report email
+- [ ] Daily rival transfer summary email (consolidate individual notifications)
+- [ ] Delayed transfer responses (next day on Continue press)
+- [ ] Bid tracking UI on transfers page
+- [ ] Player overall rating on squad screen and player profile
+
+### Future
 
 - [ ] Training ground sandbox — set up custom scenarios, watch engine run them, no stat changes
 - [ ] Personality vector nudges from training (slight, bounded shifts over time)
@@ -110,4 +135,4 @@ The match engine is the foundation — everything else (management screens, seas
 | 3 training days per matchday | Matches ~3 days between PL fixtures, locked to economy tuning | ✓ Good — changing requires re-tuning BASE_DELTA |
 
 ---
-*Last updated: 2026-03-07 after v1.2 milestone completion*
+*Last updated: 2026-03-07 after v1.3 milestone start*
