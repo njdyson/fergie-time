@@ -7,7 +7,7 @@ Four phases derived directly from the dependency chain in the match engine: phys
 ## Milestones
 
 - **v1.0 Match Engine** - Phases 1-4 (Phases 1, 3 shipped; Phase 2 in progress; Phase 4 deferred)
-- **v1.1 Data Layer** - Phases 5-8 (in progress)
+- **v1.1 Data Layer** - Phases 5-9 (in progress)
 
 ## Phases
 
@@ -33,6 +33,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6: Auth + Persistence** - User can create a game, log in, play matches, and return later to find their season exactly where they left it (completed 2026-03-07)
 - [x] **Phase 7: Squads + Names** - 25-man squads with realistic nationality-weighted names replace the 16-player placeholder rosters (completed 2026-03-07)
 - [x] **Phase 8: Stats + Deployment** - Per-player season stats tracked and displayed, entire application deployed to VPS (completed 2026-03-07)
+- [ ] **Phase 9: Gap Closure** - Wire shirt number persistence, fix stale stats path, add deployment config to repo
 
 ## Phase Details
 
@@ -168,10 +169,20 @@ Plans:
 - [ ] 08-02-PLAN.md -- Post-match stats capture, Stats screen with sortable table and top scorers, squad inline columns
 - [ ] 08-03-PLAN.md -- Player profile page with avatar, attribute bars, and human verification
 
+n### Phase 9: Gap Closure
+**Goal**: Close audit gaps — wire shirt number persistence through main.ts, fix stale stats on Hub kickoff path, and add deployment config files to repository
+**Depends on**: Phase 7, Phase 8
+**Requirements**: SQD2-03, SERV-03
+**Gap Closure:** Closes gaps from v1.1 milestone audit
+**Success Criteria** (what must be TRUE):
+  1. Editing a shirt number on the squad screen, saving, and reloading preserves the edited number
+  2. Navigating to squad via Hub Kick Off shows current G/A/App stats (not stale)
+  3. Repository contains systemd unit file and nginx config for VPS deployment
+**Plans**: TBD
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -183,3 +194,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 6. Auth + Persistence | 2/2 | Complete   | 2026-03-07 | - |
 | 7. Squads + Names | 2/2 | Complete   | 2026-03-07 | - |
 | 8. Stats + Deployment | 3/3 | Complete   | 2026-03-07 | - |
+| 9. Gap Closure | v1.1 | 0/TBD | Pending | - |

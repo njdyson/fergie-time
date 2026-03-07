@@ -62,14 +62,14 @@ Requirements for the Data Layer milestone.
 
 - [x] **SERV-01**: Express API server with SQLite via better-sqlite3
 - [x] **SERV-02**: Vite dev proxy routes /api/* to Express during development
-- [x] **SERV-03**: VPS deployment with systemd service + nginx reverse proxy
+- [ ] **SERV-03**: VPS deployment with systemd service + nginx reverse proxy
 - [x] **SERV-04**: CORS and session management configured
 
 ### Squad Expansion
 
 - [x] **SQD2-01**: 25-man squads for all teams (up from 16)
 - [x] **SQD2-02**: 18-man matchday squad selection (11 starters + 7 subs from 25)
-- [x] **SQD2-03**: Squad numbers editable per player (shirt numbers)
+- [ ] **SQD2-03**: Squad numbers editable per player (shirt numbers)
 - [x] **SQD2-04**: Squad screen updated for 25 players with matchday selection UI
 
 ### Names
@@ -186,7 +186,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PERS-02 | Phase 6 | Complete |
 | SQD2-01 | Phase 7 | Complete |
 | SQD2-02 | Phase 7 | Complete |
-| SQD2-03 | Phase 7 | Complete |
+| SQD2-03 | Phase 9 | Pending |
 | SQD2-04 | Phase 7 | Complete |
 | NAME-01 | Phase 7 | Complete |
 | NAME-02 | Phase 7 | Complete |
@@ -196,11 +196,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | STAT-03 | Phase 8 | Complete |
 | STAT-04 | Phase 8 | Complete |
 | STAT-05 | Phase 8 | Complete |
-| SERV-03 | Phase 8 | Complete |
+| SERV-03 | Phase 9 | Pending |
 
 **Coverage:**
 - v1.0 requirements: 26 total (26 complete)
-- v1.1 requirements: 24 total
+- v1.1 requirements: 24 total (22 complete, 2 pending)
 - Mapped to phases: 24
 - Unmapped: 0
 
