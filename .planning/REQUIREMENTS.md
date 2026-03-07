@@ -73,23 +73,23 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| HUB-01 | — | Pending |
-| HUB-02 | — | Pending |
-| HUB-03 | — | Pending |
-| HUB-04 | — | Pending |
-| TDISP-01 | — | Pending |
-| TDISP-02 | — | Pending |
-| COACH-01 | — | Pending |
-| XFER-01 | — | Pending |
-| XFER-02 | — | Pending |
-| XFER-03 | — | Pending |
-| RATE-01 | — | Pending |
+| HUB-01 | Phase 13 | Pending |
+| HUB-02 | Phase 13 | Pending |
+| HUB-03 | Phase 13 | Pending |
+| HUB-04 | Phase 13 | Pending |
+| TDISP-01 | Phase 14 | Pending |
+| TDISP-02 | Phase 14 | Pending |
+| COACH-01 | Phase 14 | Pending |
+| XFER-01 | Phase 15 | Pending |
+| XFER-02 | Phase 15 | Pending |
+| XFER-03 | Phase 15 | Pending |
+| RATE-01 | Phase 15 | Pending |
 
 **Coverage:**
 - v1.3 requirements: 11 total
-- Mapped to phases: 0
-- Unmapped: 11 ⚠️
+- Mapped to phases: 11
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-03-07*
-*Last updated: 2026-03-07 after initial definition*
+*Last updated: 2026-03-07 after roadmap creation*

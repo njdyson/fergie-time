@@ -9,6 +9,7 @@ Four phases derived directly from the dependency chain in the match engine: phys
 - ✅ **v1.0 Match Engine** — Phases 1-4 (Phases 1, 3 shipped; Phase 2 partial; Phase 4 deferred)
 - ✅ **v1.1 Data Layer** — Phases 5-9 (shipped 2026-03-07)
 - ✅ **v1.2 Player Development** — Phases 10-12 (shipped 2026-03-07)
+- 🚧 **v1.3 Day Cycle** — Phases 13-15 (in progress)
 
 ## Phases
 
@@ -47,6 +48,14 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 12: Training Scheduler** — The hub shows training days until the next match; manager assigns drill or rest and sees stat deltas on player profiles (completed 2026-03-07)
 
 </details>
+
+### 🚧 v1.3 Day Cycle (In Progress)
+
+**Milestone Goal:** Replace the 3-slot training scheduler with a sequential day-by-day hub loop, improve transfer flow with delayed responses and daily summaries, and polish training and player display.
+
+- [ ] **Phase 13: Hub Day Loop** — A day-by-day schedule replaces the 3-slot trainer; Continue advances one day, Kick Off launches when match day arrives
+- [ ] **Phase 14: Training Polish** — Training gains section removed; recently improved stats highlighted on squad and player pages; daily coaching report email generated after each training day
+- [ ] **Phase 15: Transfer Overhaul** — Transfer responses arrive the next day; rival activity consolidates into one daily email; bid tracking with status filter; player overall rating on squad and profile
 
 ## Phase Details
 
@@ -99,6 +108,38 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 </details>
 
+### Phase 13: Hub Day Loop
+**Goal**: The hub presents the week as a sequential day-by-day schedule; pressing Continue advances exactly one day (processing training and any pending transfers); the button becomes Kick Off when the current day reaches match day
+**Depends on**: Phase 12
+**Requirements**: HUB-01, HUB-02, HUB-03, HUB-04
+**Success Criteria** (what must be TRUE):
+  1. The hub displays every day from the current day through match day as a visible schedule list
+  2. The current day is visually distinguished from past and future days in the schedule
+  3. Pressing Continue advances the day counter by exactly one and applies that day's training
+  4. On match day the Continue button is replaced by Kick Off
+**Plans**: TBD
+
+### Phase 14: Training Polish
+**Goal**: The training display is clean and informative — the old gains section is gone, recently improved stats are highlighted directly on squad and player pages, and a daily coaching report email lands after each training day
+**Depends on**: Phase 13
+**Requirements**: TDISP-01, TDISP-02, COACH-01
+**Success Criteria** (what must be TRUE):
+  1. The player profile page no longer shows a "Player Training Gains" section
+  2. Attributes that improved since the last match are visually highlighted on the squad screen and player profile
+  3. After each training day, an email appears in the inbox summarizing the drill type, squad participation, and standout improvers
+**Plans**: TBD
+
+### Phase 15: Transfer Overhaul
+**Goal**: Transfer interactions feel deliberate — bids sit pending until next Continue press, rival activity arrives as a single daily digest, the transfers page shows bid status at a glance, and every player displays a clear overall rating
+**Depends on**: Phase 13
+**Requirements**: XFER-01, XFER-02, XFER-03, RATE-01
+**Success Criteria** (what must be TRUE):
+  1. Submitting a transfer bid shows it as pending; the response (accept or reject) arrives only after the next Continue press
+  2. Rival transfer activity from each day is consolidated into a single summary email rather than one notification per transfer
+  3. The transfers page has a status filter showing pending, accepted, and rejected bids
+  4. Each player's overall rating is visible as a single number on the squad screen and on their profile page
+**Plans**: TBD
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -115,3 +156,6 @@ Decimal phases appear between their surrounding integers in numeric order.
 | 10. Portraits | v1.2 | 2/2 | Complete | 2026-03-07 |
 | 11. Training Logic | v1.2 | 1/1 | Complete | 2026-03-07 |
 | 12. Training Scheduler | v1.2 | 2/2 | Complete | 2026-03-07 |
+| 13. Hub Day Loop | v1.3 | 0/? | Not started | - |
+| 14. Training Polish | v1.3 | 0/? | Not started | - |
+| 15. Transfer Overhaul | v1.3 | 0/? | Not started | - |
