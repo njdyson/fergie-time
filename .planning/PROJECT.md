@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A browser-based football management game built around a genuine emergent simulation engine. 22 autonomous player agents run identical decision code weighted by individual personality vectors — no scripted outcomes, no event tables. Tactics are real mechanical levers that create genuine spatial advantages. The manager picks a squad from a 25-man roster, sets formations by dragging players, and watches emergent football play out on a 2D canvas. Game state persists to a SQLite backend — log in, play matches, close the browser, come back later.
+A browser-based football management game built around a genuine emergent simulation engine. 22 autonomous player agents run identical decision code weighted by individual personality vectors — no scripted outcomes, no event tables. Tactics are real mechanical levers that create genuine spatial advantages. The manager picks a squad from a 25-man roster, sets formations by dragging players, and watches emergent football play out on a 2D canvas. Each player has a unique procedurally generated pixel art portrait. Between matches, the manager schedules training drills that improve player attributes based on drill type, age, and personality. Game state persists to a SQLite backend — log in, play matches, close the browser, come back later.
 
 ## Core Value
 
@@ -33,24 +33,17 @@ The match engine must produce emergent behavior that feels like real football �
 - ✓ Season player stats persisted in DB (goals, assists, appearances) — v1.1 Phase 8
 - ✓ VPS deployment with systemd + nginx — v1.1 Phase 9
 - ✓ Transfer market — buy/sell players between teams — v1.1
-
-## Current Milestone: v1.2 Player Development
-
-**Goal:** Add visual identity to players via pixel art portraits, then build a training system with drill scheduling and an observable sandbox mode.
-
-**Target features:**
-- Procedurally generated pixel art player portraits (nationality + seeded randomness)
-- Drill scheduling between matches (~3 training days/week, squad-wide drill choice)
-- Training ground sandbox (free-to-use, custom scenarios on the engine, observation only)
+- ✓ Procedurally generated pixel art player portraits (nationality-influenced, deterministic) — v1.2
+- ✓ Drill scheduling — training days between matches, squad-wide daily drill, improvement based on drill type × age × personality — v1.2
+- ✓ Training attribute deltas visible on player profiles — v1.2
 
 ### Active
 
-- [ ] Procedurally generated pixel art player portraits
-- [ ] Drill scheduling — training days between matches, squad-wide daily drill, improvement based on drill type × talent × age
-- [ ] Personality vector nudges from training (slight, bounded shifts over time)
 - [ ] Training ground sandbox — set up custom scenarios, watch engine run them, no stat changes
+- [ ] Personality vector nudges from training (slight, bounded shifts over time)
 - [ ] Season cycle with youth graduates and retirements
 - [ ] Injury system with recovery timelines
+- [ ] Set piece choreography — design routines in training, execute via matches
 
 ### Out of Scope
 
@@ -78,11 +71,13 @@ This is a personal passion project inspired by Championship Manager's depth but 
 
 The match engine is the foundation — everything else (management screens, seasons, training) layers on top of a proven engine.
 
-**Current state:** v1.0 engine + v1.1 data layer shipped. 26,876 lines TypeScript. Express + SQLite backend deployed on VPS. Full playable season loop with persistent save/load, realistic names, 25-man squads, per-player stats with profile screen.
+**Current state:** v1.0 engine + v1.1 data layer + v1.2 player development shipped. 28,270 lines TypeScript across 12 completed phases. Express + SQLite backend deployed on VPS. Full playable season loop with persistent save/load, realistic names, 25-man squads, per-player stats, pixel art portraits, and training drill scheduling.
 
 **Known issues:**
 - Player oscillation/jitter in utility AI (action scores flip each tick) — present since Phase 2, cosmetic but noticeable
 - Phase 2 (Tactical Layer) and Phase 4 (Development Systems) from v1.0 are incomplete/deferred
+- Training gains display rounding — single-session gains (~0.002) round to 0; visible after 2-3 training blocks
+- 5 of 10 nationality palettes unused — teamGen only generates GB/ES/FR/DE/BR players
 
 ## Constraints
 
@@ -101,7 +96,7 @@ The match engine is the foundation — everything else (management screens, seas
 | Utility AI over behavior trees | Every player runs identical code with personality weights — cleaner, more emergent, data-driven tuning | ⚠️ Revisit — works well but causes oscillation/jitter |
 | Separate simulation from rendering | Enables headless match simulation, future AI training runs, engine replacement flexibility | ✓ Good — enabled quick-sim for AI matches |
 | Single league, no transfers for v1 | Focus on engine quality before management complexity | ✓ Good — engine proven before management layers |
-| Pixel art procedural portraits | Can generate from trait combinations, fits the aesthetic, no external API dependency | — Pending |
+| Pixel art procedural portraits | Can generate from trait combinations, fits the aesthetic, no external API dependency | ✓ Good — 20x24 grid scaled 6x5, deterministic from player ID |
 | Drag formation over preset templates | More expressive tactical control, aligns with "tactics as real mechanical levers" philosophy | ✓ Good — natural interaction model |
 | SQLite + Express over Supabase/PocketBase | Simple single-file DB, deploy on existing VPS, no external services | ✓ Good — zero external dependencies, simple deployment |
 | randomuser.me for player names | Free, no API key, nationality-based, well-established | ✓ Good — realistic names with graceful fallback |
@@ -109,6 +104,10 @@ The match engine is the foundation — everything else (management screens, seas
 | Cookie sessions over JWT | Same-origin single-player game, no token management needed | ✓ Good — simple, works well |
 | bcryptjs (pure JS) over native bcrypt | Cross-platform builds without native addon compilation | ✓ Good — no build tool requirements on VPS |
 | MAP_TAG sentinel for Map serialization | __MAP__ key with entries array survives JSON round-trip | ✓ Good — solved #1 data persistence risk |
+| work_rate as training personality proxy | Reuse existing personality trait instead of adding new field | ✓ Good — formula 0.6 + work_rate * 0.8, range [0.6, 1.4] |
+| BASE_DELTA = 0.004 for training gains | Tuned via headless 5-season sim (570 sessions), weak-tier stays below 0.95 | ✓ Good — economy verified, uncapped growth with natural decay |
+| Squad-wide drills, not per-player | Simpler UX, per-player deferred to future milestone | ✓ Good — sufficient depth for v1.2 |
+| 3 training days per matchday | Matches ~3 days between PL fixtures, locked to economy tuning | ✓ Good — changing requires re-tuning BASE_DELTA |
 
 ---
-*Last updated: 2026-03-07 after v1.2 milestone start*
+*Last updated: 2026-03-07 after v1.2 milestone completion*

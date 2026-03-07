@@ -50,6 +50,49 @@
 
 ---
 
+## Milestone: v1.2 — Player Development
+
+**Shipped:** 2026-03-07
+**Phases:** 3 | **Plans:** 5 | **Commits:** 27
+
+### What Was Built
+- Procedural pixel art portraits — 20x24 grid scaled to 120x120, seeded from player ID, 10 nationality palettes, 5 hair styles, session cache
+- Training drill system — `applyDrill` pure function with age decay curve, `work_rate` personality weighting, BASE_DELTA=0.004 tuned via 5-season headless sim
+- Training scheduler on hub — 3 days per match week, squad-wide drill/rest toggle, drill type selection with targeted attributes display
+- Attribute delta display on player profiles — "+N" chips after training blocks applied at kickoff
+
+### What Worked
+- TDD for training economy — headless 5-season sim proved BASE_DELTA=0.004 before any UI existed (same "prove riskiest thing first" pattern from v1.0/v1.1)
+- Pure function approach for `applyDrill` and `applyTrainingBlock` — testable without any UI, clean separation
+- Reusing `work_rate` personality trait as training proxy avoided adding a new field to all existing players/saves
+- Milestone audit caught no gaps — all 9 requirements mapped and delivered cleanly
+- Phase archival from v1.1 kept context window clean — no old phase directories cluttering searches
+
+### What Was Inefficient
+- SUMMARY.md files lack structured `one_liner` field — automated extraction via `summary-extract` failed, had to grep `## Accomplishments` manually
+- Phase 10 initially had TBD plans in roadmap — needed manual plan creation after research
+- Training gains display rounding issue (single-session gains ~0.002 round to 0 via Math.round) — only visible after 2-3 blocks accumulate; could have been caught earlier with a display-threshold test
+- 5 of 10 nationality palettes unused because teamGen only generates 5 nationalities — wasted effort building unused palettes
+
+### Patterns Established
+- `createRng('portrait-${player.id}')` namespace prefixing for seedrandom — prevents cross-system seed collisions
+- Fixed RNG call order as append-only contract — inserting calls changes all downstream outputs
+- `DRILL_LABELS` as single source of truth — both hub scheduler and profile delta panel import from `training.ts`
+- `TRAINING_DAYS_PER_MATCHDAY = 3` locked constant — changing requires re-running economy sim
+
+### Key Lessons
+1. **Headless economy sims before UI** — proving training balance with 5 seasons of headless data prevented tuning rework after UI was built
+2. **Reuse existing traits over adding new fields** — `work_rate` as training personality proxy avoided migration issues with existing saves
+3. **Display threshold testing matters** — rounding at display layer can hide real gains; test the display code, not just the calculation
+4. **Build only what's used** — 5 unused nationality palettes represent wasted effort; validate consumption before building full coverage
+
+### Cost Observations
+- Model mix: ~65% sonnet (execution), ~25% opus (planning/orchestration), ~10% haiku (research)
+- 5 plans across 3 phases, 44 minutes total execution time
+- Notable: Average 9 min/plan — fastest milestone yet; training logic plan completed in 3 minutes
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -58,6 +101,7 @@
 |-----------|---------|--------|------------|
 | v1.0 | ~150 | 4 (2 shipped) | Engine-first approach, TDD for physics/AI |
 | v1.1 | 73 | 5 | Serialization-first, milestone audit + gap closure |
+| v1.2 | 27 | 3 | Headless economy sim before UI, pure function training |
 
 ### Cumulative Quality
 
@@ -65,9 +109,11 @@
 |-----------|-------|------------|------------------|
 | v1.0 | ~550 | ~28 | ~12,000 |
 | v1.1 | 606 | 31 | 26,876 |
+| v1.2 | 642+ | 33+ | 28,270 |
 
 ### Top Lessons (Verified Across Milestones)
 
-1. **Prove the riskiest assumption first** — v1.0 proved emergent behavior before management screens; v1.1 proved Map serialization before persistence
-2. **Small atomic plans execute faster than large ones** — consistent across both milestones
-3. **Milestone audits with gap closure phases produce cleaner shipped milestones** — introduced in v1.1, should continue
+1. **Prove the riskiest assumption first** — v1.0 proved emergent behavior; v1.1 proved Map serialization; v1.2 proved training economy headlessly
+2. **Small atomic plans execute faster than large ones** — consistent across all three milestones (v1.2 averaged 9 min/plan)
+3. **Milestone audits with gap closure phases produce cleaner shipped milestones** — v1.1 needed gap closure; v1.2 audit found zero gaps
+4. **Reuse over creation at data boundaries** — cookie sessions over JWT (v1.1), work_rate over new trait (v1.2) — avoid migration complexity

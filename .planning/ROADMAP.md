@@ -7,8 +7,8 @@ Four phases derived directly from the dependency chain in the match engine: phys
 ## Milestones
 
 - ✅ **v1.0 Match Engine** — Phases 1-4 (Phases 1, 3 shipped; Phase 2 partial; Phase 4 deferred)
-- ✅ **v1.1 Data Layer** — Phases 5-9 (shipped 2013-03-07)
-- 🚧 **v1.2 Player Development** — Phases 10-13 (in progress)
+- ✅ **v1.1 Data Layer** — Phases 5-9 (shipped 2026-03-07)
+- ✅ **v1.2 Player Development** — Phases 10-12 (shipped 2026-03-07)
 
 ## Phases
 
@@ -21,31 +21,32 @@ Decimal phases appear between their surrounding integers in numeric order.
 <details>
 <summary>✅ v1.0 Match Engine (Phases 1-4)</summary>
 
-- [x] **Phase 1: Engine Core** — A watchable match with emergent goals, realistic player movement, and observable possession changes (completed 2013-03-03)
+- [x] **Phase 1: Engine Core** — A watchable match with emergent goals, realistic player movement, and observable possession changes (completed 2026-03-03)
 - [ ] **Phase 2: Tactical Layer** — Formation drag-and-drop and role assignments that visibly and measurably change team behavior (2/3 plans complete, partial)
-- [x] **Phase 3: Management Shell** — A full playable season with squad management, fixtures, league table, and a champion declared (completed 2013-03-06)
+- [x] **Phase 3: Management Shell** — A full playable season with squad management, fixtures, league table, and a champion declared (completed 2026-03-06)
 - [ ] **Phase 4: Development Systems** — Training, youth graduates, retirements, and procedural portraits that make seasons 2+ meaningfully different (deferred)
 
 </details>
 
 <details>
-<summary>✅ v1.1 Data Layer (Phases 5-9) — SHIPPED 2013-03-07</summary>
+<summary>✅ v1.1 Data Layer (Phases 5-9) — SHIPPED 2026-03-07</summary>
 
-- [x] **Phase 5: Server Foundation** — Express + SQLite running with proven serialization, dev proxy configured (completed 2013-03-06)
-- [x] **Phase 6: Auth + Persistence** — Login, save/load, auto-save after each matchday (completed 2013-03-07)
-- [x] **Phase 7: Squads + Names** — 25-man squads with realistic nationality-weighted names (completed 2013-03-07)
-- [x] **Phase 8: Stats + Deployment** — Per-player season stats, player profile, VPS deployment (completed 2013-03-07)
-- [x] **Phase 9: Gap Closure** — Shirt number persistence, Hub stats fix, deployment config (completed 2013-03-07)
+- [x] **Phase 5: Server Foundation** — Express + SQLite running with proven serialization, dev proxy configured (completed 2026-03-06)
+- [x] **Phase 6: Auth + Persistence** — Login, save/load, auto-save after each matchday (completed 2026-03-07)
+- [x] **Phase 7: Squads + Names** — 25-man squads with realistic nationality-weighted names (completed 2026-03-07)
+- [x] **Phase 8: Stats + Deployment** — Per-player season stats, player profile, VPS deployment (completed 2026-03-07)
+- [x] **Phase 9: Gap Closure** — Shirt number persistence, Hub stats fix, deployment config (completed 2026-03-07)
 
 </details>
 
-### 🚧 v1.2 Player Development (In Progress)
+<details>
+<summary>✅ v1.2 Player Development (Phases 10-12) — SHIPPED 2026-03-07</summary>
 
-**Milestone Goal:** Add visual identity to players via pixel art portraits, then build a training system with drill scheduling and an observation-only sandbox.
+- [x] **Phase 10: Portraits** — Every player has a deterministic, nationality-influenced pixel art portrait on their profile screen (completed 2026-03-07)
+- [x] **Phase 11: Training Logic** — Player attributes improve after drill sessions based on drill type, age, and personality — verified headlessly before any UI (completed 2026-03-07)
+- [x] **Phase 12: Training Scheduler** — The hub shows training days until the next match; manager assigns drill or rest and sees stat deltas on player profiles (completed 2026-03-07)
 
-- [x] **Phase 10: Portraits** — Every player has a deterministic, nationality-influenced pixel art portrait on their profile screen (completed 2013-03-07)
-- [x] **Phase 11: Training Logic** — Player attributes improve after drill sessions based on drill type, age, and personality — verified headlessly before any UI (completed 2013-03-07)
-- [x] **Phase 12: Training Scheduler** — The hub shows training days until the next match; manager assigns drill or rest and sees stat deltas on player profiles (completed 2013-03-07)
+</details>
 
 ## Phase Details
 
@@ -89,41 +90,28 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 </details>
 
-### Phase 10: Portraits
-**Goal**: Every player has a unique, deterministic pixel art portrait on their profile screen, seeded from their player ID and reflecting their nationality
-**Depends on**: Phase 9
-**Requirements**: PORT-01, PORT-02, PORT-03
-**Success Criteria** (what must be TRUE):
-  1. User can see a pixel art portrait on every player's profile screen — no player is portrait-less
-  2. Closing and reopening the game shows the same portrait for each player (deterministic across sessions)
-  3. Players from different nationalities have visibly different skin tones and hair colour palettes
-  4. Portrait generation never slows down navigating to a player profile (session-level cache)
-**Plans**: TBD
+<details>
+<summary>v1.2 Player Development (Phases 10-12) — see milestones/v1.2-ROADMAP.md for full details</summary>
 
-### Phase 11: Training Logic
-**Goal**: Player attributes improve after drill sessions in a way that is economically sound, age-gated, and personality-driven — proven by headless simulation before any UI is built
-**Depends on**: Phase 10
-**Requirements**: TRAIN-04, TRAIN-06
-**Success Criteria** (what must be TRUE):
-  1. Applying a drill to a squad of players produces a new PlayerState[] with measurably higher relevant attributes (pure function, testable without UI)
-  2. A young high-potential player gains more from the same drill than an older lower-potential player
-  3. A headless 5-season simulation confirms no attribute exceeds ~0.95 for a player starting below 0.70 — economy is sound
-  4. Attribute growth has no hidden ceiling — a player can keep improving at any age, but the rate naturally decays as age increases
-  5. The "training" personality trait is present on all players and visibly affects per-session gain magnitude
-**Plans**: 1 plan
-Plans:
-- [ ] 11-01-PLAN.md — TDD: applyDrill pure function with age/personality factors, diminishing returns, and 5-season economy sim
+### Phase 10: Portraits (2/2 plans)
+### Phase 11: Training Logic (1/1 plan)
+### Phase 12: Training Scheduler (2/2 plans)
 
-### Phase 12: Training Scheduler
-**Goal**: The manager can see and assign training days between matches from the hub, pick squad-wide drill types, and observe attribute improvements on player profiles afterward
-**Depends on**: Phase 11
-**Requirements**: TRAIN-01, TRAIN-02, TRAIN-03, TRAIN-05
-**Success Criteria** (what must be TRUE):
-  1. User can see a training scheduler on the hub showing how many days remain until the next match
-  2. User can mark each pre-match day as a drill or rest with a single click
-  3. User can select a squad-wide drill type from a menu of 6-8 labelled categories, each showing which attributes it targets
-  4. After a training block completes, the player profile screen shows the attribute deltas gained (e.g., "+0.02 Pace") from that block
-**Plans**: 2 plans
-Plans:
-- [ ] 12-01-PLAN.md — TDD: Training block computation (applyTrainingBlock, state types, DRILL_LABELS)
-- [ ] 12-02-PLAN.md — Hub scheduler UI, profile deltas panel, kickoff wiring
+</details>
+
+## Progress
+
+| Phase | Milestone | Plans Complete | Status | Completed |
+|-------|-----------|---------------|--------|-----------|
+| 1. Engine Core | v1.0 | 10/10 | Complete | 2026-03-03 |
+| 2. Tactical Layer | v1.0 | 2/3 | Partial | - |
+| 3. Management Shell | v1.0 | 6/6 | Complete | 2026-03-06 |
+| 4. Development Systems | v1.0 | 0/0 | Deferred | - |
+| 5. Server Foundation | v1.1 | 3/3 | Complete | 2026-03-06 |
+| 6. Auth + Persistence | v1.1 | 2/2 | Complete | 2026-03-07 |
+| 7. Squads + Names | v1.1 | 2/2 | Complete | 2026-03-07 |
+| 8. Stats + Deployment | v1.1 | 3/3 | Complete | 2026-03-07 |
+| 9. Gap Closure | v1.1 | 2/2 | Complete | 2026-03-07 |
+| 10. Portraits | v1.2 | 2/2 | Complete | 2026-03-07 |
+| 11. Training Logic | v1.2 | 1/1 | Complete | 2026-03-07 |
+| 12. Training Scheduler | v1.2 | 2/2 | Complete | 2026-03-07 |
