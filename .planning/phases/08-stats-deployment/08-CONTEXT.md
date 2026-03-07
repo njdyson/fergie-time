@@ -1,4 +1,4 @@
-# Phase 8: Stats + Deployment - Context
+# Phase 8: Stats + Player Profiles - Context
 
 **Gathered:** 2026-03-07
 **Status:** Ready for planning
@@ -6,7 +6,7 @@
 <domain>
 ## Phase Boundary
 
-Per-player season statistics tracked across all matches (watched and quick-simmed) and displayed in the UI, plus VPS deployment with systemd + nginx. Covers STAT-01 through STAT-05 and SERV-03.
+Per-player season statistics tracked across all matches (watched and quick-simmed) and displayed in the UI, with a player profile page for detailed per-player views. Covers STAT-01 through STAT-05. VPS deployment (SERV-03) is already complete — excluded from this phase.
 
 </domain>
 
@@ -35,6 +35,14 @@ Per-player season statistics tracked across all matches (watched and quick-simme
 - Columns: Name, Team, Goals, Assists, Apps, Goals/Game ratio
 - Tiebreak: goals first, then assists, then apps
 
+### Player profile page
+- Accessible by clicking any player name anywhere in the app (squad screen, stats tab, top scorers)
+- Shows player overview: name, age, height, nationality, position, shirt number
+- Generated avatar: team-colored shirt with shirt number + player initials, canvas-drawn
+- Attributes displayed as visual bars (horizontal, colored green=high to red=low, FM-style)
+- Per-season stats summary on the profile
+- Match history as drill-down from season stats — click a season stat to see per-match breakdown (not on the same screen as the overview)
+
 ### Quick-sim stat attribution
 - Expose full GameEventLog from quick-sim — the engine already runs tick-by-tick, just return the log
 - quickSimMatch returns PlayerLogStats map (call engine.gameLog.getPlayerStats()) alongside the score
@@ -46,21 +54,14 @@ Per-player season statistics tracked across all matches (watched and quick-simme
 - Merge per-match PlayerLogStats into SeasonState.playerSeasonStats accumulator
 - For quick-sim: merge all 19 AI match results into season stats in the same batch
 
-### VPS deployment
-- Express serves built frontend (dist/) + API routes — single process
-- nginx reverse-proxies to Express
-- Subdomain setup (e.g., fergietime.domain.com)
-- HTTPS via Let's Encrypt / certbot
-- Git pull + build on VPS deployment flow: push to repo, SSH, git pull, npm install, npm run build, systemctl restart
-- systemd service file for Express — survives reboots
-
 ### Claude's Discretion
 - Stats tab visual layout and information density
 - Exact PlayerSeasonStats interface shape (must be extensible per STAT-02)
 - Sorting UI implementation (click-to-sort vs dropdown)
-- systemd service file details (restart policy, environment)
-- nginx config specifics (buffer sizes, timeouts)
-- Build script for VPS (package.json script or standalone)
+- Player profile layout and spacing
+- Avatar canvas drawing implementation details
+- Match history drill-down UI design
+- How attribute bar colors scale (linear vs thresholds)
 
 </decisions>
 
@@ -70,6 +71,8 @@ Per-player season statistics tracked across all matches (watched and quick-simme
 - Top scorers should feel like the real Premier League golden boot table — name, team, goals prominently, with secondary stats alongside
 - Stats should be visible quickly from the squad screen (the 3-column inline approach) without needing to navigate to a separate tab for the basics
 - AI player stats should be just as real as player team stats — the league is a living world, not a backdrop
+- Player profile avatar: team shirt color with the player's shirt number and initials — simple but gives each player a visual identity until proper portraits (DEV-06) are built
+- Attribute bars like FM — scannable at a glance, green for high values, red for low
 
 </specifics>
 
@@ -96,7 +99,7 @@ Per-player season statistics tracked across all matches (watched and quick-simme
 - `src/season/season.ts:45`: SeasonState needs playerSeasonStats field
 - `server/serialize.ts`: Needs to handle new Map in SeasonState (MAP_TAG pattern already established)
 - `index.html`: Add Stats nav tab
-- `src/main.ts`: Add Stats screen routing
+- `src/main.ts`: Add Stats screen routing + player profile navigation
 
 </code_context>
 
