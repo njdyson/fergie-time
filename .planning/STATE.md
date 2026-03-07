@@ -2,29 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Data Layer
-status: unknown
-last_updated: "2026-03-07T07:38:46.047Z"
-progress:
-  total_phases: 7
-  completed_phases: 6
-  total_plans: 29
-  completed_plans: 27
----
-
----
-gsd_state_version: 1.0
-milestone: v1.1
-milestone_name: Data Layer
-status: executing
-stopped_at: Completed 07-02-PLAN.md
-last_updated: "2026-03-07T06:55:00Z"
-last_activity: 2026-03-07 — Plan 07-02 complete (Squad UI, name wiring, editable shirt numbers)
+status: complete
+stopped_at: Completed 08-03-PLAN.md
+last_updated: "2026-03-07T08:30:00Z"
+last_activity: 2026-03-07 — Plan 08-03 complete (player profile screen, click-through navigation, Phase 8 human verified)
 progress:
   total_phases: 8
-  completed_phases: 5
+  completed_phases: 8
   total_plans: 26
-  completed_plans: 25
-  percent: 98
+  completed_plans: 26
+  percent: 100
 ---
 
 # Project State
@@ -34,21 +21,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-06)
 
 **Core value:** The match engine must produce emergent behavior that feels like real football — goals, mistakes, tactical dominance and individual brilliance all arising from physics, agent decisions and personality vectors, never from scripted events
-**Current focus:** Milestone v1.1 — Data Layer (Phase 7: Squads & Names)
+**Current focus:** Milestone v1.1 complete — Data Layer (Phase 8: Stats + Deployment)
 
 ## Current Position
 
-Phase: 8 of 8 (Stats + Deployment) — in progress
-Plan: 2 of 3 complete
-Status: Executing
-Last activity: 2026-03-07 — Plan 08-02 complete (stats capture hook, StatsScreen, squad inline stats, top scorers)
+Phase: 8 of 8 (Stats + Deployment) — COMPLETE
+Plan: 3 of 3 complete
+Status: Complete
+Last activity: 2026-03-07 — Plan 08-03 complete (player profile screen with avatar, attribute bars, click-through navigation from all player name occurrences)
 
-Progress: [███████████████] ~67% of phase 8
+Progress: [████████████████] 100% — Milestone v1.1 Data Layer complete
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 20
+- Total plans completed: 26
 - Average duration: ~5.8 min
 - Total execution time: ~115 min
 
@@ -74,6 +61,7 @@ Progress: [███████████████] ~67% of phase 8
 | Phase 06-auth-persistence P02 | 10 | 2 tasks | 4 files |
 | Phase 08-stats-deployment P01 | 206 | 4 tasks | 5 files |
 | Phase 08-stats-deployment P02 | 304 | 2 tasks | 5 files |
+| Phase 08-stats-deployment P03 | ~30min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -105,10 +93,13 @@ Recent decisions affecting current work:
 - [Phase 08-stats-deployment]: playerSeasonStats non-optional on SeasonState, always empty Map on season start
 - [Phase 08-02]: Guard simResult.playerStats with empty Map fallback for test mock compatibility
 - [Phase 08-02]: Stats merge at full-time before vidiprinter ensures capture even on early browser close
+- [Phase 08-03]: Stats tab moved after Tactics in nav order (hub, squad, tactics, stats) for better UX flow
+- [Phase 08-03]: Profile screen hides nav tabs — functions as full-page overlay with its own back button
+- [Phase 08-03]: setOnPlayerClick callback pattern used on SquadScreen and StatsScreen for loose coupling
 
 ### Pending Todos
 
-None yet.
+None.
 
 ### Blockers/Concerns
 
@@ -118,6 +109,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-07T07:45:26Z
-Stopped at: Completed 08-02-PLAN.md
+Last session: 2026-03-07T08:30:00Z
+Stopped at: Completed 08-03-PLAN.md — Milestone v1.1 Data Layer complete
 Resume file: None

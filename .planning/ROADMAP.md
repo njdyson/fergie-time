@@ -32,7 +32,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5: Server Foundation** - Express + SQLite running with proven serialization, dev proxy configured, ready to receive game state (completed 2026-03-06)
 - [x] **Phase 6: Auth + Persistence** - User can create a game, log in, play matches, and return later to find their season exactly where they left it (completed 2026-03-07)
 - [x] **Phase 7: Squads + Names** - 25-man squads with realistic nationality-weighted names replace the 16-player placeholder rosters (completed 2026-03-07)
-- [ ] **Phase 8: Stats + Deployment** - Per-player season stats tracked and displayed, entire application deployed to VPS
+- [x] **Phase 8: Stats + Deployment** - Per-player season stats tracked and displayed, entire application deployed to VPS (completed 2026-03-07)
 
 ## Phase Details
 
@@ -182,4 +182,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 5. Server Foundation | 3/3 | Complete   | 2026-03-06 | - |
 | 6. Auth + Persistence | 2/2 | Complete   | 2026-03-07 | - |
 | 7. Squads + Names | 2/2 | Complete   | 2026-03-07 | - |
-| 8. Stats + Deployment | 2/3 | In Progress|  | - |
+| 8. Stats + Deployment | 3/3 | Complete   | 2026-03-07 | - |
