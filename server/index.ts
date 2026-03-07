@@ -13,7 +13,7 @@ app.use(express.json({ limit: '1mb' }));
 
 app.use(cookieSession({
   name: 'session',
-  keys: ['fergie-time-dev-key'],
+  keys: [process.env.SESSION_SECRET ?? 'fergie-time-dev-key'],
   maxAge: 24 * 60 * 60 * 1000,
 }));
 

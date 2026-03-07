@@ -396,9 +396,9 @@ export class SquadScreen {
     panel.appendChild(title);
 
     const grid = document.createElement('div');
-    grid.style.cssText = 'display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px;';
+    grid.style.cssText = 'display: grid; grid-template-columns: repeat(10, 1fr); gap: 6px;';
 
-    for (let n = 1; n <= 40; n++) {
+    for (let n = 1; n <= 99; n++) {
       const btn = document.createElement('button');
       btn.textContent = String(n);
       const isUsed = usedNumbers.has(n);
