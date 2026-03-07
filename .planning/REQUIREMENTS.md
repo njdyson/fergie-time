@@ -69,7 +69,7 @@ Requirements for the Data Layer milestone.
 
 - [x] **SQD2-01**: 25-man squads for all teams (up from 16)
 - [x] **SQD2-02**: 18-man matchday squad selection (11 starters + 7 subs from 25)
-- [ ] **SQD2-03**: Squad numbers editable per player (shirt numbers)
+- [x] **SQD2-03**: Squad numbers editable per player (shirt numbers)
 - [x] **SQD2-04**: Squad screen updated for 25 players with matchday selection UI
 
 ### Names
@@ -186,7 +186,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PERS-02 | Phase 6 | Complete |
 | SQD2-01 | Phase 7 | Complete |
 | SQD2-02 | Phase 7 | Complete |
-| SQD2-03 | Phase 9 | Pending |
+| SQD2-03 | Phase 9 | Complete |
 | SQD2-04 | Phase 7 | Complete |
 | NAME-01 | Phase 7 | Complete |
 | NAME-02 | Phase 7 | Complete |

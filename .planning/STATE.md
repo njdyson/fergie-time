@@ -39,11 +39,11 @@ See: .planning/PROJECT.md (updated 2026-03-06)
 ## Current Position
 
 Phase: 9 of 9 (Gap Closure) — In Progress
-Plan: 2 of 2 complete
+Plan: 1 of 3 complete (09-01 done)
 Status: In Progress
-Last activity: 2026-03-07 — Plan 09-02 complete (systemd unit file and nginx reverse proxy config for VPS deployment, SERV-03 closed)
+Last activity: 2026-03-07 — Plan 09-01 complete (shirt number persistence wired, Hub kickoff stats fix, picker 1-99, SESSION_SECRET env var)
 
-Progress: [████████████████] Phase 9 in progress — 2/2 plans complete
+Progress: [████████████████] Phase 9 in progress — 1/3 plans complete
 
 ## Performance Metrics
 
@@ -110,6 +110,8 @@ Recent decisions affecting current work:
 - [Phase 08-03]: Stats tab moved after Tactics in nav order (hub, squad, tactics, stats) for better UX flow
 - [Phase 08-03]: Profile screen hides nav tabs — functions as full-page overlay with its own back button
 - [Phase 08-03]: setOnPlayerClick callback pattern used on SquadScreen and StatsScreen for loose coupling
+- [Phase 09-01]: inline import() type annotation used for PlayerState in onShirtNumberChange callback (consistent with existing main.ts pattern)
+- [Phase 09-01]: Shirt number picker grid changed to 10 columns to better fit 1-99 range visually
 - [Phase 09-gap-closure]: Proxy-all nginx approach (not split static/API) — Express serves dist/ so single location block is correct
 - [Phase 09-gap-closure]: SESSION_SECRET commented out in systemd unit — operator must uncomment with real value
 
@@ -125,6 +127,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-07T08:49:00Z
-Stopped at: Completed 09-02-PLAN.md — Phase 9 Gap Closure, both plans complete
+Last session: 2026-03-07T08:40:00Z
+Stopped at: Completed 09-01-PLAN.md — shirt number persistence, Hub stats fix, picker range, SESSION_SECRET
 Resume file: None

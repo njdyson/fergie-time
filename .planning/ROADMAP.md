@@ -33,7 +33,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6: Auth + Persistence** - User can create a game, log in, play matches, and return later to find their season exactly where they left it (completed 2026-03-07)
 - [x] **Phase 7: Squads + Names** - 25-man squads with realistic nationality-weighted names replace the 16-player placeholder rosters (completed 2026-03-07)
 - [x] **Phase 8: Stats + Deployment** - Per-player season stats tracked and displayed, entire application deployed to VPS (completed 2026-03-07)
-- [ ] **Phase 9: Gap Closure** - Wire shirt number persistence, fix stale stats path, add deployment config to repo
+- [x] **Phase 9: Gap Closure** - Wire shirt number persistence, fix stale stats path, add deployment config to repo (completed 2026-03-07)
 
 ## Phase Details
 
@@ -194,4 +194,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. Auth + Persistence | 2/2 | Complete   | 2026-03-07 | - |
 | 7. Squads + Names | 2/2 | Complete   | 2026-03-07 | - |
 | 8. Stats + Deployment | 3/3 | Complete   | 2026-03-07 | - |
-| 9. Gap Closure | 1/2 | In Progress|  | - |
+| 9. Gap Closure | 2/2 | Complete   | 2026-03-07 | - |
