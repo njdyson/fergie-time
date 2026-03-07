@@ -4,7 +4,8 @@
  */
 
 import seedrandom from 'seedrandom';
-import type { PlayerState } from '../simulation/types.ts';
+import type { PlayerState, PlayerAttributes } from '../simulation/types.ts';
+import type { DrillType } from './training.ts';
 import type { TeamTier } from './teamGen.ts';
 import { createAITeam } from './teamGen.ts';
 import type { PlayerName } from './nameService.ts';
@@ -23,6 +24,23 @@ import { createInbox, sendMessage } from './inbox.ts';
 import { processAITransfers } from './aiTransfers.ts';
 
 // --- Types ---
+
+/** Per-matchday training slot: the drill type assigned, or 'rest'. */
+export type TrainingDayPlan = DrillType | 'rest';
+
+/**
+ * Training schedule for the block between two matchdays.
+ * Key: day index within the block (0-based, 0 = first day after last match).
+ * Value: 'rest' or a DrillType string.
+ */
+export type TrainingSchedule = Record<number, TrainingDayPlan>;
+
+/**
+ * Attribute deltas accumulated during the last completed training block.
+ * Key: playerId. Value: partial record of attribute name → delta gained.
+ * Cleared at the start of each new training block.
+ */
+export type TrainingDeltas = Map<string, Partial<Record<keyof PlayerAttributes, number>>>;
 
 export interface SquadSelection {
   starters: PlayerState[];  // 11 players
@@ -62,6 +80,8 @@ export interface SeasonState {
   transferMarket: TransferMarketState;
   inbox: InboxState;
   readonly seed: string;
+  trainingSchedule?: TrainingSchedule;   // current block plan — keyed by day slot
+  trainingDeltas?: TrainingDeltas;       // last block's per-player attribute gains
 }
 
 // --- AI Team Names ---
