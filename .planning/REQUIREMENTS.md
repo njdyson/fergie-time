@@ -80,9 +80,9 @@ Requirements for the Data Layer milestone.
 
 ### Stats
 
-- [ ] **STAT-01**: Per-player per-season stats tracked (goals, assists, appearances minimum)
-- [ ] **STAT-02**: Extensible stats schema — easy to add pass completion, shot/goal ratio, tackles etc.
-- [ ] **STAT-03**: Quick-sim exposes goalscorer data from GameEventLog
+- [x] **STAT-01**: Per-player per-season stats tracked (goals, assists, appearances minimum)
+- [x] **STAT-02**: Extensible stats schema — easy to add pass completion, shot/goal ratio, tackles etc.
+- [x] **STAT-03**: Quick-sim exposes goalscorer data from GameEventLog
 - [ ] **STAT-04**: Post-match stats hook captures player performance before screen transition
 - [ ] **STAT-05**: League-wide stat views (top scorers at minimum)
 
@@ -191,9 +191,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | NAME-01 | Phase 7 | Complete |
 | NAME-02 | Phase 7 | Complete |
 | NAME-03 | Phase 7 | Complete |
-| STAT-01 | Phase 8 | Pending |
-| STAT-02 | Phase 8 | Pending |
-| STAT-03 | Phase 8 | Pending |
+| STAT-01 | Phase 8 | Complete |
+| STAT-02 | Phase 8 | Complete |
+| STAT-03 | Phase 8 | Complete |
 | STAT-04 | Phase 8 | Pending |
 | STAT-05 | Phase 8 | Pending |
 | SERV-03 | Phase 8 | Pending |

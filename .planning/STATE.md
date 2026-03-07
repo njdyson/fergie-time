@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Data Layer
 status: unknown
-last_updated: "2026-03-07T07:00:15.694Z"
+last_updated: "2026-03-07T07:38:46.047Z"
 progress:
-  total_phases: 6
+  total_phases: 7
   completed_phases: 6
-  total_plans: 26
-  completed_plans: 26
+  total_plans: 29
+  completed_plans: 27
 ---
 
 ---
@@ -38,12 +38,12 @@ See: .planning/PROJECT.md (updated 2026-03-06)
 
 ## Current Position
 
-Phase: 7 of 8 (Squads & Names) — complete
-Plan: 2 of 2 complete
+Phase: 8 of 8 (Stats + Deployment) — in progress
+Plan: 1 of 3 complete
 Status: Executing
-Last activity: 2026-03-07 — Plan 07-02 complete (Squad UI, name wiring, editable shirt numbers)
+Last activity: 2026-03-07 — Plan 08-01 complete (PlayerSeasonStats data layer, TDD, quickSim stats, SeasonState field)
 
-Progress: [██████████] 98%
+Progress: [██████████] ~33% of phase 8
 
 ## Performance Metrics
 
@@ -72,6 +72,7 @@ Progress: [██████████] 98%
 | Phase 07 P01 | 5min | 2 tasks | 8 files |
 | Phase 07 P02 | pre-committed | 1 task | 3 files |
 | Phase 06-auth-persistence P02 | 10 | 2 tasks | 4 files |
+| Phase 08-stats-deployment P01 | 206 | 4 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -99,6 +100,8 @@ Recent decisions affecting current work:
 - [Phase 07-02]: Shirt numbers maintained as Map<string,number> on SquadScreen instance until getUpdatedPlayers() called
 - [Phase 06-02]: Boot function checks session first (silent restore), falls back to login screen
 - [Phase 06-02]: Continue tab shows list of saved games via /api/games/list rather than plain text input
+- [Phase 08-stats-deployment]: minutesPlayed fixed at 90 for all players (no sub tracking yet)
+- [Phase 08-stats-deployment]: playerSeasonStats non-optional on SeasonState, always empty Map on season start
 
 ### Pending Todos
 
@@ -112,6 +115,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-07T06:55:00Z
-Stopped at: Completed 07-02-PLAN.md
+Last session: 2026-03-07T07:38:00Z
+Stopped at: Completed 08-01-PLAN.md
 Resume file: None
