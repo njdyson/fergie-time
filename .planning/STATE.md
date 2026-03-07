@@ -3,6 +3,19 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Player Development
 status: unknown
+last_updated: "2026-03-07T22:52:57.077Z"
+progress:
+  total_phases: 6
+  completed_phases: 6
+  total_plans: 24
+  completed_plans: 24
+---
+
+---
+gsd_state_version: 1.0
+milestone: v1.2
+milestone_name: Player Development
+status: unknown
 last_updated: "2026-03-07T21:40:00.417Z"
 progress:
   total_phases: 5
