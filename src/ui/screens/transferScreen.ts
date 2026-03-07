@@ -40,9 +40,6 @@ export class TransferScreen {
   private unlistCallbacks: Array<(playerId: string) => void> = [];
   private signFreeAgentCallbacks: Array<(playerId: string) => void> = [];
 
-  // Active bid input (playerId if open)
-  private activeBidPlayerId: string | null = null;
-
   constructor(container: HTMLElement) {
     this.container = container;
     this.container.style.color = TEXT;
@@ -61,6 +58,64 @@ export class TransferScreen {
 
   update(seasonState: SeasonState): void {
     this.render(seasonState);
+  }
+
+  /** Open a bid modal for a player. Can be called externally (e.g. from profile screen). */
+  openBidModal(playerName: string, playerId: string, toTeamId: string, suggestedAmount: number, budget: number): void {
+    this.showBidModal(playerName, playerId, toTeamId, suggestedAmount, budget);
+  }
+
+  private showBidModal(playerName: string, playerId: string, toTeamId: string, suggestedAmount: number, budget: number): void {
+    // Remove any existing modal
+    document.getElementById('bid-modal-overlay')?.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'bid-modal-overlay';
+    overlay.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; z-index:1000;';
+
+    const modal = document.createElement('div');
+    modal.style.cssText = `background:${PANEL_BG}; border:1px solid #334155; border-radius:12px; padding:24px; min-width:280px; max-width:360px; width:90%; box-shadow:0 8px 32px rgba(0,0,0,0.5);`;
+
+    modal.innerHTML = `
+      <div style="color:${TEXT_BRIGHT}; font-size:16px; font-weight:bold; margin-bottom:4px;">Place Bid</div>
+      <div style="color:${ACCENT_BLUE}; font-size:14px; margin-bottom:16px;">${playerName}</div>
+      <div style="display:flex; justify-content:space-between; margin-bottom:12px;">
+        <span style="color:${TEXT}; font-size:11px;">Suggested: £${formatMoney(suggestedAmount)}</span>
+        <span style="color:${GREEN}; font-size:11px;">Budget: £${formatMoney(budget)}</span>
+      </div>
+      <div style="margin-bottom:16px;">
+        <label style="color:${TEXT}; font-size:11px; display:block; margin-bottom:4px;">Bid Amount (£)</label>
+        <input id="bid-modal-input" type="number" min="100" step="100" value="${suggestedAmount}"
+          style="width:100%; padding:8px 12px; border:1px solid #334155; border-radius:6px; background:#0f172a; color:${TEXT_BRIGHT}; font-size:14px; box-sizing:border-box;">
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button id="bid-modal-submit" style="flex:1; padding:10px; border-radius:6px; border:2px solid ${GREEN}; background:transparent; color:${GREEN}; font:bold 13px/1 'Segoe UI',system-ui,sans-serif; cursor:pointer;">Submit Bid</button>
+        <button id="bid-modal-cancel" style="flex:1; padding:10px; border-radius:6px; border:2px solid #334155; background:transparent; color:${TEXT}; font:bold 13px/1 'Segoe UI',system-ui,sans-serif; cursor:pointer;">Cancel</button>
+      </div>
+    `;
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    const closeModal = () => overlay.remove();
+
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) closeModal();
+    });
+
+    modal.querySelector('#bid-modal-cancel')!.addEventListener('click', closeModal);
+
+    modal.querySelector('#bid-modal-submit')!.addEventListener('click', () => {
+      const input = modal.querySelector('#bid-modal-input') as HTMLInputElement;
+      const amount = parseInt(input.value, 10);
+      if (amount > 0) {
+        closeModal();
+        this.bidCallbacks.forEach(cb => cb(playerId, toTeamId, amount));
+      }
+    });
+
+    // Focus the input
+    (modal.querySelector('#bid-modal-input') as HTMLInputElement).focus();
   }
 
   private render(seasonState: SeasonState): void {
@@ -210,13 +265,8 @@ export class TransferScreen {
         html += `<span style="text-align:center; color: ${TEXT}; font-size: 10px;">Your player</span>`;
       } else if (r.isFreeAgent) {
         html += `<button data-sign-free="${r.player.id}" style="padding: 3px 10px; border-radius: 4px; border: 1px solid ${GREEN}; background: transparent; color: ${GREEN}; font: bold 10px/1 'Segoe UI',system-ui,sans-serif; cursor: pointer;">Sign</button>`;
-      } else if (this.activeBidPlayerId === r.player.id) {
-        html += `<div style="display: flex; gap: 4px; align-items: center;">`;
-        html += `<input data-bid-input="${r.player.id}" type="number" min="100" step="100" value="${r.askingPrice}" style="width: 60px; padding: 2px 4px; border: 1px solid #334155; border-radius: 3px; background: #0f172a; color: ${TEXT_BRIGHT}; font-size: 10px;">`;
-        html += `<button data-bid-submit="${r.player.id}" data-to-team="${r.teamId}" style="padding: 2px 8px; border-radius: 3px; border: 1px solid ${GREEN}; background: transparent; color: ${GREEN}; font: bold 10px/1 'Segoe UI',system-ui,sans-serif; cursor: pointer;">OK</button>`;
-        html += `</div>`;
       } else {
-        html += `<button data-bid-open="${r.player.id}" style="padding: 3px 10px; border-radius: 4px; border: 1px solid ${ACCENT_BLUE}; background: transparent; color: ${ACCENT_BLUE}; font: bold 10px/1 'Segoe UI',system-ui,sans-serif; cursor: pointer;">Bid</button>`;
+        html += `<button data-bid-open="${r.player.id}" data-bid-team="${r.teamId}" data-bid-name="${r.player.name ?? 'Unknown'}" data-bid-amount="${r.askingPrice}" style="padding: 3px 10px; border-radius: 4px; border: 1px solid ${ACCENT_BLUE}; background: transparent; color: ${ACCENT_BLUE}; font: bold 10px/1 'Segoe UI',system-ui,sans-serif; cursor: pointer;">Bid</button>`;
       }
 
       html += `</div>`;
@@ -246,9 +296,9 @@ export class TransferScreen {
 
     let html = `<div style="overflow-x: auto;"><div class="mobile-no-minwidth" style="min-width: 500px;">`;
 
-    html += `<div style="display: grid; grid-template-columns: ${cols}; gap: 4px; padding: 6px 8px; font-size: 10px; border-bottom: 1px solid #334155; align-items: center;">`;
+    html += `<div class="transfer-grid" style="display: grid; grid-template-columns: ${cols}; gap: 4px; padding: 6px 8px; font-size: 10px; border-bottom: 1px solid #334155; align-items: center;">`;
     html += this.sortHeader('name', 'Name');
-    html += this.sortHeader('age', 'Age', true);
+    html += this.sortHeader('age', 'Age', true, 'transfer-col-age');
     html += this.sortHeader('pos', 'Pos', true);
     html += this.sortHeader('rating', 'Rtg', true);
     html += this.sortHeader('value', 'Value', true);
@@ -263,9 +313,9 @@ export class TransferScreen {
       const isListed = listedIds.has(p.id);
       const ratingColor = rating >= 70 ? GREEN : rating >= 50 ? ACCENT_ORANGE : RED;
 
-      html += `<div style="display: grid; grid-template-columns: ${cols}; gap: 4px; padding: 6px 8px; font-size: 12px; background: ${rowBg}; border-radius: 2px; align-items: center;">`;
+      html += `<div class="transfer-grid" style="display: grid; grid-template-columns: ${cols}; gap: 4px; padding: 6px 8px; font-size: 12px; background: ${rowBg}; border-radius: 2px; align-items: center;">`;
       html += `<span data-player-click="${p.id}" style="color: ${ACCENT_BLUE}; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${p.name ?? 'Unknown'}</span>`;
-      html += `<span style="text-align:center; color: ${TEXT_BRIGHT};">${p.age ?? '?'}</span>`;
+      html += `<span class="transfer-col-age" style="text-align:center; color: ${TEXT_BRIGHT};">${p.age ?? '?'}</span>`;
       html += `<span style="text-align:center; color: ${ACCENT_ORANGE}; font-weight: bold; font-size: 11px;">${p.role}</span>`;
       html += `<span style="text-align:center; color: ${ratingColor}; font-weight: bold;">${rating}</span>`;
       html += `<span style="text-align:center; color: ${TEXT_BRIGHT};">£${formatMoney(value)}</span>`;
@@ -366,13 +416,8 @@ export class TransferScreen {
 
       if (r.teamId === playerTeam.id) {
         html += `<span style="text-align:center; color: ${TEXT}; font-size: 10px;">Your player</span>`;
-      } else if (this.activeBidPlayerId === r.player.id) {
-        html += `<div style="display: flex; gap: 4px; align-items: center;">`;
-        html += `<input data-bid-input="${r.player.id}" type="number" min="100" step="100" value="${r.value}" style="width: 60px; padding: 2px 4px; border: 1px solid #334155; border-radius: 3px; background: #0f172a; color: ${TEXT_BRIGHT}; font-size: 10px;">`;
-        html += `<button data-bid-submit="${r.player.id}" data-to-team="${r.teamId}" style="padding: 2px 8px; border-radius: 3px; border: 1px solid ${GREEN}; background: transparent; color: ${GREEN}; font: bold 10px/1 'Segoe UI',system-ui,sans-serif; cursor: pointer;">OK</button>`;
-        html += `</div>`;
       } else {
-        html += `<button data-bid-open="${r.player.id}" style="padding: 3px 10px; border-radius: 4px; border: 1px solid ${ACCENT_BLUE}; background: transparent; color: ${ACCENT_BLUE}; font: bold 10px/1 'Segoe UI',system-ui,sans-serif; cursor: pointer;">Bid</button>`;
+        html += `<button data-bid-open="${r.player.id}" data-bid-team="${r.teamId}" data-bid-name="${r.player.name ?? 'Unknown'}" data-bid-amount="${r.value}" style="padding: 3px 10px; border-radius: 4px; border: 1px solid ${ACCENT_BLUE}; background: transparent; color: ${ACCENT_BLUE}; font: bold 10px/1 'Segoe UI',system-ui,sans-serif; cursor: pointer;">Bid</button>`;
       }
 
       html += `</div>`;
@@ -391,6 +436,10 @@ export class TransferScreen {
   }
 
   private attachHandlers(seasonState: SeasonState): void {
+    const market = seasonState.transferMarket;
+    const playerTeam = seasonState.teams.find(t => t.isPlayerTeam)!;
+    const budget = market.teamBudgets.get(playerTeam.id) ?? 0;
+
     // View toggles
     for (const btn of this.container.querySelectorAll('[data-view]')) {
       const view = (btn as HTMLElement).dataset.view as ViewMode;
@@ -419,23 +468,15 @@ export class TransferScreen {
       link.addEventListener('click', (e) => { e.stopPropagation(); this.playerClickCallbacks.forEach(cb => cb(id)); });
     }
 
-    // Bid open
+    // Bid open → modal
     for (const btn of this.container.querySelectorAll('[data-bid-open]')) {
-      const id = (btn as HTMLElement).dataset.bidOpen!;
-      btn.addEventListener('click', () => { this.activeBidPlayerId = id; this.render(seasonState); });
-    }
-
-    // Bid submit
-    for (const btn of this.container.querySelectorAll('[data-bid-submit]')) {
-      const id = (btn as HTMLElement).dataset.bidSubmit!;
-      const toTeam = (btn as HTMLElement).dataset.toTeam!;
+      const el = btn as HTMLElement;
+      const playerId = el.dataset.bidOpen!;
+      const toTeamId = el.dataset.bidTeam!;
+      const playerName = el.dataset.bidName!;
+      const suggestedAmount = parseInt(el.dataset.bidAmount!, 10);
       btn.addEventListener('click', () => {
-        const input = this.container.querySelector(`[data-bid-input="${id}"]`) as HTMLInputElement | null;
-        const amount = input ? parseInt(input.value, 10) : 0;
-        if (amount > 0) {
-          this.activeBidPlayerId = null;
-          this.bidCallbacks.forEach(cb => cb(id, toTeam, amount));
-        }
+        this.showBidModal(playerName, playerId, toTeamId, suggestedAmount, budget);
       });
     }
 
