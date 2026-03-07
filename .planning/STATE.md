@@ -45,29 +45,30 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-07)
 
 **Core value:** The match engine must produce emergent behavior that feels like real football — goals, mistakes, tactical dominance and individual brilliance all arising from physics, agent decisions and personality vectors, never from scripted events
-**Current focus:** Phase 10 — Portraits (v1.2 start)
+**Current focus:** Phase 11 — Training Logic
 
 ## Current Position
 
-Phase: 10 of 13 — Portraits
-Plan: 2 of 2 complete
-Status: Phase complete
-Last activity: 2026-03-07 — Portrait integration complete (Plan 02 complete, all visual issues fixed)
+Phase: 11 of 13 — Training Logic
+Plan: 1 of 3 complete
+Status: In progress
+Last activity: 2026-03-07 — Training drill system complete (Plan 01 complete, 17 tests passing, economy sim verified)
 
-Progress: [██░░░░░░░░] 10% (v1.2)
+Progress: [███░░░░░░░] 13% (v1.2)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2 (v1.2)
-- Average duration: 12 min
-- Total execution time: 23 min
+- Total plans completed: 3 (v1.2)
+- Average duration: 10 min
+- Total execution time: 26 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 10-portraits | 2/2 | 23 min | 12 min |
+| 11-training-logic | 1/3 | 3 min | 3 min |
 
 ## Accumulated Context
 
@@ -88,6 +89,10 @@ Recent decisions affecting v1.2:
 - [Phase 10-portraits]: Deleted drawAvatar, getInitials, and shiftColor entirely after portrait swap — no dead code left in playerProfileScreen.ts
 - [10-02] Portrait centred via ctx.translate(0, 13) inside save/restore — face content midpoint (rows 2-16, ~47px) aligned to canvas circle centre (60px)
 - [10-02] Hair gap fix: SHORT_CROP front row-3 extended to col 13, MEDIUM_PART front rows 2-3 right edge extended one pixel — closes top-right head outline gap
+- [11-01] BASE_DELTA = 0.004 — tuned via headless 5-season sim (570 sessions), weak-tier squad stays below 0.95
+- [11-01] work_rate used as training proxy — formula: 0.6 + work_rate * 0.8, range [0.6, 1.4]; no new trait needed
+- [11-01] undefined player age defaults to 25 (safe midpoint, deterministic, avoids NaN)
+- [11-01] Age factor curve: ≤20→1.0, piecewise linear to 36+→0.15; no hard floor on growth (TRAIN-06 satisfied)
 
 ### Pending Todos
 
@@ -96,12 +101,12 @@ None.
 ### Blockers/Concerns
 
 - [Phase 2 - DEFERRED]: Player oscillation / jitter — utility AI action scores flip each tick. Sandbox (Phase 13) will make this highly visible. Research suggests raising TUNING.hysteresisBonus from 0.36 to 0.45-0.50 — attempt in Phase 13 context.
-- [Phase 11 - CRITICAL]: Training economy balance must be verified headlessly before any UI is built. Run 5-season headless simulation; no attribute should exceed ~0.95 for a player starting below 0.70.
+- [Phase 11 - RESOLVED]: Training economy verified headlessly — 570 sessions (5 seasons), weak-tier squad, no attribute exceeded 0.95. BASE_DELTA=0.004 is the calibrated value.
 - [Phase 11 - WATCH]: Existing saves have no `potential` field on players — need derivation fallback (e.g. derive from attribute average + age factor if field absent).
 - [Phase 13 - WATCH]: Sandbox roster aliasing risk — must deep-clone squad via JSON.parse(JSON.stringify()) before passing to sandbox engine to prevent stat leak into real season.
 
 ## Session Continuity
 
 Last session: 2026-03-07
-Stopped at: Completed 10-02-PLAN.md — Portrait integration complete. Pixel art faces on player profiles, centred in circular avatar, hair outline gaps fixed. Phase 10 done.
+Stopped at: Completed 11-01-PLAN.md — Training drill system (applyDrill pure function), 17 tests passing, economy verified via headless 5-season sim.
 Resume file: None
