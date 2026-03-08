@@ -13,8 +13,8 @@
 
 import { describe, it, expect } from 'vitest';
 import { advanceDay, getDaySchedule, isMatchDay } from './dayLoop.ts';
-import type { DayAdvanceResult, DayDescriptor } from './dayLoop.ts';
-import { TRAINING_DAYS_PER_MATCHDAY, DrillType } from './training.ts';
+// DayDescriptor type is used implicitly in getDaySchedule return value checks
+import { TRAINING_DAYS_PER_MATCHDAY } from './training.ts';
 import type { SeasonState, SeasonTeam } from './season.ts';
 import type { PlayerState, PlayerAttributes, PersonalityVector } from '../simulation/types.ts';
 import { Duty } from '../simulation/types.ts';
@@ -71,7 +71,7 @@ function makeDefaultPersonality(overrides?: Partial<PersonalityVector>): Persona
 function makePlayer(id: string, attrOverrides?: Partial<PlayerAttributes>): PlayerState {
   return {
     id,
-    teamId: 'player-team',
+    teamId: 'home', // TeamId must be 'home' | 'away' per simulation types
     position: Vec2.zero(),
     velocity: Vec2.zero(),
     formationAnchor: Vec2.zero(),
@@ -119,10 +119,9 @@ function makeMinimalSeasonState(overrides?: {
 
   const inbox: InboxState = {
     messages: [],
-    unreadCount: 0,
   };
 
-  return {
+  const base: SeasonState = {
     seasonNumber: 1,
     playerTeamId: 'player-team',
     teams: [playerTeam],
@@ -135,8 +134,16 @@ function makeMinimalSeasonState(overrides?: {
     inbox,
     seed: 'test-seed',
     currentDay: overrides?.currentDay ?? 0,
-    trainingSchedule: overrides?.trainingSchedule as Record<number, import('./season.ts').TrainingDayPlan> | undefined,
   };
+
+  if (overrides?.trainingSchedule) {
+    return {
+      ...base,
+      trainingSchedule: overrides.trainingSchedule as import('./season.ts').TrainingSchedule,
+    };
+  }
+
+  return base;
 }
 
 // ---------------------------------------------------------------------------

@@ -74,6 +74,7 @@ export interface SeasonState {
   fixtures: Fixture[];
   table: TeamRecord[];
   currentMatchday: number;   // 1..38; > 38 means season complete
+  currentDay: number;        // position in training block: 0-2 = training, 3 = match day (TRAINING_DAYS_PER_MATCHDAY)
   fatigueMap: Map<string, number>;  // playerId -> current fatigue (0..1)
   squadSelectionMap?: Map<string, SquadSlot>;  // playerId -> selection state (player team only)
   playerSeasonStats: Map<string, PlayerSeasonStats>;  // playerId -> accumulated season stats
@@ -195,6 +196,7 @@ export function createSeason(
     fixtures,
     table,
     currentMatchday: 1,
+    currentDay: 0,
     fatigueMap,
     playerSeasonStats: emptyStats,
     transferMarket,
@@ -401,7 +403,7 @@ export function finalizeMatchday(state: SeasonState): SeasonState {
     }
   }
 
-  return { ...updated, currentMatchday: updated.currentMatchday + 1, fatigueMap: finalFatigueMap };
+  return { ...updated, currentMatchday: updated.currentMatchday + 1, currentDay: 0, fatigueMap: finalFatigueMap };
 }
 
 /**
@@ -485,6 +487,7 @@ export function startNewSeason(
     fixtures,
     table,
     currentMatchday: 1,
+    currentDay: 0,
     fatigueMap,
     playerSeasonStats: emptyStats,
     transferMarket,
