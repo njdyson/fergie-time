@@ -6,7 +6,7 @@
 
 import type { PlayerState } from '../../simulation/types.ts';
 import { validateSquadSelection } from '../../season/season.ts';
-import type { SquadSelection, SquadSlot } from '../../season/season.ts';
+import type { SquadSelection, SquadSlot, TrainingDeltas } from '../../season/season.ts';
 import type { PlayerSeasonStats } from '../../season/playerStats.ts';
 import { calculatePlayerRating } from '../../season/playerAnalysis.ts';
 
@@ -103,6 +103,7 @@ export class SquadScreen {
   private formationRolesOOP: string[] = []; // out-of-possession roles (empty = same as in-poss)
   private sortColumn: string = 'default';
   private sortAscending: boolean = false;
+  private trainingDeltas: TrainingDeltas = new Map();
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -175,9 +176,12 @@ export class SquadScreen {
   }
 
   /** Update display with new player data, optionally restoring saved selection and season stats. */
-  update(players: PlayerState[], fatigueMap: Map<string, number>, savedSelection?: Map<string, SquadSlot>, playerSeasonStats?: Map<string, PlayerSeasonStats>): void {
+  update(players: PlayerState[], fatigueMap: Map<string, number>, savedSelection?: Map<string, SquadSlot>, playerSeasonStats?: Map<string, PlayerSeasonStats>, trainingDeltas?: TrainingDeltas): void {
     if (playerSeasonStats !== undefined) {
       this.playerSeasonStats = playerSeasonStats;
+    }
+    if (trainingDeltas !== undefined) {
+      this.trainingDeltas = trainingDeltas;
     }
     this.setPlayers(players, fatigueMap, savedSelection);
   }
@@ -629,11 +633,14 @@ export class SquadScreen {
       html += `<span class="squad-col-ht" style="color: ${TEXT};">${p.height ? `${p.height}cm` : '-'}</span>`;
 
       // 10 attribute mini-bars
+      const playerDeltas = this.trainingDeltas.get(p.id);
       for (const attr of ATTR_NAMES) {
         const val = p.attributes[attr];
         const pct = Math.round(val * 100);
         const barColor = getAttrBarColor(val);
-        html += `<span class="squad-col-attr" style="text-align: center;" title="${attr}: ${pct}%">`;
+        const improved = playerDeltas ? ((playerDeltas as Record<string, number>)[attr] ?? 0) > 0 : false;
+        const cellBorder = improved ? `border-bottom: 2px solid ${GREEN}` : '';
+        html += `<span class="squad-col-attr" style="text-align: center; ${cellBorder}" title="${attr}: ${pct}%${improved ? ' ▲ improved' : ''}">`;
         html += `<div style="width: 24px; height: 6px; background: #334155; border-radius: 2px; margin: 0 auto;">`;
         html += `<div style="width: ${pct}%; height: 100%; background: ${barColor}; border-radius: 2px;"></div>`;
         html += `</div>`;
