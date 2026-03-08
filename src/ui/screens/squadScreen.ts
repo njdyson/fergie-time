@@ -9,6 +9,8 @@ import { validateSquadSelection } from '../../season/season.ts';
 import type { SquadSelection, SquadSlot, TrainingDeltas } from '../../season/season.ts';
 import type { PlayerSeasonStats } from '../../season/playerStats.ts';
 import { calculatePlayerRating } from '../../season/playerAnalysis.ts';
+import type { TrainingGroup } from '../../season/training.ts';
+import { TrainingGroup as TG, TRAINING_GROUP_LABELS, getPlayerTrainingGroup } from '../../season/training.ts';
 
 // Re-export for consumer convenience
 export type { SquadSelection } from '../../season/season.ts';
@@ -104,6 +106,8 @@ export class SquadScreen {
   private sortColumn: string = 'default';
   private sortAscending: boolean = false;
   private trainingDeltas: TrainingDeltas = new Map();
+  private trainingGroupOverrides: Map<string, TrainingGroup> = new Map();
+  private trainingGroupChangeCallbacks: Array<(overrides: Map<string, TrainingGroup>) => void> = [];
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -176,12 +180,15 @@ export class SquadScreen {
   }
 
   /** Update display with new player data, optionally restoring saved selection and season stats. */
-  update(players: PlayerState[], fatigueMap: Map<string, number>, savedSelection?: Map<string, SquadSlot>, playerSeasonStats?: Map<string, PlayerSeasonStats>, trainingDeltas?: TrainingDeltas): void {
+  update(players: PlayerState[], fatigueMap: Map<string, number>, savedSelection?: Map<string, SquadSlot>, playerSeasonStats?: Map<string, PlayerSeasonStats>, trainingDeltas?: TrainingDeltas, trainingGroupOverrides?: Map<string, TrainingGroup>): void {
     if (playerSeasonStats !== undefined) {
       this.playerSeasonStats = playerSeasonStats;
     }
     if (trainingDeltas !== undefined) {
       this.trainingDeltas = trainingDeltas;
+    }
+    if (trainingGroupOverrides !== undefined) {
+      this.trainingGroupOverrides = trainingGroupOverrides;
     }
     this.setPlayers(players, fatigueMap, savedSelection);
   }
@@ -245,6 +252,11 @@ export class SquadScreen {
   /** Register a callback fired when a player name is clicked. */
   setOnPlayerClick(cb: (playerId: string) => void): void {
     this.playerClickCallbacks.push(cb);
+  }
+
+  /** Register a callback fired when a player's training group is changed. */
+  onTrainingGroupChange(cb: (overrides: Map<string, TrainingGroup>) => void): void {
+    this.trainingGroupChangeCallbacks.push(cb);
   }
 
   private openRolePicker(playerId: string): void {
@@ -528,12 +540,18 @@ export class SquadScreen {
         va = getRoleOrder(a.role); vb = getRoleOrder(b.role);
       } else if (col === 'age') {
         va = a.age ?? 0; vb = b.age ?? 0;
+      } else if (col === 'rating') {
+        va = calculatePlayerRating(a); vb = calculatePlayerRating(b);
       } else if (col === 'fit') {
         va = 1 - (this.fatigueMap.get(a.id) ?? a.fatigue ?? 0);
         vb = 1 - (this.fatigueMap.get(b.id) ?? b.fatigue ?? 0);
       } else if (col === '#') {
         va = this.shirtNumbers.get(a.id) ?? a.shirtNumber ?? 99;
         vb = this.shirtNumbers.get(b.id) ?? b.shirtNumber ?? 99;
+      } else if (col === 'trn') {
+        const groupOrder: Record<string, number> = { GK: 0, DEF: 1, ATK: 2 };
+        va = groupOrder[getPlayerTrainingGroup(a, this.trainingGroupOverrides)] ?? 1;
+        vb = groupOrder[getPlayerTrainingGroup(b, this.trainingGroupOverrides)] ?? 1;
       } else if (col in a.attributes) {
         va = a.attributes[col as keyof PlayerState['attributes']];
         vb = b.attributes[col as keyof PlayerState['attributes']];
@@ -570,8 +588,8 @@ export class SquadScreen {
     html += `<button data-clear-all style="padding: 4px 12px; border-radius: 4px; border: 1px solid #475569; background: #0f172a; color: ${TEXT_BRIGHT}; font-size: 11px; cursor: pointer;">Clear All</button>`;
     html += `</div>`;
 
-    // Grid column template (badge, #, name, pos, nat, age, ht, 10 attrs, rtg, fit, G, A, App)
-    const gridCols = `52px 34px 128px 40px 32px 32px 44px ${ATTR_NAMES.map(() => '30px').join(' ')} 30px 40px 24px 24px 30px`;
+    // Grid column template (badge, #, name, pos, trn, nat, age, ht, 10 attrs, rtg, fit, G, A, App)
+    const gridCols = `52px 34px 128px 40px 34px 32px 32px 44px ${ATTR_NAMES.map(() => '30px').join(' ')} 30px 40px 24px 24px 30px`;
 
     // Sortable header helper
     const sortArrow = (col: string) => this.sortColumn === col ? (this.sortAscending ? ' ▲' : ' ▼') : '';
@@ -583,13 +601,14 @@ export class SquadScreen {
     html += `<span class="squad-col-shirt" data-sort="#" style="${hdrStyle}">${sortArrow('#')}</span>`;
     html += `<span data-sort="name" style="${hdrStyle}">Name${sortArrow('name')}</span>`;
     html += `<span data-sort="pos" style="${hdrStyle}">Pos${sortArrow('pos')}</span>`;
+    html += `<span style="font-size:9px; ${hdrStyle}" data-sort="trn" title="Training Group">Trn${sortArrow('trn')}</span>`;
     html += '<span class="squad-col-nat">Nat</span>';
     html += `<span data-sort="age" style="${hdrStyle}">Age${sortArrow('age')}</span>`;
     html += '<span class="squad-col-ht">Ht</span>';
     for (const attr of ATTR_NAMES) {
       html += `<span class="squad-col-attr" data-sort="${attr}" style="text-align: center; ${hdrStyle}" title="${attr}">${ATTR_SHORT[attr]}${sortArrow(attr)}</span>`;
     }
-    html += `<span class="squad-col-rating" style="text-align: center;">Rtg</span>`;
+    html += `<span class="squad-col-rating" data-sort="rating" style="text-align: center; ${hdrStyle}">Rtg${sortArrow('rating')}</span>`;
     html += `<span data-sort="fit" style="text-align: center; ${hdrStyle}">FIT${sortArrow('fit')}</span>`;
     html += `<span class="squad-col-stat" style="text-align: center; color: #4ade80; font-weight: bold;" title="Goals this season">G</span>`;
     html += `<span class="squad-col-stat" style="text-align: center; color: #60a5fa; font-weight: bold;" title="Assists this season">A</span>`;
@@ -621,6 +640,11 @@ export class SquadScreen {
 
       // Position
       html += `<span style="color: ${ACCENT_ORANGE}; font-weight: bold;">${p.role}</span>`;
+
+      // Training group badge (clickable to cycle)
+      const trnGroup = getPlayerTrainingGroup(p, this.trainingGroupOverrides);
+      const trnColor = trnGroup === 'GK' ? '#fbbf24' : trnGroup === 'DEF' ? '#60a5fa' : '#f87171';
+      html += `<span data-trn-toggle="${p.id}" style="display:inline-block; background:${trnColor}22; color:${trnColor}; font-size:9px; font-weight:bold; padding:1px 4px; border-radius:3px; cursor:pointer; text-align:center; user-select:none;" title="Training group: ${TRAINING_GROUP_LABELS[trnGroup]} (click to change)">${trnGroup}</span>`;
 
       // Nationality
       const nat = getNat(p.nationality);
@@ -742,6 +766,25 @@ export class SquadScreen {
         this.autoPick();
         this.render();
         for (const cb of this.changeCallbacks) cb(this.getSelection());
+      });
+    }
+
+    // Training group toggle handlers
+    const trnToggles = this.container.querySelectorAll('[data-trn-toggle]');
+    for (const toggle of trnToggles) {
+      const playerId = (toggle as HTMLElement).dataset.trnToggle!;
+      toggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const player = this.players.find(p => p.id === playerId);
+        if (!player) return;
+        const current = getPlayerTrainingGroup(player, this.trainingGroupOverrides);
+        const cycle: TrainingGroup[] = [TG.GK, TG.DEF, TG.ATK];
+        const nextIdx = (cycle.indexOf(current) + 1) % cycle.length;
+        const next = cycle[nextIdx]!;
+        this.trainingGroupOverrides = new Map(this.trainingGroupOverrides);
+        this.trainingGroupOverrides.set(playerId, next);
+        for (const cb of this.trainingGroupChangeCallbacks) cb(this.trainingGroupOverrides);
+        this.render();
       });
     }
 

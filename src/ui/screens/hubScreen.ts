@@ -2,14 +2,14 @@
  * Hub Screen — the season management home screen.
  * Shows team name, season number, league position, next fixture, and last result.
  *
- * Plan 02 rewrite: day schedule list replaces the flat training scheduler.
- * Continue button advances one day; Kick Off appears on match day.
+ * Training days now use saved presets (per-group drills) instead of single drill selectors.
  */
 
 import type { SeasonState, TrainingSchedule, TrainingDayPlan } from '../../season/season.ts';
 import { isSeasonComplete } from '../../season/season.ts';
 import { sortTable } from '../../season/leagueTable.ts';
-import { DrillType, ALL_DRILL_TYPES, DRILL_LABELS, DRILL_ATTRIBUTE_MAP } from '../../season/training.ts';
+import type { TrainingDayPreset } from '../../season/training.ts';
+import { DEFAULT_PRESETS, ATTR_LABELS, SLOT_LABELS, INTENSITY_LABELS } from '../../season/training.ts';
 import { getDaySchedule, isMatchDay } from '../../season/dayLoop.ts';
 import type { DayDescriptor } from '../../season/dayLoop.ts';
 
@@ -27,26 +27,19 @@ function ordinalSuffix(n: number): string {
   return n + (s[(v - 20) % 10] || s[v] || s[0])!;
 }
 
-/** Convert camelCase attribute name to Title Case: 'oneOnOnes' -> 'One On Ones' */
-function camelToTitle(s: string): string {
-  return s
-    .replace(/([A-Z])/g, ' $1')
-    .replace(/^./, c => c.toUpperCase())
-    .trim();
-}
-
 export class HubScreen {
   private container: HTMLElement;
   private kickoffCallbacks: Array<() => void> = [];
   private continueCallbacks: Array<() => void> = [];
   private scheduleChangeCallbacks: Array<(schedule: TrainingSchedule) => void> = [];
+  private viewReportCallbacks: Array<(dayNumber: number) => void> = [];
 
   constructor(container: HTMLElement) {
     this.container = container;
     this.container.style.color = TEXT;
     this.container.style.fontFamily = "'Segoe UI', system-ui, sans-serif";
-    this.container.style.padding = '24px';
     this.container.style.boxSizing = 'border-box';
+    this.container.style.scrollbarGutter = 'stable both-edges';
   }
 
   onKickoff(cb: () => void): void {
@@ -59,6 +52,10 @@ export class HubScreen {
 
   onScheduleChange(cb: (schedule: TrainingSchedule) => void): void {
     this.scheduleChangeCallbacks.push(cb);
+  }
+
+  onViewReport(cb: (dayNumber: number) => void): void {
+    this.viewReportCallbacks.push(cb);
   }
 
   private fireScheduleChange(schedule: TrainingSchedule): void {
@@ -77,6 +74,7 @@ export class HubScreen {
 
     // Current training schedule (defaults to all rest)
     const schedule: TrainingSchedule = state.trainingSchedule ?? {};
+    const presets = state.trainingPresets ?? [...DEFAULT_PRESETS];
 
     // Find last result (most recent fixture with result for player team)
     const playedFixtures = state.fixtures
@@ -149,7 +147,7 @@ export class HubScreen {
 
       let rowsHtml = '';
       for (const day of dayDescriptors) {
-        rowsHtml += this.buildDayRow(day, schedule);
+        rowsHtml += this.buildDayRow(day, schedule, presets);
       }
 
       scheduleCardHtml = `
@@ -172,7 +170,7 @@ export class HubScreen {
     }
 
     this.container.innerHTML = `
-      <div style="max-width: 640px; margin: 0 auto;">
+      <div data-hub-shell="true" style="width: min(100%, 1040px); margin: 0 auto; padding: 0 8px 24px;">
         <!-- Team header -->
         <div style="text-align: center; margin-bottom: 32px;">
           <h1 style="color: ${TEXT_BRIGHT}; font-size: 32px; margin: 0 0 6px 0; font-weight: 800; letter-spacing: -0.5px;">${playerTeamName}</h1>
@@ -224,7 +222,7 @@ export class HubScreen {
       for (const cb of this.continueCallbacks) cb();
     });
 
-    // Wire training scheduler controls for editable days (current + future training days)
+    // Wire preset selectors for editable days
     if (nextFixture) {
       const readAndFireSchedule = () => {
         const dayDescriptors = getDaySchedule(state);
@@ -234,18 +232,10 @@ export class HubScreen {
           if (day.type !== 'training') continue;
 
           if (day.status === 'past') {
-            // Past days: read from state (locked)
             updatedSchedule[day.dayIndex] = schedule[day.dayIndex] ?? 'rest';
           } else {
-            // Current and future: read from DOM
-            const toggleBtn = this.container.querySelector(`#train-toggle-${day.dayIndex}`) as HTMLButtonElement | null;
-            const drillSelect = this.container.querySelector(`#train-drill-${day.dayIndex}`) as HTMLSelectElement | null;
-            const isDrill = toggleBtn?.dataset.isDrill === 'true';
-            if (isDrill && drillSelect) {
-              updatedSchedule[day.dayIndex] = drillSelect.value as TrainingDayPlan;
-            } else {
-              updatedSchedule[day.dayIndex] = 'rest';
-            }
+            const presetSelect = this.container.querySelector(`#train-preset-${day.dayIndex}`) as HTMLSelectElement | null;
+            updatedSchedule[day.dayIndex] = (presetSelect?.value ?? 'rest') as TrainingDayPlan;
           }
         }
         this.fireScheduleChange(updatedSchedule);
@@ -254,48 +244,25 @@ export class HubScreen {
       const dayDescriptors = getDaySchedule(state);
       for (const day of dayDescriptors) {
         if (day.type !== 'training' || day.status === 'past') continue;
-
-        const toggleBtn = this.container.querySelector(`#train-toggle-${day.dayIndex}`) as HTMLButtonElement | null;
-        const drillSelect = this.container.querySelector(`#train-drill-${day.dayIndex}`) as HTMLSelectElement | null;
-
-        if (toggleBtn) {
-          toggleBtn.addEventListener('click', () => {
-            const currently = toggleBtn.dataset.isDrill === 'true';
-            const nowDrill = !currently;
-            toggleBtn.dataset.isDrill = String(nowDrill);
-
-            if (nowDrill) {
-              const drill = drillSelect?.value ?? DrillType.FITNESS;
-              toggleBtn.textContent = DRILL_LABELS[drill as DrillType] ?? 'Drill';
-              toggleBtn.style.background = '#14532d';
-              toggleBtn.style.color = GREEN;
-              toggleBtn.style.borderColor = '#22c55e';
-              if (drillSelect) drillSelect.style.display = 'block';
-            } else {
-              toggleBtn.textContent = 'Rest';
-              toggleBtn.style.background = '#1e293b';
-              toggleBtn.style.color = TEXT;
-              toggleBtn.style.borderColor = '#334155';
-              if (drillSelect) drillSelect.style.display = 'none';
-            }
-            readAndFireSchedule();
-          });
-        }
-
-        if (drillSelect) {
-          drillSelect.addEventListener('change', () => {
-            if (toggleBtn && toggleBtn.dataset.isDrill === 'true') {
-              toggleBtn.textContent = DRILL_LABELS[drillSelect.value as DrillType] ?? drillSelect.value;
-            }
-            readAndFireSchedule();
-          });
+        const presetSelect = this.container.querySelector(`#train-preset-${day.dayIndex}`) as HTMLSelectElement | null;
+        if (presetSelect) {
+          presetSelect.addEventListener('change', () => readAndFireSchedule());
         }
       }
+    }
+
+    // Wire "View Report" links on past training days
+    for (const link of this.container.querySelectorAll('[data-view-report]')) {
+      const dayNumber = parseInt((link as HTMLElement).dataset.viewReport!, 10);
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        for (const cb of this.viewReportCallbacks) cb(dayNumber);
+      });
     }
   }
 
   /** Build HTML for a single day row in the schedule list. */
-  private buildDayRow(day: DayDescriptor, schedule: TrainingSchedule): string {
+  private buildDayRow(day: DayDescriptor, schedule: TrainingSchedule, presets: TrainingDayPreset[]): string {
     // Style based on status
     let rowBg: string;
     let rowBorder: string;
@@ -316,15 +283,14 @@ export class HubScreen {
       labelColor = TEXT;
     }
 
-    const rowStyle = `display:flex; align-items:center; gap:10px; padding:10px 12px; background:${rowBg}; border-radius:6px; margin-bottom:4px; ${rowBorder}`;
+    const rowStyle = `display:flex; align-items:center; gap:10px; padding:10px 12px; background:${rowBg}; border-radius:6px; margin-bottom:8px; ${rowBorder}`;
 
     if (day.type === 'match') {
-      // Match day row — no drill selector
       const matchLabel = day.status === 'past' ? 'Played' : (day.status === 'current' ? 'Ready to Kick Off' : 'Upcoming');
       const matchColor = day.status === 'current' ? GREEN : labelColor;
       return `
-        <div style="${rowStyle}">
-          <span style="color:${labelColor}; font-size:13px; font-weight:700; min-width:80px; flex-shrink:0;">${day.label}</span>
+        <div style="${rowStyle} min-height:60px;">
+          <span style="color:${labelColor}; font-size:13px; font-weight:700; width:70px; flex-shrink:0;">${day.label}</span>
           <span style="color:${matchColor}; font-size:12px; font-style:italic;">${matchLabel}</span>
         </div>`;
     }
@@ -332,45 +298,52 @@ export class HubScreen {
     // Training day row
     const dayPlan: TrainingDayPlan = schedule[day.dayIndex] ?? 'rest';
 
+    const trainRowStyle = `${rowStyle} min-height:60px;`;
+
     if (day.status === 'past') {
-      // Locked display — show what was scheduled
-      const drillLabel = dayPlan === 'rest' ? 'Rest' : DRILL_LABELS[dayPlan as DrillType] ?? dayPlan;
+      // Locked display — show what was scheduled + view report link for non-rest days
+      const preset = presets.find(p => p.id === dayPlan);
+      const displayLabel = dayPlan === 'rest' ? 'Rest' : (preset?.name ?? dayPlan);
       const doneColor = '#475569';
+      const reportLink = dayPlan !== 'rest'
+        ? `<a href="#" data-view-report="${day.dayIndex + 1}" style="color:#60a5fa; font-size:11px; text-decoration:none; white-space:nowrap; cursor:pointer;">View Report</a>`
+        : `<span style="color:#374151; font-size:11px;">Done</span>`;
       return `
-        <div style="${rowStyle}">
-          <span style="color:${doneColor}; font-size:12px; min-width:44px; flex-shrink:0;">${day.label}</span>
-          <span style="color:${doneColor}; font-size:12px; flex:1;">${drillLabel}</span>
-          <span style="color:#374151; font-size:11px;">Done</span>
+        <div style="${trainRowStyle}">
+          <span style="color:${doneColor}; font-size:12px; width:70px; flex-shrink:0;">${day.label}</span>
+          <span style="color:${doneColor}; font-size:12px; flex:1;">${displayLabel}</span>
+          ${reportLink}
         </div>`;
     }
 
-    // Current or future: editable drill toggle + dropdown
-    const isDrill = dayPlan !== 'rest';
-    const currentDrill = isDrill ? (dayPlan as string) : DrillType.FITNESS;
-
-    const toggleBg = isDrill ? '#14532d' : '#1e293b';
-    const toggleColor = isDrill ? GREEN : TEXT;
-    const toggleBorder = isDrill ? `#22c55e` : '#334155';
-    const toggleLabel = isDrill ? DRILL_LABELS[currentDrill as DrillType] : 'Rest';
-
-    const drillOptions = ALL_DRILL_TYPES.map(dt => {
-      const attrs = DRILL_ATTRIBUTE_MAP[dt].map(a => camelToTitle(a)).join(', ');
-      const selected = dt === currentDrill ? ' selected' : '';
-      return `<option value="${dt}"${selected}>${DRILL_LABELS[dt]} (${attrs})</option>`;
+    // Current or future: preset dropdown
+    const presetOptions = presets.map(p => {
+      const drillSummary = this.presetSummary(p);
+      const selected = p.id === dayPlan ? ' selected' : '';
+      return `<option value="${p.id}"${selected}>${p.name} (${drillSummary})</option>`;
     }).join('');
 
-    const selectDisplay = isDrill ? 'block' : 'none';
-
     return `
-      <div style="${rowStyle}">
-        <span style="color:${labelColor}; font-size:12px; min-width:44px; flex-shrink:0;">${day.label}</span>
-        <button id="train-toggle-${day.dayIndex}" data-day="${day.dayIndex}" data-is-drill="${isDrill}"
-          style="padding:5px 12px; border-radius:6px; border:1px solid ${toggleBorder}; background:${toggleBg}; color:${toggleColor}; font:600 11px/1 'Segoe UI',system-ui,sans-serif; cursor:pointer; min-width:72px; flex-shrink:0;"
-        >${toggleLabel}</button>
-        <select id="train-drill-${day.dayIndex}" data-day="${day.dayIndex}"
-          style="display:${selectDisplay}; flex:1; background:#0f172a; border:1px solid #334155; border-radius:6px; color:${TEXT_BRIGHT}; font:12px/1 'Segoe UI',system-ui,sans-serif; padding:5px 8px; cursor:pointer;"
-        >${drillOptions}</select>
+      <div style="${trainRowStyle}">
+        <span style="color:${labelColor}; font-size:12px; width:70px; flex-shrink:0;">${day.label}</span>
+        <select id="train-preset-${day.dayIndex}" data-day="${day.dayIndex}"
+          style="flex:1; background:#0f172a; border:1px solid #334155; border-radius:6px; color:${TEXT_BRIGHT}; font:12px/1 'Segoe UI',system-ui,sans-serif; padding:5px 8px; cursor:pointer;"
+        >
+          <option value="rest"${dayPlan === 'rest' ? ' selected' : ''}>Rest Day</option>
+          ${presetOptions}
+        </select>
       </div>`;
+  }
+
+  private presetSummary(p: TrainingDayPreset): string {
+    const intensityLabel = INTENSITY_LABELS[p.intensity ?? 3] ?? 'Moderate';
+    const slotPart = p.slots.map((slot, i) => {
+      const gk = slot.gk === 'rest' ? 'Rest' : (ATTR_LABELS[slot.gk as keyof import('../../simulation/types.ts').PlayerAttributes] ?? slot.gk);
+      const def = slot.def === 'rest' ? 'Rest' : (ATTR_LABELS[slot.def as keyof import('../../simulation/types.ts').PlayerAttributes] ?? slot.def);
+      const atk = slot.atk === 'rest' ? 'Rest' : (ATTR_LABELS[slot.atk as keyof import('../../simulation/types.ts').PlayerAttributes] ?? slot.atk);
+      return `${SLOT_LABELS[i]}: ${gk}/${def}/${atk}`;
+    }).join(' | ');
+    return `${intensityLabel} | ${slotPart}`;
   }
 
   getElement(): HTMLElement {

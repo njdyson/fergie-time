@@ -6,7 +6,8 @@
 import seedrandom from 'seedrandom';
 import type { PlayerState, PlayerAttributes, FormationId } from '../simulation/types.ts';
 import type { SavedTactic } from '../ui/tacticStore.ts';
-import type { DrillType } from './training.ts';
+import type { DrillType, TrainingDayPreset, TrainingGroup } from './training.ts';
+import { DEFAULT_PRESETS } from './training.ts';
 import type { TeamTier } from './teamGen.ts';
 import { createAITeam } from './teamGen.ts';
 import type { PlayerName } from './nameService.ts';
@@ -26,6 +27,9 @@ import { generateFreeAgents, createTransferMarket, updateAllPlayerValues } from 
 import type { InboxState } from './inbox.ts';
 import { createInbox, sendMessage } from './inbox.ts';
 import { processAITransfers } from './aiTransfers.ts';
+import { applySeasonProgression, shouldRetire, applyAITrainingBoosts } from './aging.ts';
+import { generatePlayer } from './teamGen.ts';
+import type { Role } from '../simulation/types.ts';
 
 // --- Types ---
 
@@ -80,7 +84,7 @@ export interface SeasonState {
   fixtures: Fixture[];
   table: TeamRecord[];
   currentMatchday: number;   // 1..38; > 38 means season complete
-  currentDay: number;        // position in training block: 0-2 = training, 3 = match day (TRAINING_DAYS_PER_MATCHDAY)
+  currentDay: number;        // position in training block: 0-4 = training (Mon-Fri), 5 = match day (TRAINING_DAYS_PER_MATCHDAY)
   fatigueMap: Map<string, number>;  // playerId -> current fatigue (0..1)
   squadSelectionMap?: Map<string, SquadSlot>;  // playerId -> selection state (player team only)
   homeTacticPresetName?: string;  // currently selected tactic name in dropdown (player team)
@@ -91,6 +95,8 @@ export interface SeasonState {
   readonly seed: string;
   trainingSchedule?: TrainingSchedule;   // current block plan — keyed by day slot
   trainingDeltas?: TrainingDeltas;       // last block's per-player attribute gains
+  trainingPresets?: TrainingDayPreset[];  // saved training day presets (custom + defaults)
+  trainingGroupOverrides?: Map<string, TrainingGroup>;  // playerId → manual group assignment
 }
 
 // --- AI Team Names ---
@@ -222,6 +228,8 @@ export function createSeason(
     transferMarket,
     inbox,
     seed,
+    trainingPresets: [...DEFAULT_PRESETS],
+    trainingGroupOverrides: new Map(),
   };
 }
 
@@ -488,6 +496,68 @@ export function getChampion(state: SeasonState): TeamRecord {
   return sortTable(state.table)[0]!;
 }
 
+/**
+ * Process season-end progression for all teams:
+ * age increment, physical decay, mental growth, AI training, retirements, replacements.
+ */
+function processSeasonProgression(
+  teams: SeasonTeam[],
+  rng: () => number,
+): {
+  teams: SeasonTeam[];
+  retirementMessages: Array<{ name: string; age: number }>;
+  promotionMessages: Array<{ name: string; age: number; role: string }>;
+} {
+  const retirementMessages: Array<{ name: string; age: number }> = [];
+  const promotionMessages: Array<{ name: string; age: number; role: string }> = [];
+
+  const updatedTeams = teams.map(team => {
+    // 1. Apply age progression (age++, decay, mental growth) to all players
+    let squad = team.squad.map(p => applySeasonProgression(p));
+
+    // 2. AI training boosts (AI teams only)
+    if (!team.isPlayerTeam) {
+      squad = applyAITrainingBoosts(squad, team.tier, rng);
+    }
+
+    // 3. Retirement checks + youth replacements
+    const newSquad: PlayerState[] = [];
+    for (const player of squad) {
+      if (shouldRetire(player, rng)) {
+        // Record retirement (messages only for player team)
+        if (team.isPlayerTeam) {
+          retirementMessages.push({
+            name: player.name ?? 'Unknown Player',
+            age: player.age ?? 25,
+          });
+        }
+        // Generate youth replacement with same role
+        const youth = generatePlayer(
+          player.role as Role,
+          team.isPlayerTeam ? 'mid' : team.tier,
+          team.id,
+          rng,
+          { index: parseInt(player.id.split('-').pop() ?? '0', 10), ageOverride: 17 + Math.floor(rng() * 4) },
+        );
+        if (team.isPlayerTeam) {
+          promotionMessages.push({
+            name: youth.name ?? 'Unknown Player',
+            age: youth.age ?? 18,
+            role: youth.role as string,
+          });
+        }
+        newSquad.push(youth);
+      } else {
+        newSquad.push(player);
+      }
+    }
+
+    return { ...team, squad: newSquad };
+  });
+
+  return { teams: updatedTeams, retirementMessages, promotionMessages };
+}
+
 export function startNewSeason(
   state: SeasonState,
   playerSquad: PlayerState[],
@@ -495,9 +565,8 @@ export function startNewSeason(
   const newSeed = `${state.seed}-s${state.seasonNumber + 1}`;
   const rng = seedrandom(newSeed);
 
-  // Regenerate AI teams with new seed
-  const tiers = getAITierDistribution();
-  const newTeams: SeasonTeam[] = state.teams.map((team, index) => {
+  // Build teams with current squads (keep AI teams, update player squad)
+  const teamsWithSquads: SeasonTeam[] = state.teams.map(team => {
     if (team.isPlayerTeam) {
       return {
         ...team,
@@ -506,19 +575,12 @@ export function startNewSeason(
         preferredFormation: team.preferredFormation ?? '4-4-2',
       };
     }
-    const aiIndex = index - 1; // offset because player team is at 0
-    const tier = tiers[aiIndex]!;
-    const newSquad = createAITeam(tier, team.id, team.name, rng);
-    const preferredTacticName = choosePreferredBuiltInTacticName(tier, rng);
-    const system = loadBuiltInTacticSystem(preferredTacticName);
-    return {
-      ...team,
-      tier,
-      preferredTacticName,
-      preferredFormation: system?.inPossessionFormation ?? '4-4-2',
-      squad: newSquad,
-    };
+    return team; // keep AI team as-is (no regeneration)
   });
+
+  // Process season progression: age, decay, growth, retirements, replacements
+  const { teams: newTeams, retirementMessages, promotionMessages } =
+    processSeasonProgression(teamsWithSquads, rng);
 
   // Generate fresh fixtures with same team IDs
   const teamIds = newTeams.map(t => t.id);
@@ -548,8 +610,29 @@ export function startNewSeason(
     transferMarket.teamBudgets.set(team.id, prevBudget + topUp);
   }
 
-  // Fresh inbox (keep no messages from previous season)
-  const inbox = createInbox();
+  // Build inbox with retirement/promotion messages
+  let inbox = createInbox();
+  const matchday = 1;
+
+  for (const ret of retirementMessages) {
+    inbox = sendMessage(inbox, {
+      subject: `Player Retirement \u2014 ${ret.name}`,
+      body: `${ret.name} has announced their retirement from professional football at the age of ${ret.age}.\n\nWe thank them for their service to the club.`,
+      from: 'Club Secretary',
+      matchday,
+      category: 'general',
+    });
+  }
+
+  for (const promo of promotionMessages) {
+    inbox = sendMessage(inbox, {
+      subject: `Youth Promotion \u2014 ${promo.name}`,
+      body: `${promo.name} (${promo.age}, ${promo.role}) has been promoted from the youth academy to fill a first-team squad vacancy.\n\nThey show promise and will benefit from first-team training.`,
+      from: 'Youth Academy',
+      matchday,
+      category: 'general',
+    });
+  }
 
   return {
     seasonNumber: state.seasonNumber + 1,
@@ -564,5 +647,8 @@ export function startNewSeason(
     transferMarket,
     inbox,
     seed: newSeed,
+    trainingPresets: state.trainingPresets ?? [...DEFAULT_PRESETS],
+    trainingGroupOverrides: state.trainingGroupOverrides ?? new Map(),
+    trainingSchedule: state.trainingSchedule,
   };
 }

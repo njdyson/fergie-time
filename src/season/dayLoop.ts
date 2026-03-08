@@ -9,8 +9,9 @@
  */
 
 import type { SeasonState, TrainingDeltas } from './season.ts';
-import { applyDrill, TRAINING_DAYS_PER_MATCHDAY, DRILL_ATTRIBUTE_MAP } from './training.ts';
-import type { DrillType } from './training.ts';
+import { applyDrill, applyTrainingDay, TRAINING_DAYS_PER_MATCHDAY, DRILL_ATTRIBUTE_MAP } from './training.ts';
+import type { DrillType, TrainingDayPreset } from './training.ts';
+import { getPlayerTrainingGroup } from './training.ts';
 import type { PlayerAttributes } from '../simulation/types.ts';
 
 // ---------------------------------------------------------------------------
@@ -22,8 +23,8 @@ import type { PlayerAttributes } from '../simulation/types.ts';
  * Used to render the day progress bar in the Hub UI.
  */
 export interface DayDescriptor {
-  dayIndex: number;          // 0-based: 0, 1, 2 = training days; 3 = match day
-  label: string;             // 'Day 1', 'Day 2', 'Day 3', 'Match Day'
+  dayIndex: number;          // 0-based: 0-4 = training days; 5 = match day
+  label: string;             // 'Day 1' .. 'Day 5', 'Match Day'
   type: 'training' | 'match';
   status: 'past' | 'current' | 'future';
 }
@@ -55,11 +56,11 @@ export function isMatchDay(state: SeasonState): boolean {
 
 /**
  * Returns an array of TRAINING_DAYS_PER_MATCHDAY + 1 day descriptors
- * (3 training days + 1 match day), each marked as past/current/future
+ * (5 training days + 1 match day), each marked as past/current/future
  * based on state.currentDay.
  */
 export function getDaySchedule(state: SeasonState): DayDescriptor[] {
-  const total = TRAINING_DAYS_PER_MATCHDAY + 1; // e.g., 4: days 0,1,2 + match day at index 3
+  const total = TRAINING_DAYS_PER_MATCHDAY + 1; // 6: days 0-4 (Mon-Fri) + match day at index 5
   const descriptors: DayDescriptor[] = [];
 
   for (let i = 0; i < total; i++) {
@@ -88,6 +89,19 @@ export function getDaySchedule(state: SeasonState): DayDescriptor[] {
 }
 
 // ---------------------------------------------------------------------------
+// Resolve preset from schedule
+// ---------------------------------------------------------------------------
+
+/** Resolves a day's schedule entry to a preset (or null for rest). */
+export function resolvePreset(
+  dayPlan: string,
+  presets: TrainingDayPreset[],
+): TrainingDayPreset | null {
+  if (dayPlan === 'rest') return null;
+  return presets.find(p => p.id === dayPlan) ?? null;
+}
+
+// ---------------------------------------------------------------------------
 // advanceDay
 // ---------------------------------------------------------------------------
 
@@ -99,9 +113,8 @@ export function getDaySchedule(state: SeasonState): DayDescriptor[] {
  * Behaviour:
  *  - If isMatchDay(state), throws Error('Cannot advance past match day').
  *  - Reads the training plan for the current day from state.trainingSchedule.
- *  - If the plan is a drill, applies it to the player team's squad and accumulates
- *    per-player attribute deltas into state.trainingDeltas (additive across days).
- *  - If the plan is 'rest' (or undefined), no attribute changes.
+ *  - If the plan resolves to a preset, applies the training day (3 slots × 3 groups).
+ *  - If the plan is 'rest' (or undefined/unresolvable), no attribute changes.
  *  - Returns the updated state with currentDay incremented by 1, and isMatchDay flag.
  */
 export function advanceDay(state: SeasonState): DayAdvanceResult {
@@ -116,7 +129,6 @@ export function advanceDay(state: SeasonState): DayAdvanceResult {
   const playerTeam = state.teams[playerTeamIndex];
 
   if (!playerTeam) {
-    // Should never happen in normal game flow; return incremented day with no changes
     const newDay = state.currentDay + 1;
     return {
       state: { ...state, currentDay: newDay },
@@ -128,28 +140,62 @@ export function advanceDay(state: SeasonState): DayAdvanceResult {
   let mergedDeltas: TrainingDeltas = new Map(state.trainingDeltas ?? new Map());
 
   if (dayPlan !== 'rest') {
-    const drill = dayPlan as DrillType;
+    const presets = state.trainingPresets ?? [];
+    const preset = resolvePreset(dayPlan, presets);
     const beforeSquad = playerTeam.squad;
-    updatedSquad = applyDrill(beforeSquad, drill);
 
-    // Compute per-player attribute deltas and merge into existing deltas (additive)
-    const targets = DRILL_ATTRIBUTE_MAP[drill];
+    if (preset) {
+      // Slot-based training: each slot trains one attribute per group
+      updatedSquad = applyTrainingDay(beforeSquad, preset, state.trainingGroupOverrides);
 
-    for (let i = 0; i < updatedSquad.length; i++) {
-      const prev = beforeSquad[i]!;
-      const next = updatedSquad[i]!;
-      const existingPlayerDeltas = mergedDeltas.get(prev.id) ?? {};
-      const playerDeltas = { ...existingPlayerDeltas };
+      // Compute per-player attribute deltas across all trained attributes
+      const groupKey: Record<string, 'gk' | 'def' | 'atk'> = { GK: 'gk', DEF: 'def', ATK: 'atk' };
+      for (let i = 0; i < updatedSquad.length; i++) {
+        const prev = beforeSquad[i]!;
+        const next = updatedSquad[i]!;
+        const group = getPlayerTrainingGroup(prev, state.trainingGroupOverrides);
+        const key = groupKey[group]!;
 
-      for (const attr of targets) {
-        const gain = next.attributes[attr] - prev.attributes[attr];
-        if (gain > 0) {
-          (playerDeltas as Record<keyof PlayerAttributes, number>)[attr] =
-            ((playerDeltas as Record<keyof PlayerAttributes, number>)[attr] ?? 0) + gain;
+        const existingPlayerDeltas = mergedDeltas.get(prev.id) ?? {};
+        const playerDeltas = { ...existingPlayerDeltas };
+
+        // Check all attributes that were targeted in any slot
+        for (const slot of preset.slots) {
+          const attr = slot[key];
+          if (attr === 'rest') continue;
+          const gain = next.attributes[attr as keyof PlayerAttributes] - prev.attributes[attr as keyof PlayerAttributes];
+          if (gain > 0) {
+            (playerDeltas as Record<keyof PlayerAttributes, number>)[attr as keyof PlayerAttributes] =
+              ((playerDeltas as Record<keyof PlayerAttributes, number>)[attr as keyof PlayerAttributes] ?? 0) + gain;
+          }
+        }
+
+        mergedDeltas.set(prev.id, playerDeltas);
+      }
+    } else {
+      // Legacy fallback: treat dayPlan as a raw DrillType (backwards compat with old saves)
+      const drill = dayPlan as DrillType;
+      if (DRILL_ATTRIBUTE_MAP[drill]) {
+        updatedSquad = applyDrill(beforeSquad, drill);
+
+        const targets = DRILL_ATTRIBUTE_MAP[drill];
+        for (let i = 0; i < updatedSquad.length; i++) {
+          const prev = beforeSquad[i]!;
+          const next = updatedSquad[i]!;
+          const existingPlayerDeltas = mergedDeltas.get(prev.id) ?? {};
+          const playerDeltas = { ...existingPlayerDeltas };
+
+          for (const attr of targets) {
+            const gain = next.attributes[attr] - prev.attributes[attr];
+            if (gain > 0) {
+              (playerDeltas as Record<keyof PlayerAttributes, number>)[attr] =
+                ((playerDeltas as Record<keyof PlayerAttributes, number>)[attr] ?? 0) + gain;
+            }
+          }
+
+          mergedDeltas.set(prev.id, playerDeltas);
         }
       }
-
-      mergedDeltas.set(prev.id, playerDeltas);
     }
   }
 
@@ -157,6 +203,21 @@ export function advanceDay(state: SeasonState): DayAdvanceResult {
   const updatedTeams = state.teams.map((team, idx) =>
     idx === playerTeamIndex ? { ...team, squad: updatedSquad } : team
   );
+
+  // Accumulate fatigue from training intensity
+  let updatedFatigueMap = state.fatigueMap;
+  if (dayPlan !== 'rest') {
+    const presets = state.trainingPresets ?? [];
+    const resolvedPreset = resolvePreset(dayPlan, presets);
+    if (resolvedPreset) {
+      const fatigueGain = 0.02 * (resolvedPreset.intensity ?? 3);
+      updatedFatigueMap = new Map(state.fatigueMap);
+      for (const player of updatedSquad) {
+        const current = updatedFatigueMap.get(player.id) ?? 0;
+        updatedFatigueMap.set(player.id, Math.min(1, current + fatigueGain));
+      }
+    }
+  }
 
   const newDay = state.currentDay + 1;
 
@@ -166,6 +227,7 @@ export function advanceDay(state: SeasonState): DayAdvanceResult {
       currentDay: newDay,
       teams: updatedTeams,
       trainingDeltas: mergedDeltas,
+      fatigueMap: updatedFatigueMap,
     },
     isMatchDay: newDay >= TRAINING_DAYS_PER_MATCHDAY,
   };

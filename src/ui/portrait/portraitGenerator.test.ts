@@ -19,9 +19,8 @@ type MockCtxInternal = {
   translate: (x: number, y: number) => void;
 };
 
-function makeMockCtx(): MockCtxInternal {
-  // Simulate a 120x120 RGBA pixel buffer
-  const buffer = new Uint8ClampedArray(120 * 120 * 4);
+function makeSizedMockCtx(width: number, height: number): MockCtxInternal {
+  const buffer = new Uint8ClampedArray(width * height * 4);
   const ctx: MockCtxInternal = {
     fillStyle: '',
     calls: [],
@@ -33,9 +32,9 @@ function makeMockCtx(): MockCtxInternal {
       const r = parseInt(hex.substring(0, 2), 16);
       const g = parseInt(hex.substring(2, 4), 16);
       const b = parseInt(hex.substring(4, 6), 16);
-      for (let py = y; py < y + h && py < 120; py++) {
-        for (let px = x; px < x + w && px < 120; px++) {
-          const idx = (py * 120 + px) * 4;
+      for (let py = y; py < y + h && py < height; py++) {
+        for (let px = x; px < x + w && px < width; px++) {
+          const idx = (py * width + px) * 4;
           buffer[idx] = r;
           buffer[idx + 1] = g;
           buffer[idx + 2] = b;
@@ -44,7 +43,7 @@ function makeMockCtx(): MockCtxInternal {
       }
     },
     getImageData(_x: number, _y: number, _w: number, _h: number): ImageData {
-      return { data: new Uint8ClampedArray(buffer), width: 120, height: 120, colorSpace: 'srgb' } as ImageData;
+      return { data: new Uint8ClampedArray(buffer), width, height, colorSpace: 'srgb' } as ImageData;
     },
     putImageData(data: ImageData, _x: number, _y: number) {
       this.calls.push({ method: 'putImageData', args: [data] });
@@ -59,11 +58,11 @@ function makeMockCtx(): MockCtxInternal {
   return ctx;
 }
 
-function makeMockCanvas(): { canvas: HTMLCanvasElement; ctx: MockCtxInternal } {
-  const ctx = makeMockCtx();
+function makeMockCanvas(width: number = 120, height: number = 120): { canvas: HTMLCanvasElement; ctx: MockCtxInternal } {
+  const ctx = makeSizedMockCtx(width, height);
   const canvas = {
-    width: 120,
-    height: 120,
+    width,
+    height,
     getContext: (_type: string) => ctx,
   } as unknown as HTMLCanvasElement;
   return { canvas, ctx };
@@ -155,6 +154,80 @@ describe('generatePortrait', () => {
     const hasDifference = Array.from(bytes1).some((b, i) => b !== bytes2[i]);
     expect(hasDifference).toBe(true);
   });
+
+  it('uses stored portrait specs instead of player id when provided', () => {
+    const portraitSpec = {
+      skinTone: 1,
+      hairStyle: 3,
+      hairColor: 2,
+      eyeColor: 4,
+      facialHair: true,
+      silhouetteVariant: 2,
+      hairVolumeVariant: 1,
+    } as const;
+    const player1 = makePlayer({ id: 'portrait-spec-a', nationality: 'GB', portraitSpec });
+    const player2 = makePlayer({ id: 'portrait-spec-b', nationality: 'GB', portraitSpec });
+
+    const { canvas: canvas1, ctx: ctx1 } = makeMockCanvas();
+    const { canvas: canvas2, ctx: ctx2 } = makeMockCanvas();
+
+    generatePortrait(canvas1, player1);
+    generatePortrait(canvas2, player2);
+
+    expect(ctx1.getImageData(0, 0, 120, 120).data).toEqual(ctx2.getImageData(0, 0, 120, 120).data);
+  });
+
+  it('changes rendered image when subtle feature variants change', () => {
+    const baseSpec = {
+      skinTone: 1,
+      hairStyle: 1,
+      hairColor: 1,
+      eyeColor: 2,
+      facialHair: false,
+      hairlineVariant: 0,
+      faceShapeVariant: 0,
+      eyeVariant: 0,
+      noseVariant: 0,
+      mouthVariant: 0,
+      silhouetteVariant: 0,
+      hairVolumeVariant: 0,
+    } as const;
+    const variantSpec = {
+      ...baseSpec,
+      hairStyle: 4,
+      hairlineVariant: 3,
+      faceShapeVariant: 2,
+      eyeVariant: 3,
+      noseVariant: 2,
+      mouthVariant: 3,
+    } as const;
+    const player1 = makePlayer({ id: 'portrait-geometry-a', nationality: 'DE', portraitSpec: baseSpec });
+    const player2 = makePlayer({ id: 'portrait-geometry-b', nationality: 'DE', portraitSpec: variantSpec });
+
+    const { canvas: canvas1, ctx: ctx1 } = makeMockCanvas();
+    const { canvas: canvas2, ctx: ctx2 } = makeMockCanvas();
+
+    generatePortrait(canvas1, player1);
+    generatePortrait(canvas2, player2);
+
+    const bytes1 = ctx1.getImageData(0, 0, 120, 120).data;
+    const bytes2 = ctx2.getImageData(0, 0, 120, 120).data;
+    const hasDifference = Array.from(bytes1).some((b, i) => b !== bytes2[i]);
+
+    expect(hasDifference).toBe(true);
+  });
+
+  it('scales portraits up on larger canvases and keeps them centred', () => {
+    const player = makePlayer({ id: 'player-large-canvas', nationality: 'DE' });
+    const { canvas, ctx } = makeMockCanvas(156, 156);
+
+    generatePortrait(canvas, player);
+
+    const portraitRects = ctx.calls.filter((call) => call.method === 'fillRect' && call.args[2] !== 156);
+    expect(portraitRects.length).toBeGreaterThan(0);
+    expect(portraitRects.some((call) => Number(call.args[2]) >= 4)).toBe(true);
+    expect(portraitRects.length).toBeGreaterThan(150);
+  });
 });
 
 describe('getOrGeneratePortrait (cache)', () => {
@@ -173,6 +246,20 @@ describe('getOrGeneratePortrait (cache)', () => {
 
     // generatePortrait should have been called exactly once
     expect(generateSpy).toHaveBeenCalledTimes(1);
+
+    generateSpy.mockRestore();
+  });
+
+  it('caches portraits separately by canvas size', () => {
+    const player = makePlayer({ id: 'cached-player-sized', nationality: 'FR' });
+    const generateSpy = vi.spyOn(portraitGeneratorModule, 'generatePortrait');
+    const first = makeMockCanvas(120, 120);
+    const second = makeMockCanvas(156, 156);
+
+    getOrGeneratePortrait(first.canvas, player);
+    getOrGeneratePortrait(second.canvas, player);
+
+    expect(generateSpy).toHaveBeenCalledTimes(2);
 
     generateSpy.mockRestore();
   });

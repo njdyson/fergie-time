@@ -161,12 +161,12 @@ describe('isMatchDay', () => {
     expect(isMatchDay(state)).toBe(false);
   });
 
-  it('returns false when currentDay is 2 (last training day)', () => {
+  it('returns false when currentDay is 2 (middle training day)', () => {
     const state = makeMinimalSeasonState({ currentDay: 2 });
     expect(isMatchDay(state)).toBe(false);
   });
 
-  it('returns true when currentDay equals TRAINING_DAYS_PER_MATCHDAY (3)', () => {
+  it('returns true when currentDay equals TRAINING_DAYS_PER_MATCHDAY (5)', () => {
     const state = makeMinimalSeasonState({ currentDay: TRAINING_DAYS_PER_MATCHDAY });
     expect(isMatchDay(state)).toBe(true);
   });
@@ -294,7 +294,7 @@ describe('advanceDay — training day with rest', () => {
 // ---------------------------------------------------------------------------
 
 describe('advanceDay — last training day before match day', () => {
-  it('returns isMatchDay=true when advancing from day 2 (last training day)', () => {
+  it('returns isMatchDay=true when advancing from last training day', () => {
     const state = makeMinimalSeasonState({
       currentDay: TRAINING_DAYS_PER_MATCHDAY - 1,
       trainingSchedule: { [TRAINING_DAYS_PER_MATCHDAY - 1]: 'passing' },
@@ -326,7 +326,7 @@ describe('advanceDay — match day guard', () => {
 // ---------------------------------------------------------------------------
 
 describe('getDaySchedule', () => {
-  it('returns an array of TRAINING_DAYS_PER_MATCHDAY + 1 descriptors (3 training + 1 match)', () => {
+  it('returns an array of TRAINING_DAYS_PER_MATCHDAY + 1 descriptors (5 training + 1 match)', () => {
     const state = makeMinimalSeasonState({ currentDay: 0 });
     const schedule = getDaySchedule(state);
     expect(schedule).toHaveLength(TRAINING_DAYS_PER_MATCHDAY + 1);
@@ -340,9 +340,11 @@ describe('getDaySchedule', () => {
     expect(schedule[1]!.status).toBe('future');
     expect(schedule[2]!.status).toBe('future');
     expect(schedule[3]!.status).toBe('future');
+    expect(schedule[4]!.status).toBe('future');
+    expect(schedule[5]!.status).toBe('future');
   });
 
-  it('with currentDay=0: descriptors have correct dayIndex values (0, 1, 2, 3)', () => {
+  it('with currentDay=0: descriptors have correct dayIndex values (0, 1, 2, 3, 4, 5)', () => {
     const state = makeMinimalSeasonState({ currentDay: 0 });
     const schedule = getDaySchedule(state);
 
@@ -350,6 +352,8 @@ describe('getDaySchedule', () => {
     expect(schedule[1]!.dayIndex).toBe(1);
     expect(schedule[2]!.dayIndex).toBe(2);
     expect(schedule[3]!.dayIndex).toBe(3);
+    expect(schedule[4]!.dayIndex).toBe(4);
+    expect(schedule[5]!.dayIndex).toBe(5);
   });
 
   it('with currentDay=0: descriptors have correct labels', () => {
@@ -359,7 +363,9 @@ describe('getDaySchedule', () => {
     expect(schedule[0]!.label).toBe('Day 1');
     expect(schedule[1]!.label).toBe('Day 2');
     expect(schedule[2]!.label).toBe('Day 3');
-    expect(schedule[3]!.label).toBe('Match Day');
+    expect(schedule[3]!.label).toBe('Day 4');
+    expect(schedule[4]!.label).toBe('Day 5');
+    expect(schedule[5]!.label).toBe('Match Day');
   });
 
   it('with currentDay=0: training days have type=training, match entry has type=match', () => {
@@ -369,17 +375,21 @@ describe('getDaySchedule', () => {
     expect(schedule[0]!.type).toBe('training');
     expect(schedule[1]!.type).toBe('training');
     expect(schedule[2]!.type).toBe('training');
-    expect(schedule[3]!.type).toBe('match');
+    expect(schedule[3]!.type).toBe('training');
+    expect(schedule[4]!.type).toBe('training');
+    expect(schedule[5]!.type).toBe('match');
   });
 
-  it('with currentDay=2: Day 1 and Day 2 are past, Day 3 is current, Match Day is future', () => {
+  it('with currentDay=2: Day 1 and Day 2 are past, Day 3 is current, rest are future', () => {
     const state = makeMinimalSeasonState({ currentDay: 2 });
     const schedule = getDaySchedule(state);
 
     expect(schedule[0]!.status).toBe('past');    // Day 1 (index 0) — past
     expect(schedule[1]!.status).toBe('past');    // Day 2 (index 1) — past
     expect(schedule[2]!.status).toBe('current'); // Day 3 (index 2) — current
-    expect(schedule[3]!.status).toBe('future');  // Match Day — future
+    expect(schedule[3]!.status).toBe('future');  // Day 4 — future
+    expect(schedule[4]!.status).toBe('future');  // Day 5 — future
+    expect(schedule[5]!.status).toBe('future');  // Match Day — future
   });
 
   it('with currentDay=TRAINING_DAYS_PER_MATCHDAY (match day): all training days are past, match is current', () => {
@@ -389,10 +399,12 @@ describe('getDaySchedule', () => {
     expect(schedule[0]!.status).toBe('past');    // Day 1 — past
     expect(schedule[1]!.status).toBe('past');    // Day 2 — past
     expect(schedule[2]!.status).toBe('past');    // Day 3 — past
-    expect(schedule[3]!.status).toBe('current'); // Match Day — current
+    expect(schedule[3]!.status).toBe('past');    // Day 4 — past
+    expect(schedule[4]!.status).toBe('past');    // Day 5 — past
+    expect(schedule[5]!.status).toBe('current'); // Match Day — current
   });
 
-  it('with currentDay=1: Day 1 is past, Day 2 is current, Day 3 and Match Day are future', () => {
+  it('with currentDay=1: Day 1 is past, Day 2 is current, rest are future', () => {
     const state = makeMinimalSeasonState({ currentDay: 1 });
     const schedule = getDaySchedule(state);
 
@@ -400,5 +412,7 @@ describe('getDaySchedule', () => {
     expect(schedule[1]!.status).toBe('current');
     expect(schedule[2]!.status).toBe('future');
     expect(schedule[3]!.status).toBe('future');
+    expect(schedule[4]!.status).toBe('future');
+    expect(schedule[5]!.status).toBe('future');
   });
 });

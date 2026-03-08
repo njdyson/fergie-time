@@ -1,217 +1,564 @@
 /**
- * Deterministic pixel art portrait generator.
+ * Pixel art portrait generator.
  *
- * Renders a 120×120 portrait on a canvas using a 20×24 logical pixel grid
- * scaled to 6×5 canvas pixels per logical pixel. All visual decisions are
- * driven by a seeded RNG keyed to `player.id`, guaranteeing the same portrait
- * across sessions for the same player.
- *
- * RNG CALL ORDER — must never change after shipping:
- *   1. skinIdx       — index into palette.skin array
- *   2. hairStyleIdx  — index into HAIR_STYLES array
- *   3. hairColIdx    — index into palette.hair array
- *   4. eyeColIdx     — index into EYE_COLOURS array
- *   5. hasFacialHair — boolean (rng() > 0.65)
- *
- * To add new features, append additional rng() calls AFTER item 5 only.
- * Never insert calls before existing ones — it would change all existing portraits.
+ * Uses a coarse 20x24 source template, expands it to a denser 2x logical grid,
+ * then adds higher-detail face layers so portraits read better in larger avatar
+ * circles without changing the overall retro style.
  */
 
-import { createRng } from '../../simulation/math/random.ts';
-import { getPalette } from './palettes.ts';
 import type { PlayerState } from '../../simulation/types.ts';
+import { getPalette } from './palettes.ts';
+import { EYE_COLOURS, readPaletteColour, resolvePortraitSpec } from './portraitSpec.ts';
 
-const GRID_W = 20;
-const GRID_H = 24;
-const SCALE_X = 6; // 20 * 6 = 120
-const SCALE_Y = 5; // 24 * 5 = 120
-const BG_COLOUR = '#0f172a'; // project dark theme background
+const SOURCE_GRID_W = 20;
+const SOURCE_GRID_H = 24;
+const DETAIL_SCALE = 2;
+const GRID_W = SOURCE_GRID_W * DETAIL_SCALE;
+const GRID_H = SOURCE_GRID_H * DETAIL_SCALE;
+const BG_COLOUR = '#0f172a';
+const ACTIVE_RENDERER: 'soft' | 'legacy' = 'legacy';
 
-// ── Face template coordinates (logical pixels, 0-indexed) ───────────────────
-// Grid is 20 wide × 24 tall, Y increases downward.
-// Face is centred horizontally (columns 4-15) and vertically (rows 3-20).
-// Corner pixels are clipped by CSS border-radius: 50% — keep them as background.
+type Pixel = readonly [number, number];
 
-// Skin region: oval face shape
-// Bilaterally symmetric: designed for cols 4-15, rows 4-18
-const SKIN_PIXELS: ReadonlyArray<[number, number]> = [
-  // Row 4: forehead top
+interface HairStyle {
+  readonly back: readonly Pixel[];
+  readonly front: readonly Pixel[];
+  readonly highlight: readonly Pixel[];
+}
+
+interface SilhouetteVariant {
+  readonly skinAdd: readonly Pixel[];
+  readonly skinRemove: readonly Pixel[];
+  readonly neckAdd: readonly Pixel[];
+  readonly neckRemove: readonly Pixel[];
+  readonly earLeftAdd: readonly Pixel[];
+  readonly earLeftRemove: readonly Pixel[];
+  readonly earRightAdd: readonly Pixel[];
+  readonly earRightRemove: readonly Pixel[];
+  readonly foreheadHighlightAdd: readonly Pixel[];
+  readonly cheekShadeAdd: readonly Pixel[];
+  readonly chinShadeAdd: readonly Pixel[];
+}
+
+interface HairVolumeVariant {
+  readonly backAdd: readonly Pixel[];
+  readonly backRemove: readonly Pixel[];
+  readonly frontAdd: readonly Pixel[];
+  readonly frontRemove: readonly Pixel[];
+  readonly highlightAdd: readonly Pixel[];
+}
+
+interface RenderMetrics {
+  scale: number;
+  offsetX: number;
+  offsetY: number;
+}
+
+const SKIN_PIXELS: readonly Pixel[] = [
   [7, 4], [8, 4], [9, 4], [10, 4], [11, 4], [12, 4],
-  // Row 5: forehead
   [6, 5], [7, 5], [8, 5], [9, 5], [10, 5], [11, 5], [12, 5], [13, 5],
-  // Row 6: upper face
   [6, 6], [7, 6], [8, 6], [9, 6], [10, 6], [11, 6], [12, 6], [13, 6],
-  // Row 7: eye level (gaps for eyes)
   [5, 7], [6, 7], [7, 7], [8, 7], [9, 7], [10, 7], [11, 7], [12, 7], [13, 7], [14, 7],
-  // Row 8: between eyes and nose
   [5, 8], [6, 8], [7, 8], [8, 8], [9, 8], [10, 8], [11, 8], [12, 8], [13, 8], [14, 8],
-  // Row 9: nose level
   [5, 9], [6, 9], [7, 9], [8, 9], [9, 9], [10, 9], [11, 9], [12, 9], [13, 9], [14, 9],
-  // Row 10: below nose
   [5, 10], [6, 10], [7, 10], [8, 10], [9, 10], [10, 10], [11, 10], [12, 10], [13, 10], [14, 10],
-  // Row 11: upper lip
   [6, 11], [7, 11], [8, 11], [9, 11], [10, 11], [11, 11], [12, 11], [13, 11],
-  // Row 12: mouth level (gaps for mouth)
   [6, 12], [7, 12], [8, 12], [9, 12], [10, 12], [11, 12], [12, 12], [13, 12],
-  // Row 13: chin upper
   [6, 13], [7, 13], [8, 13], [9, 13], [10, 13], [11, 13], [12, 13], [13, 13],
-  // Row 14: chin
   [7, 14], [8, 14], [9, 14], [10, 14], [11, 14], [12, 14],
-  // Row 15: chin tip
   [8, 15], [9, 15], [10, 15], [11, 15],
 ];
 
-// Ears: 1-2 pixels each side at eye level (slightly darker than skin, drawn over skin)
-const LEFT_EAR: ReadonlyArray<[number, number]> = [[4, 7], [4, 8]];
-const RIGHT_EAR: ReadonlyArray<[number, number]> = [[15, 7], [15, 8]];
+const LEFT_EAR: readonly Pixel[] = [[4, 7], [4, 8]];
+const RIGHT_EAR: readonly Pixel[] = [[15, 7], [15, 8]];
+const NOSE: readonly Pixel[] = [[9, 10], [10, 10]];
+const LEFT_EYE: readonly Pixel[] = [[7, 7], [8, 7]];
+const RIGHT_EYE: readonly Pixel[] = [[11, 7], [12, 7]];
+const MOUTH: readonly Pixel[] = [[8, 12], [9, 12], [10, 12], [11, 12]];
+const FACIAL_HAIR: readonly Pixel[] = [
+  [8, 11], [9, 11], [10, 11], [11, 11],
+  [7, 13], [8, 13], [9, 13], [10, 13], [11, 13], [12, 13],
+];
 
-// Nose: subtle shadow below eye line
-const NOSE: ReadonlyArray<[number, number]> = [[9, 10], [10, 10]];
+const HAIR_STYLES_SRC: readonly Array<{ back: readonly Pixel[]; front: readonly Pixel[]; highlight: readonly Pixel[] }> = [
+  {
+    back: [
+      [5, 4], [5, 5], [5, 6],
+      [14, 4], [14, 5], [14, 6],
+      [6, 16], [7, 16], [8, 16], [9, 16], [10, 16], [11, 16], [12, 16], [13, 16],
+    ],
+    front: [
+      [6, 3], [7, 3], [8, 3], [9, 3], [10, 3], [11, 3], [12, 3], [13, 3],
+      [8, 2], [9, 2], [10, 2], [11, 2],
+    ],
+    highlight: [[8, 2], [9, 2], [10, 2]],
+  },
+  {
+    back: [
+      [5, 4], [5, 5], [5, 6],
+      [14, 4], [14, 5], [14, 6],
+      [6, 16], [7, 16], [8, 16], [9, 16], [10, 16], [11, 16], [12, 16], [13, 16],
+    ],
+    front: [
+      [6, 3], [7, 3], [8, 3], [9, 3], [10, 3], [11, 3], [12, 3], [13, 3], [14, 3],
+      [7, 2], [8, 2], [9, 2], [10, 2], [11, 2], [12, 2],
+      [8, 1], [9, 1], [10, 1],
+      [6, 4], [6, 5],
+    ],
+    highlight: [[9, 1], [10, 1], [11, 2], [12, 2]],
+  },
+  {
+    back: [
+      [5, 4], [5, 5], [5, 6], [5, 7], [5, 8], [5, 9], [5, 10],
+      [14, 4], [14, 5], [14, 6], [14, 7], [14, 8], [14, 9], [14, 10],
+      [4, 5], [4, 6], [4, 7], [4, 8], [4, 9],
+      [15, 5], [15, 6], [15, 7], [15, 8], [15, 9],
+      [6, 16], [7, 16], [8, 16], [9, 16], [10, 16], [11, 16], [12, 16], [13, 16],
+      [6, 17], [7, 17], [8, 17], [9, 17], [10, 17], [11, 17], [12, 17], [13, 17],
+    ],
+    front: [
+      [6, 3], [7, 3], [8, 3], [9, 3], [10, 3], [11, 3], [12, 3], [13, 3],
+      [7, 2], [8, 2], [9, 2], [10, 2], [11, 2],
+      [8, 1], [9, 1], [10, 1], [11, 1],
+    ],
+    highlight: [[8, 1], [9, 1], [10, 1]],
+  },
+  {
+    back: [
+      [6, 16], [7, 16], [8, 16], [9, 16], [10, 16], [11, 16], [12, 16], [13, 16],
+    ],
+    front: [
+      [8, 3], [9, 3], [10, 3], [11, 3],
+      [7, 3], [12, 3],
+    ],
+    highlight: [[9, 3], [10, 3]],
+  },
+  {
+    back: [
+      [4, 4], [4, 5], [4, 6], [4, 7],
+      [15, 4], [15, 5], [15, 6], [15, 7],
+      [5, 3], [5, 4], [5, 5],
+      [14, 3], [14, 4], [14, 5],
+      [6, 16], [7, 16], [8, 16], [9, 16], [10, 16], [11, 16], [12, 16], [13, 16],
+    ],
+    front: [
+      [6, 2], [7, 2], [8, 2], [9, 2], [10, 2], [11, 2], [12, 2], [13, 2],
+      [6, 1], [7, 1], [8, 1], [9, 1], [10, 1], [11, 1], [12, 1], [13, 1],
+      [7, 3], [8, 3], [9, 3], [10, 3], [11, 3], [12, 3],
+      [5, 3], [5, 4], [5, 5],
+      [14, 3], [14, 4], [14, 5],
+      [6, 3], [13, 3],
+    ],
+    highlight: [[8, 1], [10, 1], [12, 1], [9, 2], [11, 2]],
+  },
+];
 
-// Eyes: fixed positions (will be overridden with eye colour)
-const LEFT_EYE: ReadonlyArray<[number, number]> = [[7, 7], [8, 7]];
-const RIGHT_EYE: ReadonlyArray<[number, number]> = [[11, 7], [12, 7]];
-
-// Mouth: fixed position
-const MOUTH: ReadonlyArray<[number, number]> = [[8, 12], [9, 12], [10, 12], [11, 12]];
-
-// ── Hair styles ─────────────────────────────────────────────────────────────
-// Each style has back (drawn behind skin) and front (drawn in front of skin) layers.
-// Back layer: visible around the head perimeter and below chin line.
-// Front layer: visible above forehead, falling over face sides.
-
-interface HairStyle {
-  readonly back: ReadonlyArray<[number, number]>;
-  readonly front: ReadonlyArray<[number, number]>;
+function upscalePixels(pixels: readonly Pixel[], factor: number = DETAIL_SCALE): Pixel[] {
+  const out: Pixel[] = [];
+  for (const [x, y] of pixels) {
+    for (let dy = 0; dy < factor; dy++) {
+      for (let dx = 0; dx < factor; dx++) {
+        out.push([x * factor + dx, y * factor + dy]);
+      }
+    }
+  }
+  return out;
 }
 
-// Style 0: Short crop — close-cropped, minimal overhang
-const HAIR_SHORT_CROP: HairStyle = {
-  back: [
-    // sides and back
-    [5, 4], [5, 5], [5, 6],
-    [14, 4], [14, 5], [14, 6],
-    // above neckline
-    [6, 16], [7, 16], [8, 16], [9, 16], [10, 16], [11, 16], [12, 16], [13, 16],
-  ],
-  front: [
-    // top of head, tight crop
-    [6, 3], [7, 3], [8, 3], [9, 3], [10, 3], [11, 3], [12, 3], [13, 3],
-    [8, 2], [9, 2], [10, 2], [11, 2],
-  ],
-};
+function toDetailPixels(pixels: readonly Pixel[]): Pixel[] {
+  return pixels.map(([x, y]) => [x, y]);
+}
 
-// Style 1: Medium side part — slightly longer, parted to one side
-const HAIR_MEDIUM_PART: HairStyle = {
-  back: [
-    [5, 4], [5, 5], [5, 6],
-    [14, 4], [14, 5], [14, 6],
-    [6, 16], [7, 16], [8, 16], [9, 16], [10, 16], [11, 16], [12, 16], [13, 16],
-  ],
-  front: [
-    // slightly wider top
-    [6, 3], [7, 3], [8, 3], [9, 3], [10, 3], [11, 3], [12, 3], [13, 3], [14, 3],
-    [7, 2], [8, 2], [9, 2], [10, 2], [11, 2], [12, 2],
-    [8, 1], [9, 1], [10, 1],
-    // side part draping left
-    [6, 4], [6, 5],
-  ],
-};
+function pixelKey([x, y]: Pixel): string {
+  return `${x},${y}`;
+}
 
-// Style 2: Long — extends below head, visible at sides
-const HAIR_LONG: HairStyle = {
-  back: [
-    // long back flowing down
-    [5, 4], [5, 5], [5, 6], [5, 7], [5, 8], [5, 9], [5, 10],
-    [14, 4], [14, 5], [14, 6], [14, 7], [14, 8], [14, 9], [14, 10],
-    [4, 5], [4, 6], [4, 7], [4, 8], [4, 9],
-    [15, 5], [15, 6], [15, 7], [15, 8], [15, 9],
-    [6, 16], [7, 16], [8, 16], [9, 16], [10, 16], [11, 16], [12, 16], [13, 16],
-    [6, 17], [7, 17], [8, 17], [9, 17], [10, 17], [11, 17], [12, 17], [13, 17],
-  ],
-  front: [
-    [6, 3], [7, 3], [8, 3], [9, 3], [10, 3], [11, 3], [12, 3], [13, 3],
-    [7, 2], [8, 2], [9, 2], [10, 2], [11, 2],
-    [8, 1], [9, 1], [10, 1], [11, 1],
-  ],
-};
+function parsePixelKey(key: string): Pixel {
+  const [x, y] = key.split(',').map(Number);
+  return [x, y];
+}
 
-// Style 3: Shaved/buzz — very minimal, almost no hair
-const HAIR_SHAVED: HairStyle = {
-  back: [
-    [6, 16], [7, 16], [8, 16], [9, 16], [10, 16], [11, 16], [12, 16], [13, 16],
-  ],
-  front: [
-    // just a stubble shadow at top
-    [8, 3], [9, 3], [10, 3], [11, 3],
-    [7, 3], [12, 3],
-  ],
-};
+function sortPixels(a: Pixel, b: Pixel): number {
+  return a[1] - b[1] || a[0] - b[0];
+}
 
-// Style 4: Curly/textured — wide, voluminous hair
-const HAIR_CURLY: HairStyle = {
-  back: [
-    [4, 4], [4, 5], [4, 6], [4, 7],
-    [15, 4], [15, 5], [15, 6], [15, 7],
-    [5, 3], [5, 4], [5, 5],
-    [14, 3], [14, 4], [14, 5],
-    [6, 16], [7, 16], [8, 16], [9, 16], [10, 16], [11, 16], [12, 16], [13, 16],
-  ],
-  front: [
-    // wide bushy top
-    [6, 2], [7, 2], [8, 2], [9, 2], [10, 2], [11, 2], [12, 2], [13, 2],
-    [6, 1], [7, 1], [8, 1], [9, 1], [10, 1], [11, 1], [12, 1], [13, 1],
-    [7, 3], [8, 3], [9, 3], [10, 3], [11, 3], [12, 3],
-    // sides puffed out
-    [5, 3], [5, 4], [5, 5],
-    [14, 3], [14, 4], [14, 5],
-    // alternating texture pattern for curly look
-    [6, 3], [13, 3],
-  ],
-};
+function applyPixelMutations(base: readonly Pixel[], add: readonly Pixel[] = [], remove: readonly Pixel[] = []): Pixel[] {
+  const pixels = new Set(base.map(pixelKey));
+  for (const pixel of remove) pixels.delete(pixelKey(pixel));
+  for (const pixel of add) pixels.add(pixelKey(pixel));
+  return Array.from(pixels, parsePixelKey).sort(sortPixels);
+}
 
-const HAIR_STYLES: ReadonlyArray<HairStyle> = [
-  HAIR_SHORT_CROP,  // 0
-  HAIR_MEDIUM_PART, // 1
-  HAIR_LONG,        // 2
-  HAIR_SHAVED,      // 3
-  HAIR_CURLY,       // 4
+const HAIR_STYLES: readonly HairStyle[] = HAIR_STYLES_SRC.map((style) => ({
+  back: upscalePixels(style.back),
+  front: upscalePixels(style.front),
+  highlight: upscalePixels(style.highlight),
+}));
+
+const SKIN_BASE = upscalePixels(SKIN_PIXELS);
+const EAR_LEFT_BASE = toDetailPixels([[9, 15], [8, 16], [8, 17], [9, 18]]);
+const EAR_RIGHT_BASE = toDetailPixels([[30, 15], [31, 16], [31, 17], [30, 18]]);
+const EYE_LEFT_WHITE = toDetailPixels([[14, 15], [15, 15], [16, 15], [17, 15], [15, 16], [16, 16]]);
+const EYE_RIGHT_WHITE = toDetailPixels([[22, 15], [23, 15], [24, 15], [25, 15], [23, 16], [24, 16]]);
+const MOUTH_BASE = toDetailPixels([[18, 25], [19, 25], [20, 25], [21, 25], [18, 26], [19, 26], [20, 26], [21, 26]]);
+const FACIAL_HAIR_BASE = toDetailPixels([[17, 24], [18, 24], [21, 24], [22, 24], [18, 28], [19, 29], [20, 29], [21, 28]]);
+
+const NECK = toDetailPixels([
+  [17, 31], [18, 31], [19, 31], [20, 31], [21, 31], [22, 31],
+  [17, 32], [18, 32], [19, 32], [20, 32], [21, 32], [22, 32],
+  [18, 33], [19, 33], [20, 33], [21, 33],
+]);
+
+const FOREHEAD_HIGHLIGHT = toDetailPixels([
+  [17, 10], [18, 10], [19, 10], [20, 10], [21, 10], [22, 10],
+  [16, 11], [17, 11], [18, 11], [19, 11], [20, 11], [21, 11],
+]);
+
+const LEFT_CHEEK_HIGHLIGHT = toDetailPixels([[13, 20], [14, 20], [14, 21], [15, 21]]);
+const RIGHT_CHEEK_HIGHLIGHT = toDetailPixels([[24, 20], [25, 20], [23, 21], [24, 21]]);
+const LEFT_CHEEK_SHADE = toDetailPixels([[12, 22], [13, 23], [13, 24], [14, 25]]);
+const RIGHT_CHEEK_SHADE = toDetailPixels([[25, 22], [24, 23], [24, 24], [23, 25]]);
+const CHIN_SHADE = toDetailPixels([[17, 28], [18, 28], [19, 29], [20, 29], [21, 28], [22, 28]]);
+
+const LEFT_BROW = toDetailPixels([[14, 13], [15, 12], [16, 12], [17, 12]]);
+const RIGHT_BROW = toDetailPixels([[22, 12], [23, 12], [24, 12], [25, 13]]);
+const LEFT_IRIS = toDetailPixels([[15, 15], [16, 15], [15, 16]]);
+const RIGHT_IRIS = toDetailPixels([[23, 15], [24, 15], [24, 16]]);
+const LEFT_PUPIL = toDetailPixels([[16, 15]]);
+const RIGHT_PUPIL = toDetailPixels([[23, 15]]);
+const LEFT_EYE_SHADOW = toDetailPixels([[15, 17], [16, 17], [17, 17]]);
+const RIGHT_EYE_SHADOW = toDetailPixels([[22, 17], [23, 17], [24, 17]]);
+
+const NOSE_BRIDGE = toDetailPixels([[19, 16], [20, 16], [19, 17], [20, 17], [19, 18], [20, 18]]);
+const NOSE_TIP = toDetailPixels([[18, 20], [19, 20], [20, 20], [21, 20], [19, 21], [20, 21]]);
+const NOSE_SIDE_SHADE = toDetailPixels([[18, 18], [18, 19], [21, 18], [21, 19]]);
+
+const UPPER_LIP = toDetailPixels([[18, 24], [19, 24], [20, 24], [21, 24]]);
+const LOWER_LIP = toDetailPixels([[18, 26], [19, 26], [20, 26], [21, 26]]);
+const MOUTH_SHADE = toDetailPixels([[18, 27], [19, 27], [20, 27], [21, 27]]);
+
+const BEARD_EXTRA = toDetailPixels([[17, 28], [18, 29], [21, 29], [22, 28]]);
+
+const HAIRLINE_VARIANTS = [
+  {
+    fill: toDetailPixels([[12, 10], [13, 10], [14, 10], [25, 10], [26, 10], [27, 10], [13, 11], [26, 11]]),
+    highlight: toDetailPixels([[14, 9], [25, 9]]),
+  },
+  {
+    fill: toDetailPixels([[13, 10], [14, 9], [15, 9], [18, 8], [19, 7], [20, 7], [21, 8], [24, 9], [25, 9], [26, 10]]),
+    highlight: toDetailPixels([[18, 7], [20, 7], [22, 8]]),
+  },
+  {
+    fill: toDetailPixels([[13, 9], [14, 9], [15, 10], [24, 10], [25, 9], [26, 9], [13, 10], [26, 10]]),
+    highlight: toDetailPixels([[15, 9], [24, 9]]),
+  },
+  {
+    fill: toDetailPixels([[11, 10], [12, 10], [13, 10], [14, 9], [17, 9], [18, 9], [19, 9], [20, 9], [21, 9], [22, 9], [25, 9], [26, 10], [27, 10], [28, 10]]),
+    highlight: toDetailPixels([[17, 9], [20, 9], [23, 9]]),
+  },
+] as const;
+
+const FACE_SHAPE_VARIANTS = [
+  {
+    cheekHighlight: toDetailPixels([[13, 22], [25, 22]]),
+    jawShade: toDetailPixels([[15, 27], [24, 27], [16, 29], [23, 29]]),
+  },
+  {
+    cheekHighlight: toDetailPixels([[12, 21], [13, 21], [25, 21], [26, 21]]),
+    jawShade: toDetailPixels([[14, 27], [15, 28], [24, 28], [25, 27], [18, 30], [21, 30]]),
+  },
+  {
+    cheekHighlight: toDetailPixels([[14, 21], [15, 22], [23, 22], [24, 21]]),
+    jawShade: toDetailPixels([[16, 27], [17, 28], [22, 28], [23, 27], [19, 30], [20, 30]]),
+  },
+] as const;
+
+const SILHOUETTE_VARIANTS: readonly SilhouetteVariant[] = [
+  {
+    skinAdd: toDetailPixels([]),
+    skinRemove: toDetailPixels([]),
+    neckAdd: toDetailPixels([]),
+    neckRemove: toDetailPixels([]),
+    earLeftAdd: toDetailPixels([]),
+    earLeftRemove: toDetailPixels([]),
+    earRightAdd: toDetailPixels([]),
+    earRightRemove: toDetailPixels([]),
+    foreheadHighlightAdd: toDetailPixels([[18, 9], [19, 9], [20, 9], [21, 9]]),
+    cheekShadeAdd: toDetailPixels([[14, 24], [23, 24]]),
+    chinShadeAdd: toDetailPixels([[18, 29], [21, 29]]),
+  },
+  {
+    skinAdd: toDetailPixels([]),
+    skinRemove: toDetailPixels([]),
+    neckAdd: toDetailPixels([]),
+    neckRemove: toDetailPixels([]),
+    earLeftAdd: toDetailPixels([]),
+    earLeftRemove: toDetailPixels([]),
+    earRightAdd: toDetailPixels([]),
+    earRightRemove: toDetailPixels([]),
+    foreheadHighlightAdd: toDetailPixels([[16, 10], [17, 10], [22, 10], [23, 10]]),
+    cheekShadeAdd: toDetailPixels([[13, 23], [24, 23], [14, 25], [23, 25]]),
+    chinShadeAdd: toDetailPixels([[17, 29], [22, 29]]),
+  },
+  {
+    skinAdd: toDetailPixels([]),
+    skinRemove: toDetailPixels([]),
+    neckAdd: toDetailPixels([]),
+    neckRemove: toDetailPixels([]),
+    earLeftAdd: toDetailPixels([]),
+    earLeftRemove: toDetailPixels([]),
+    earRightAdd: toDetailPixels([]),
+    earRightRemove: toDetailPixels([]),
+    foreheadHighlightAdd: toDetailPixels([[15, 11], [16, 10], [23, 10], [24, 11]]),
+    cheekShadeAdd: toDetailPixels([[12, 24], [25, 24], [13, 26], [24, 26]]),
+    chinShadeAdd: toDetailPixels([[18, 30], [19, 30], [20, 30], [21, 30]]),
+  },
+  {
+    skinAdd: toDetailPixels([]),
+    skinRemove: toDetailPixels([]),
+    neckAdd: toDetailPixels([]),
+    neckRemove: toDetailPixels([]),
+    earLeftAdd: toDetailPixels([]),
+    earLeftRemove: toDetailPixels([]),
+    earRightAdd: toDetailPixels([]),
+    earRightRemove: toDetailPixels([]),
+    foreheadHighlightAdd: toDetailPixels([[18, 8], [19, 8], [20, 8], [21, 8], [17, 9], [22, 9]]),
+    cheekShadeAdd: toDetailPixels([[13, 24], [24, 24], [14, 26], [23, 26]]),
+    chinShadeAdd: toDetailPixels([[18, 29], [19, 30], [20, 30], [21, 29]]),
+  },
+] as const;
+
+const HAIR_VOLUME_VARIANTS: readonly HairVolumeVariant[] = [
+  {
+    backAdd: toDetailPixels([]),
+    backRemove: toDetailPixels([]),
+    frontAdd: toDetailPixels([]),
+    frontRemove: toDetailPixels([]),
+    highlightAdd: toDetailPixels([]),
+  },
+  {
+    backAdd: toDetailPixels([[11, 11], [12, 10], [27, 10], [28, 11]]),
+    backRemove: toDetailPixels([]),
+    frontAdd: toDetailPixels([[15, 8], [16, 8], [23, 8], [24, 8]]),
+    frontRemove: toDetailPixels([]),
+    highlightAdd: toDetailPixels([[16, 7], [23, 7], [19, 7], [20, 7]]),
+  },
+  {
+    backAdd: toDetailPixels([[12, 12], [27, 12]]),
+    backRemove: toDetailPixels([]),
+    frontAdd: toDetailPixels([[16, 10], [17, 9], [18, 9], [21, 9], [22, 9], [23, 10]]),
+    frontRemove: toDetailPixels([]),
+    highlightAdd: toDetailPixels([[18, 9], [21, 9], [19, 9], [20, 9]]),
+  },
+  {
+    backAdd: toDetailPixels([[10, 12], [29, 12], [11, 29], [28, 29]]),
+    backRemove: toDetailPixels([]),
+    frontAdd: toDetailPixels([[13, 9], [14, 8], [15, 8], [25, 8], [26, 9], [27, 10], [13, 10], [26, 10]]),
+    frontRemove: toDetailPixels([]),
+    highlightAdd: toDetailPixels([[15, 8], [25, 8], [16, 9], [24, 9]]),
+  },
+] as const;
+
+const EYE_VARIANTS = [
+  {
+    browExtra: toDetailPixels([]),
+    lowerLid: toDetailPixels([[15, 18], [16, 18], [23, 18], [24, 18]]),
+  },
+  {
+    browExtra: toDetailPixels([[13, 13], [14, 12], [25, 12], [26, 13]]),
+    lowerLid: toDetailPixels([[14, 18], [15, 18], [24, 18], [25, 18]]),
+  },
+  {
+    browExtra: toDetailPixels([[14, 14], [15, 13], [24, 13], [25, 14]]),
+    lowerLid: toDetailPixels([[16, 18], [17, 18], [22, 18], [23, 18]]),
+  },
+  {
+    browExtra: toDetailPixels([[13, 14], [14, 13], [25, 13], [26, 14]]),
+    lowerLid: toDetailPixels([[15, 19], [16, 19], [23, 19], [24, 19]]),
+  },
+] as const;
+
+const NOSE_VARIANTS = [
+  {
+    bridge: toDetailPixels([[19, 15], [20, 15]]),
+    nostrils: toDetailPixels([[18, 22], [21, 22]]),
+  },
+  {
+    bridge: toDetailPixels([[19, 15], [20, 15], [19, 16], [20, 16]]),
+    nostrils: toDetailPixels([[17, 22], [18, 22], [21, 22], [22, 22]]),
+  },
+  {
+    bridge: toDetailPixels([[19, 15], [20, 15], [18, 16], [21, 16]]),
+    nostrils: toDetailPixels([[18, 21], [21, 21], [19, 22], [20, 22]]),
+  },
+] as const;
+
+const MOUTH_VARIANTS = [
+  {
+    corners: toDetailPixels([[17, 25], [22, 25]]),
+    philtrum: toDetailPixels([[19, 23], [20, 23]]),
+  },
+  {
+    corners: toDetailPixels([[17, 25], [18, 25], [21, 25], [22, 25]]),
+    philtrum: toDetailPixels([[19, 23], [20, 23], [19, 24]]),
+  },
+  {
+    corners: toDetailPixels([[17, 25], [22, 25], [18, 26], [21, 26]]),
+    philtrum: toDetailPixels([[19, 23], [20, 23], [20, 24]]),
+  },
+  {
+    corners: toDetailPixels([[17, 26], [22, 26], [18, 27], [21, 27]]),
+    philtrum: toDetailPixels([[18, 23], [19, 23], [20, 23], [21, 23]]),
+  },
+] as const;
+
+const ALL_PORTRAIT_PIXELS: readonly Pixel[][] = [
+  SKIN_BASE,
+  EAR_LEFT_BASE,
+  EAR_RIGHT_BASE,
+  EYE_LEFT_WHITE,
+  EYE_RIGHT_WHITE,
+  MOUTH_BASE,
+  FACIAL_HAIR_BASE,
+  NECK,
+  FOREHEAD_HIGHLIGHT,
+  LEFT_CHEEK_HIGHLIGHT,
+  RIGHT_CHEEK_HIGHLIGHT,
+  LEFT_CHEEK_SHADE,
+  RIGHT_CHEEK_SHADE,
+  CHIN_SHADE,
+  LEFT_BROW,
+  RIGHT_BROW,
+  LEFT_IRIS,
+  RIGHT_IRIS,
+  LEFT_PUPIL,
+  RIGHT_PUPIL,
+  LEFT_EYE_SHADOW,
+  RIGHT_EYE_SHADOW,
+  NOSE_BRIDGE,
+  NOSE_TIP,
+  NOSE_SIDE_SHADE,
+  UPPER_LIP,
+  LOWER_LIP,
+  MOUTH_SHADE,
+  BEARD_EXTRA,
+  ...SILHOUETTE_VARIANTS.flatMap((variant) => [
+    variant.skinAdd,
+    variant.neckAdd,
+    variant.earLeftAdd,
+    variant.earRightAdd,
+    variant.foreheadHighlightAdd,
+    variant.cheekShadeAdd,
+    variant.chinShadeAdd,
+  ]),
+  ...HAIR_VOLUME_VARIANTS.flatMap((variant) => [variant.backAdd, variant.frontAdd, variant.highlightAdd]),
+  ...HAIRLINE_VARIANTS.flatMap((variant) => [variant.fill, variant.highlight]),
+  ...FACE_SHAPE_VARIANTS.flatMap((variant) => [variant.cheekHighlight, variant.jawShade]),
+  ...EYE_VARIANTS.flatMap((variant) => [variant.browExtra, variant.lowerLid]),
+  ...NOSE_VARIANTS.flatMap((variant) => [variant.bridge, variant.nostrils]),
+  ...MOUTH_VARIANTS.flatMap((variant) => [variant.corners, variant.philtrum]),
+  ...HAIR_STYLES.flatMap((style) => [style.back, style.front, style.highlight]),
 ];
 
-// Facial hair: moustache/stubble pixels (drawn over lower face skin)
-const FACIAL_HAIR: ReadonlyArray<[number, number]> = [
-  [8, 11], [9, 11], [10, 11], [11, 11],   // moustache row
-  [7, 13], [8, 13], [9, 13], [10, 13], [11, 13], [12, 13], // chin stubble
-];
+const CONTENT_BOUNDS = ALL_PORTRAIT_PIXELS.reduce(
+  (bounds, pixels) => {
+    for (const [gx, gy] of pixels) {
+      bounds.minX = Math.min(bounds.minX, gx);
+      bounds.maxX = Math.max(bounds.maxX, gx);
+      bounds.minY = Math.min(bounds.minY, gy);
+      bounds.maxY = Math.max(bounds.maxY, gy);
+    }
+    return bounds;
+  },
+  { minX: Number.POSITIVE_INFINITY, maxX: Number.NEGATIVE_INFINITY, minY: Number.POSITIVE_INFINITY, maxY: Number.NEGATIVE_INFINITY },
+);
 
-// Eye colour options
-const EYE_COLOURS: ReadonlyArray<string> = [
-  '#3a6a9e', // blue
-  '#5e8b3a', // green
-  '#8b6a3a', // brown
-  '#3a3a3a', // dark brown / near black
-  '#6a4a2a', // hazel
-];
+const CONTENT_W = CONTENT_BOUNDS.maxX - CONTENT_BOUNDS.minX + 1;
+const CONTENT_H = CONTENT_BOUNDS.maxY - CONTENT_BOUNDS.minY + 1;
+const CONTENT_PADDING = 1;
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+function getRenderMetrics(canvas: HTMLCanvasElement): RenderMetrics {
+  const scale = Math.max(
+    1,
+    Math.floor(Math.min(
+      canvas.width / (CONTENT_W + CONTENT_PADDING * 2),
+      canvas.height / (CONTENT_H + CONTENT_PADDING * 2),
+    )),
+  );
+  const drawnWidth = CONTENT_W * scale;
+  const drawnHeight = CONTENT_H * scale;
+  return {
+    scale,
+    offsetX: Math.floor((canvas.width - drawnWidth) / 2) - CONTENT_BOUNDS.minX * scale,
+    offsetY: Math.floor((canvas.height - drawnHeight) / 2) - CONTENT_BOUNDS.minY * scale,
+  };
+}
 
-function setPixel(ctx: CanvasRenderingContext2D, gx: number, gy: number, colour: string): void {
+function setPixelLegacy(ctx: CanvasRenderingContext2D, metrics: RenderMetrics, gx: number, gy: number, colour: string): void {
   ctx.fillStyle = colour;
-  ctx.fillRect(gx * SCALE_X, gy * SCALE_Y, SCALE_X, SCALE_Y);
+  ctx.fillRect(
+    metrics.offsetX + gx * metrics.scale,
+    metrics.offsetY + gy * metrics.scale,
+    metrics.scale,
+    metrics.scale,
+  );
+}
+
+function setPixelSoft(
+  ctx: CanvasRenderingContext2D,
+  metrics: RenderMetrics,
+  pixels: ReadonlySet<string>,
+  gx: number,
+  gy: number,
+  colour: string,
+): void {
+  const key = `${gx},${gy}`;
+  if (!pixels.has(key)) return;
+
+  const x = metrics.offsetX + gx * metrics.scale;
+  const y = metrics.offsetY + gy * metrics.scale;
+  const inset = Math.max(1, Math.floor(metrics.scale * 0.2));
+
+  const hasLeft = pixels.has(`${gx - 1},${gy}`);
+  const hasRight = pixels.has(`${gx + 1},${gy}`);
+  const hasTop = pixels.has(`${gx},${gy - 1}`);
+  const hasBottom = pixels.has(`${gx},${gy + 1}`);
+
+  const leftInset = hasLeft ? 0 : inset;
+  const rightInset = hasRight ? 0 : inset;
+  const topInset = hasTop ? 0 : inset;
+  const bottomInset = hasBottom ? 0 : inset;
+
+  ctx.fillStyle = colour;
+  ctx.fillRect(
+    x + leftInset,
+    y + topInset,
+    Math.max(1, metrics.scale - leftInset - rightInset),
+    Math.max(1, metrics.scale - topInset - bottomInset),
+  );
 }
 
 function drawLayer(
   ctx: CanvasRenderingContext2D,
-  pixels: ReadonlyArray<[number, number]>,
+  metrics: RenderMetrics,
+  pixels: readonly Pixel[],
   colour: string,
+  renderMode: 'active' | 'soft' | 'legacy' = 'active',
 ): void {
-  ctx.fillStyle = colour;
+  const mode = renderMode === 'active' ? ACTIVE_RENDERER : renderMode;
+  if (mode === 'legacy') {
+    for (const [gx, gy] of pixels) {
+      setPixelLegacy(ctx, metrics, gx, gy, colour);
+    }
+    return;
+  }
+
+  const pixelSet = new Set(pixels.map(([gx, gy]) => `${gx},${gy}`));
   for (const [gx, gy] of pixels) {
-    ctx.fillRect(gx * SCALE_X, gy * SCALE_Y, SCALE_X, SCALE_Y);
+    setPixelSoft(ctx, metrics, pixelSet, gx, gy, colour);
   }
 }
 
-/** Darken a hex colour by a fixed amount (0–255). */
 function darken(hex: string, amount: number): string {
   const n = parseInt(hex.replace('#', ''), 16);
   const r = Math.max(0, ((n >> 16) & 0xff) - amount);
@@ -220,79 +567,112 @@ function darken(hex: string, amount: number): string {
   return `rgb(${r},${g},${b})`;
 }
 
-// ── Main export ──────────────────────────────────────────────────────────────
+function lighten(hex: string, amount: number): string {
+  const n = parseInt(hex.replace('#', ''), 16);
+  const r = Math.min(255, ((n >> 16) & 0xff) + amount);
+  const g = Math.min(255, ((n >> 8) & 0xff) + amount);
+  const b = Math.min(255, (n & 0xff) + amount);
+  return `rgb(${r},${g},${b})`;
+}
 
-/**
- * Renders a deterministic pixel art portrait onto the given canvas.
- *
- * The canvas must be 120×120 pixels. The portrait is keyed to `player.id`
- * and `player.nationality`. The same player always produces the same portrait.
- */
 export function generatePortrait(canvas: HTMLCanvasElement, player: PlayerState): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
-  // 1. Seed RNG with namespaced player ID for session-independent determinism
-  const rng = createRng(`portrait-${player.id}`);
-
-  // 2. Select nationality palette
+  const metrics = getRenderMetrics(canvas);
+  const spec = resolvePortraitSpec(player);
   const palette = getPalette(player.nationality);
 
-  // 3. Fixed decision sequence — order must never change after shipping
-  const skinColour   = palette.skin[Math.floor(rng() * palette.skin.length)]!;   // call 1
-  const hairStyleIdx = Math.floor(rng() * HAIR_STYLES.length);                    // call 2
-  const hairColour   = palette.hair[Math.floor(rng() * palette.hair.length)]!;   // call 3
-  const eyeColour    = EYE_COLOURS[Math.floor(rng() * EYE_COLOURS.length)]!;     // call 4
-  const hasFacialHair = rng() > 0.65;                                             // call 5
-  // Future features: append rng() calls here only
+  const skinColour = readPaletteColour(palette.skin, spec.skinTone);
+  const hairStyle = HAIR_STYLES[Math.max(0, Math.min(HAIR_STYLES.length - 1, spec.hairStyle))]!;
+  const hairline = HAIRLINE_VARIANTS[Math.max(0, Math.min(HAIRLINE_VARIANTS.length - 1, spec.hairlineVariant ?? 0))]!;
+  const faceShape = FACE_SHAPE_VARIANTS[Math.max(0, Math.min(FACE_SHAPE_VARIANTS.length - 1, spec.faceShapeVariant ?? 0))]!;
+  const silhouette = SILHOUETTE_VARIANTS[0]!;
+  const hairVolume = HAIR_VOLUME_VARIANTS[0]!;
+  const eyeVariant = EYE_VARIANTS[Math.max(0, Math.min(EYE_VARIANTS.length - 1, spec.eyeVariant ?? 0))]!;
+  const noseVariant = NOSE_VARIANTS[Math.max(0, Math.min(NOSE_VARIANTS.length - 1, spec.noseVariant ?? 0))]!;
+  const mouthVariant = MOUTH_VARIANTS[Math.max(0, Math.min(MOUTH_VARIANTS.length - 1, spec.mouthVariant ?? 0))]!;
+  const hairColour = readPaletteColour(palette.hair, spec.hairColor);
+  const eyeColour = readPaletteColour(EYE_COLOURS, spec.eyeColor);
 
-  const hairStyle = HAIR_STYLES[hairStyleIdx]!;
-  const earColour = darken(skinColour, 20);
-  const noseColour = darken(skinColour, 30);
-  const facialHairColour = darken(hairColour, 10);
+  const skin = applyPixelMutations(SKIN_BASE, silhouette.skinAdd, silhouette.skinRemove);
+  const neck = applyPixelMutations(NECK, silhouette.neckAdd, silhouette.neckRemove);
+  const earLeft = applyPixelMutations(EAR_LEFT_BASE, silhouette.earLeftAdd, silhouette.earLeftRemove);
+  const earRight = applyPixelMutations(EAR_RIGHT_BASE, silhouette.earRightAdd, silhouette.earRightRemove);
+  const foreheadHighlight = applyPixelMutations(FOREHEAD_HIGHLIGHT, silhouette.foreheadHighlightAdd);
+  const leftCheekShade = applyPixelMutations(LEFT_CHEEK_SHADE, silhouette.cheekShadeAdd);
+  const rightCheekShade = applyPixelMutations(RIGHT_CHEEK_SHADE, silhouette.cheekShadeAdd.map(([x, y]) => [GRID_W - 1 - x, y] as Pixel));
+  const chinShade = applyPixelMutations(CHIN_SHADE, silhouette.chinShadeAdd);
+  const hairBack = applyPixelMutations(hairStyle.back, hairVolume.backAdd, hairVolume.backRemove);
+  const hairFront = applyPixelMutations(hairStyle.front, hairVolume.frontAdd, hairVolume.frontRemove);
+  const hairHighlightPixels = applyPixelMutations(hairStyle.highlight, hairVolume.highlightAdd);
 
-  // 4. Clear canvas with background colour
+  const skinHighlight = lighten(skinColour, 14);
+  const skinShade = darken(skinColour, 18);
+  const deepSkinShade = darken(skinColour, 30);
+  const hairHighlightColour = lighten(hairColour, 18);
+  const hairShade = darken(hairColour, 12);
+  const browColour = darken(hairColour, 30);
+  const earColour = darken(skinColour, 10);
+  const mouthColour = '#8b3a2a';
+  const mouthShade = darken(mouthColour, 18);
+  const eyeWhite = '#d7dde8';
+  const pupil = '#0b1020';
+  const facialHairColour = darken(hairColour, 8);
+
   ctx.fillStyle = BG_COLOUR;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Centre the portrait within the circular avatar area.
-  // The 20×24 logical grid draws face content mostly in cols 4-15 and rows 2-16.
-  // That maps to canvas x 24-96 (centred at 60) and y 10-85 (centred at ~47).
-  // The canvas circle centre is at (60, 60), so we translate down by 13px to align.
-  ctx.save();
-  ctx.translate(0, 13);
+  drawLayer(ctx, metrics, hairBack, hairShade);
+  drawLayer(ctx, metrics, neck, skinShade);
+  drawLayer(ctx, metrics, skin, skinColour);
+  drawLayer(ctx, metrics, foreheadHighlight, skinHighlight);
+  drawLayer(ctx, metrics, LEFT_CHEEK_HIGHLIGHT, skinHighlight);
+  drawLayer(ctx, metrics, RIGHT_CHEEK_HIGHLIGHT, skinHighlight);
+  drawLayer(ctx, metrics, faceShape.cheekHighlight, skinHighlight);
+  drawLayer(ctx, metrics, leftCheekShade, skinShade);
+  drawLayer(ctx, metrics, rightCheekShade, skinShade);
+  drawLayer(ctx, metrics, chinShade, deepSkinShade);
+  drawLayer(ctx, metrics, faceShape.jawShade, deepSkinShade);
 
-  // 5. Draw layers back-to-front
-  // Layer 1: Hair back (behind face — neckline, sides visible around head)
-  drawLayer(ctx, hairStyle.back, hairColour);
+  drawLayer(ctx, metrics, earLeft, earColour);
+  drawLayer(ctx, metrics, earRight, earColour);
 
-  // Layer 2: Skin — oval face shape
-  drawLayer(ctx, SKIN_PIXELS, skinColour);
+  drawLayer(ctx, metrics, LEFT_BROW, browColour, 'legacy');
+  drawLayer(ctx, metrics, RIGHT_BROW, browColour, 'legacy');
+  drawLayer(ctx, metrics, eyeVariant.browExtra, browColour, 'legacy');
+  drawLayer(ctx, metrics, EYE_LEFT_WHITE, eyeWhite, 'legacy');
+  drawLayer(ctx, metrics, EYE_RIGHT_WHITE, eyeWhite, 'legacy');
+  drawLayer(ctx, metrics, LEFT_IRIS, eyeColour, 'legacy');
+  drawLayer(ctx, metrics, RIGHT_IRIS, eyeColour, 'legacy');
+  drawLayer(ctx, metrics, LEFT_PUPIL, pupil, 'legacy');
+  drawLayer(ctx, metrics, RIGHT_PUPIL, pupil, 'legacy');
+  drawLayer(ctx, metrics, LEFT_EYE_SHADOW, skinShade, 'legacy');
+  drawLayer(ctx, metrics, RIGHT_EYE_SHADOW, skinShade, 'legacy');
+  drawLayer(ctx, metrics, eyeVariant.lowerLid, deepSkinShade, 'legacy');
 
-  // Layer 3: Ears (over skin, slightly darker)
-  drawLayer(ctx, LEFT_EAR, earColour);
-  drawLayer(ctx, RIGHT_EAR, earColour);
+  drawLayer(ctx, metrics, NOSE_BRIDGE, skinHighlight);
+  drawLayer(ctx, metrics, NOSE_SIDE_SHADE, skinShade);
+  drawLayer(ctx, metrics, NOSE_TIP, deepSkinShade, 'legacy');
+  drawLayer(ctx, metrics, noseVariant.bridge, skinHighlight, 'legacy');
+  drawLayer(ctx, metrics, noseVariant.nostrils, deepSkinShade, 'legacy');
 
-  // Layer 4: Nose shadow (subtle, 2 pixels)
-  drawLayer(ctx, NOSE, noseColour);
+  drawLayer(ctx, metrics, UPPER_LIP, mouthShade, 'legacy');
+  drawLayer(ctx, metrics, MOUTH_BASE, mouthColour, 'legacy');
+  drawLayer(ctx, metrics, LOWER_LIP, lighten(mouthColour, 20), 'legacy');
+  drawLayer(ctx, metrics, MOUTH_SHADE, mouthShade, 'legacy');
+  drawLayer(ctx, metrics, mouthVariant.corners, mouthShade, 'legacy');
+  drawLayer(ctx, metrics, mouthVariant.philtrum, deepSkinShade, 'legacy');
 
-  // Layer 5: Eyes
-  drawLayer(ctx, LEFT_EYE, eyeColour);
-  drawLayer(ctx, RIGHT_EYE, eyeColour);
-
-  // Layer 6: Mouth
-  drawLayer(ctx, MOUTH, '#8b3a2a');
-
-  // Layer 7: Facial hair (optional)
-  if (hasFacialHair) {
-    drawLayer(ctx, FACIAL_HAIR, facialHairColour);
+  if (spec.facialHair) {
+    drawLayer(ctx, metrics, FACIAL_HAIR_BASE, facialHairColour, 'legacy');
+    drawLayer(ctx, metrics, BEARD_EXTRA, darken(facialHairColour, 10), 'legacy');
   }
 
-  // Layer 8: Hair front (over face — top of head, falls around forehead)
-  drawLayer(ctx, hairStyle.front, hairColour);
+  drawLayer(ctx, metrics, hairFront, hairColour);
+  drawLayer(ctx, metrics, hairline.fill, hairColour);
+  drawLayer(ctx, metrics, hairHighlightPixels, hairHighlightColour);
+  drawLayer(ctx, metrics, hairline.highlight, hairHighlightColour);
 
-  ctx.restore();
-
-  // Suppress unused-variable warnings for GRID_W, GRID_H (kept for documentation)
   void (GRID_W + GRID_H);
 }

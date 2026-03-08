@@ -53,6 +53,21 @@ export interface PersonalityVector {
   readonly flair: number;           // 0..1
 }
 
+export interface PortraitSpec {
+  readonly skinTone: number;
+  readonly hairStyle: number;
+  readonly hairColor: number;
+  readonly eyeColor: number;
+  readonly facialHair: boolean;
+  readonly hairlineVariant?: number;
+  readonly faceShapeVariant?: number;
+  readonly silhouetteVariant?: number;
+  readonly hairVolumeVariant?: number;
+  readonly eyeVariant?: number;
+  readonly noseVariant?: number;
+  readonly mouthVariant?: number;
+}
+
 // Physical/technical attributes — all 0..1
 export interface PlayerAttributes {
   readonly pace: number;            // 0..1 — top speed
@@ -306,6 +321,7 @@ export interface PlayerState {
   readonly role: Role | string;     // positional role (Role type or legacy string)
   readonly duty: Duty;              // tactical duty (default: SUPPORT)
   readonly formationAnchor: Vec2;   // tactical home position
+  readonly portraitSpec?: PortraitSpec;
   readonly name?: string;           // display name (optional)
   readonly age?: number;            // player age (17..34)
   readonly height?: number;         // player height in cm (165..200)

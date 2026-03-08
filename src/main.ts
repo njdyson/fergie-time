@@ -6,7 +6,7 @@ import { CanvasRenderer } from './renderer/canvas.ts';
 import { DebugOverlay } from './renderer/debug.ts';
 import { startGameLoop, stopGameLoop, getIsPaused, setPaused, setSpeedMultiplier } from './loop/gameLoop.ts';
 import { MatchPhase } from './simulation/types.ts';
-import type { FormationId, TacticsPhase } from './simulation/types.ts';
+import type { FormationId, TacticsPhase, PlayerState } from './simulation/types.ts';
 import { auditScoreRanges } from './simulation/ai/decisionLog.ts';
 import { TUNING } from './simulation/tuning.ts';
 import type { TuningConfig } from './simulation/tuning.ts';
@@ -29,18 +29,22 @@ import type { ProfileTransferInfo } from './ui/screens/playerProfileScreen.ts';
 import { TransferScreen } from './ui/screens/transferScreen.ts';
 import { InboxScreen } from './ui/screens/inboxScreen.ts';
 import { RivalSquadScreen } from './ui/screens/rivalSquadScreen.ts';
+import { TrainingScreen } from './ui/screens/trainingScreen.ts';
 import { createSeason, validateSquadSelection, isSeasonComplete, getChampion, startNewSeason, recordPlayerResult, simOneAIFixture, finalizeMatchday } from './season/season.ts';
 import type { SeasonState, TrainingSchedule } from './season/season.ts';
 import { advanceDay } from './season/dayLoop.ts';
 import { mergeAllMatchStats } from './season/playerStats.ts';
 import { saveGame, loadGame, logout } from './api/client.ts';
 import { serializeState, deserializeState } from '../server/serialize.ts';
-import { transferListPlayer, removeFromTransferList, processPlayerBid, submitPlayerBid, processPendingBids, formatMoney, generateFreeAgents, createTransferMarket } from './season/transferMarket.ts';
+import { transferListPlayer, removeFromTransferList, processPlayerBid, submitPlayerBid, processPendingBids, formatMoney, generateFreeAgents, createTransferMarket, releasePlayer, MAX_SQUAD_SIZE } from './season/transferMarket.ts';
 import { markAsRead, archiveMessage, deleteMessage, getUnreadCount, createInbox, sendMessage } from './season/inbox.ts';
 import { generateCoachingReport } from './season/coachingReport.ts';
+import { DEFAULT_PRESETS as DEFAULT_PRESETS_IMPORT } from './season/training.ts';
+import type { TrainingDayPreset } from './season/training.ts';
 import { pickAssistantLineup, buildFormationTacticalConfig } from './season/assistantPicks.ts';
 import { choosePreferredBuiltInTacticName, loadBuiltInTacticSystem, getDefaultBuiltInTacticName } from './season/tacticalPresets.ts';
 import { createFixtureMatchStats, fixtureMatchStatsToPlayerStatsMap } from './season/fixtures.ts';
+import { createPortraitSpec } from './ui/portrait/portraitSpec.ts';
 
 // ============================================================
 // Canvas setup
@@ -106,7 +110,7 @@ function hideTacticsCanvas(): void {
 // Screen routing + Season state
 // ============================================================
 
-const ScreenId = { LOGIN: 'LOGIN', HUB: 'HUB', SQUAD: 'SQUAD', STATS: 'STATS', FIXTURES: 'FIXTURES', TABLE: 'TABLE', TACTICS: 'TACTICS', MATCH: 'MATCH', PROFILE: 'PROFILE', TRANSFER: 'TRANSFER', INBOX: 'INBOX', RIVAL_SQUAD: 'RIVAL_SQUAD' } as const;
+const ScreenId = { LOGIN: 'LOGIN', HUB: 'HUB', SQUAD: 'SQUAD', STATS: 'STATS', FIXTURES: 'FIXTURES', TABLE: 'TABLE', TACTICS: 'TACTICS', MATCH: 'MATCH', PROFILE: 'PROFILE', TRANSFER: 'TRANSFER', INBOX: 'INBOX', RIVAL_SQUAD: 'RIVAL_SQUAD', TRAINING: 'TRAINING' } as const;
 type ScreenId = (typeof ScreenId)[keyof typeof ScreenId];
 let currentScreen: ScreenId = ScreenId.HUB;
 let previousScreen: ScreenId = ScreenId.HUB;
@@ -134,6 +138,10 @@ const transferScreenView = new TransferScreen(transferScreenEl);
 // Inbox screen
 const inboxScreenEl = document.getElementById('inbox-screen')!;
 const inboxScreenView = new InboxScreen(inboxScreenEl);
+
+// Training screen
+const trainingScreenEl = document.getElementById('training-screen')!;
+const trainingScreenView = new TrainingScreen(trainingScreenEl);
 
 // Login screen
 const loginScreenEl = document.getElementById('login-screen')!;
@@ -171,6 +179,23 @@ playerProfileScreenView.onUnlist((playerId) => {
     transferMarket: removeFromTransferList(seasonState.transferMarket, playerId),
   };
   saveGame(serializeState(seasonState), 1).catch(err => console.error('Auto-save failed:', err));
+  updateCurrentScreen();
+});
+
+playerProfileScreenView.onRelease((playerId) => {
+  if (!seasonState) return;
+  const playerTeam = seasonState.teams.find(t => t.isPlayerTeam)!;
+  const player = playerTeam.squad.find(p => p.id === playerId);
+  if (!player) return;
+  if (!confirm(`Are you sure you want to release ${player.name}? This cannot be undone.`)) return;
+  const result = releasePlayer(seasonState.transferMarket, seasonState.teams, playerTeam.id, playerId);
+  seasonState = {
+    ...seasonState,
+    transferMarket: result.market,
+    teams: result.teams,
+  };
+  saveGame(serializeState(seasonState), 1).catch(err => console.error('Auto-save failed:', err));
+  showScreen(previousScreen);
   updateCurrentScreen();
 });
 
@@ -239,7 +264,10 @@ function updateCurrentScreen(): void {
   }
   if (currentScreen === ScreenId.SQUAD) {
     squadScreenViewInner.setFormationRoles(tacticsBoard.getPhaseRoles('inPossession'), tacticsBoard.getPhaseRoles('outOfPossession'));
-    squadScreenViewInner.update(playerTeam.squad, seasonState.fatigueMap, seasonState.squadSelectionMap, seasonState.playerSeasonStats, seasonState.trainingDeltas);
+    squadScreenViewInner.update(playerTeam.squad, seasonState.fatigueMap, seasonState.squadSelectionMap, seasonState.playerSeasonStats, seasonState.trainingDeltas, seasonState.trainingGroupOverrides);
+  }
+  if (currentScreen === ScreenId.TRAINING) {
+    trainingScreenView.update(seasonState);
   }
   if (currentScreen === ScreenId.STATS) statsScreenView.update(seasonState);
   if (currentScreen === ScreenId.FIXTURES) fixturesScreenView.update(seasonState, seasonState.playerTeamId);
@@ -310,6 +338,7 @@ function showScreen(screen: ScreenId): void {
     LOGIN: 'login-screen', HUB: 'hub-screen', SQUAD: 'squad-screen', STATS: 'stats-screen',
     FIXTURES: 'fixtures-screen', TABLE: 'table-screen', TACTICS: 'tactics-screen', MATCH: 'pitch-area',
     PROFILE: 'profile-screen', TRANSFER: 'transfer-screen', INBOX: 'inbox-screen', RIVAL_SQUAD: 'rival-squad-screen',
+    TRAINING: 'training-screen',
   };
   const flexScreens = new Set(['MATCH', 'SQUAD', 'LOGIN', 'TACTICS', 'RIVAL_SQUAD']);
   for (const [key, id] of Object.entries(map)) {
@@ -378,6 +407,7 @@ document.getElementById('nav-table')?.addEventListener('click', () => showScreen
 document.getElementById('nav-transfer')?.addEventListener('click', () => showScreen(ScreenId.TRANSFER));
 document.getElementById('nav-inbox')?.addEventListener('click', () => showScreen(ScreenId.INBOX));
 document.getElementById('nav-tactics')?.addEventListener('click', () => showScreen(ScreenId.TACTICS));
+document.getElementById('nav-training')?.addEventListener('click', () => showScreen(ScreenId.TRAINING));
 
 // Hamburger menu toggle
 document.getElementById('nav-hamburger')?.addEventListener('click', () => {
@@ -409,6 +439,10 @@ transferScreenView.onPlayerClick((playerId) => showPlayerProfile(playerId));
 transferScreenView.onBid((playerId, toTeamId, amount) => {
   if (!seasonState) return;
   const playerTeam = seasonState.teams.find(t => t.isPlayerTeam)!;
+  if (playerTeam.squad.length >= MAX_SQUAD_SIZE) {
+    alert(`Squad is full (${MAX_SQUAD_SIZE} players). Release or sell a player first.`);
+    return;
+  }
   const budget = seasonState.transferMarket.teamBudgets.get(playerTeam.id) ?? 0;
   if (amount > budget) {
     alert(`Insufficient budget. You have £${formatMoney(budget)} available.`);
@@ -466,6 +500,10 @@ transferScreenView.onBid((playerId, toTeamId, amount) => {
 transferScreenView.onSignFreeAgent((playerId) => {
   if (!seasonState) return;
   const playerTeam = seasonState.teams.find(t => t.isPlayerTeam)!;
+  if (playerTeam.squad.length >= MAX_SQUAD_SIZE) {
+    alert(`Squad is full (${MAX_SQUAD_SIZE} players). Release or sell a player first.`);
+    return;
+  }
   const rng = seedrandom(`${seasonState.seed}-sign-${Date.now()}`);
   const result = processPlayerBid(
     seasonState.transferMarket,
@@ -502,6 +540,22 @@ transferScreenView.onUnlist((playerId) => {
   seasonState = {
     ...seasonState,
     transferMarket: removeFromTransferList(seasonState.transferMarket, playerId),
+  };
+  saveGame(serializeState(seasonState), 1).catch(err => console.error('Auto-save failed:', err));
+  updateCurrentScreen();
+});
+
+transferScreenView.onRelease((playerId) => {
+  if (!seasonState) return;
+  const playerTeam = seasonState.teams.find(t => t.isPlayerTeam)!;
+  const player = playerTeam.squad.find(p => p.id === playerId);
+  if (!player) return;
+  if (!confirm(`Are you sure you want to release ${player.name}? This cannot be undone.`)) return;
+  const result = releasePlayer(seasonState.transferMarket, seasonState.teams, playerTeam.id, playerId);
+  seasonState = {
+    ...seasonState,
+    transferMarket: result.market,
+    teams: result.teams,
   };
   saveGame(serializeState(seasonState), 1).catch(err => console.error('Auto-save failed:', err));
   updateCurrentScreen();
@@ -1878,6 +1932,19 @@ hubScreenView.onScheduleChange((schedule: TrainingSchedule) => {
   saveGame(serializeState(seasonState), 1).catch(err => console.error('Auto-save (training schedule) failed:', err));
 });
 
+hubScreenView.onViewReport((dayNumber: number) => {
+  // Find the coaching report message for this day
+  const reportSubjectSuffix = `Day ${dayNumber}`;
+  const messages = seasonState.inbox.messages;
+  const reportMsg = messages.find(m =>
+    m.subject.startsWith('Training Report:') && m.subject.includes(reportSubjectSuffix) && !m.deleted && !m.archived
+  );
+  if (reportMsg) {
+    inboxScreenView.expandMessage(reportMsg.id);
+  }
+  showScreen(ScreenId.INBOX);
+});
+
 hubScreenView.onContinue(() => {
   // Capture pre-advance state for coaching report (COACH-01)
   const prevDay = seasonState.currentDay;
@@ -1891,7 +1958,10 @@ hubScreenView.onContinue(() => {
   // COACH-01: Generate coaching report email after training
   if (dayPlan !== 'rest') {
     const playerTeamAfter = seasonState.teams.find(t => t.isPlayerTeam)!;
-    const report = generateCoachingReport(dayPlan, prevDay + 1, playerTeamAfter.squad, squadBefore);
+    // Resolve preset for the coaching report
+    const presets = seasonState.trainingPresets ?? [];
+    const resolvedPreset = presets.find(p => p.id === dayPlan) ?? null;
+    const report = generateCoachingReport(dayPlan, prevDay + 1, playerTeamAfter.squad, squadBefore, resolvedPreset, seasonState.trainingGroupOverrides);
     if (report) {
       seasonState = {
         ...seasonState,
@@ -1929,8 +1999,44 @@ hubScreenView.onKickoff(() => {
   // Training already applied day-by-day via Continue — just start the match
   const playerTeam = seasonState.teams.find(t => t.isPlayerTeam)!;
   squadScreenViewInner.setFormationRoles(tacticsBoard.getPhaseRoles('inPossession'), tacticsBoard.getPhaseRoles('outOfPossession'));
-  squadScreenViewInner.update(playerTeam.squad, seasonState.fatigueMap, seasonState.squadSelectionMap, seasonState.playerSeasonStats, seasonState.trainingDeltas);
+  squadScreenViewInner.update(playerTeam.squad, seasonState.fatigueMap, seasonState.squadSelectionMap, seasonState.playerSeasonStats, seasonState.trainingDeltas, seasonState.trainingGroupOverrides);
   startMatchFromSquad();
+});
+
+// --- Training Screen callbacks ---
+trainingScreenView.onSave((preset) => {
+  const presets = [...(seasonState.trainingPresets ?? []), preset];
+  seasonState = { ...seasonState, trainingPresets: presets };
+  saveGame(serializeState(seasonState), 1).catch(err => console.error('Auto-save (training preset) failed:', err));
+  updateCurrentScreen();
+});
+
+trainingScreenView.onEdit((updatedPreset) => {
+  const presets = (seasonState.trainingPresets ?? []).map(p =>
+    p.id === updatedPreset.id ? updatedPreset : p
+  );
+  seasonState = { ...seasonState, trainingPresets: presets };
+  saveGame(serializeState(seasonState), 1).catch(err => console.error('Auto-save (training preset edit) failed:', err));
+  updateCurrentScreen();
+});
+
+trainingScreenView.onDelete((presetId) => {
+  const presets = (seasonState.trainingPresets ?? []).filter(p => p.id !== presetId);
+  // Also clear any schedule entries referencing this preset
+  const schedule = seasonState.trainingSchedule ?? {};
+  const cleanedSchedule: TrainingSchedule = {};
+  for (const [key, val] of Object.entries(schedule)) {
+    cleanedSchedule[Number(key)] = val === presetId ? 'rest' : val;
+  }
+  seasonState = { ...seasonState, trainingPresets: presets, trainingSchedule: cleanedSchedule };
+  saveGame(serializeState(seasonState), 1).catch(err => console.error('Auto-save (training preset delete) failed:', err));
+  updateCurrentScreen();
+});
+
+// --- Squad Screen training group callback ---
+squadScreenViewInner.onTrainingGroupChange((overrides) => {
+  seasonState = { ...seasonState, trainingGroupOverrides: overrides };
+  saveGame(serializeState(seasonState), 1).catch(err => console.error('Auto-save (training group) failed:', err));
 });
 
 // ============================================================
@@ -1938,8 +2044,32 @@ hubScreenView.onKickoff(() => {
 // ============================================================
 
 /** Migrate old save files that lack transferMarket/inbox fields. */
+function ensurePortraitSpec(player: PlayerState): PlayerState {
+  if (player.portraitSpec) return player;
+  return { ...player, portraitSpec: createPortraitSpec(player.id, player.nationality) };
+}
+
+function ensureTeamPortraitSpecs(team: import('./season/season.ts').SeasonTeam): import('./season/season.ts').SeasonTeam {
+  if (team.squad.every((player) => player.portraitSpec)) return team;
+  return {
+    ...team,
+    squad: team.squad.map(ensurePortraitSpec),
+  };
+}
+
 function migrateSeasonState(state: SeasonState): SeasonState {
   let migrated = state;
+
+  if (migrated.teams.some((team) => team.squad.some((player) => !player.portraitSpec))
+    || migrated.transferMarket?.freeAgents?.some((player) => !player.portraitSpec)) {
+    migrated = {
+      ...migrated,
+      teams: migrated.teams.map(ensureTeamPortraitSpecs),
+      transferMarket: migrated.transferMarket
+        ? { ...migrated.transferMarket, freeAgents: migrated.transferMarket.freeAgents.map(ensurePortraitSpec) }
+        : migrated.transferMarket,
+    };
+  }
 
   if (migrated.teams.some(t => !t.preferredFormation || !t.preferredTacticName)) {
     migrated = {
@@ -1976,6 +2106,20 @@ function migrateSeasonState(state: SeasonState): SeasonState {
 
   if (!migrated.homeTacticPresetName) {
     migrated = { ...migrated, homeTacticPresetName: getDefaultBuiltInTacticName() };
+  }
+
+  if (!migrated.trainingPresets) {
+    migrated = { ...migrated, trainingPresets: [...DEFAULT_PRESETS_IMPORT], trainingGroupOverrides: new Map() };
+  }
+
+  // Migrate presets missing intensity field (added in 5-day training update)
+  if (migrated.trainingPresets?.some((p: TrainingDayPreset) => (p.intensity as number | undefined) === undefined)) {
+    migrated = {
+      ...migrated,
+      trainingPresets: migrated.trainingPresets!.map((p: TrainingDayPreset) =>
+        (p.intensity as number | undefined) !== undefined ? p : { ...p, intensity: 3 }
+      ),
+    };
   }
 
   return migrated;

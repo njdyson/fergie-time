@@ -7,6 +7,7 @@ import { Duty } from '../simulation/types.ts';
 import { Vec2 } from '../simulation/math/vec2.ts';
 import { generatePlayerName } from './nameGen.ts';
 import type { PlayerName } from './nameService.ts';
+import { createPortraitSpec } from '../ui/portrait/portraitSpec.ts';
 
 export const TeamTier = {
   STRONG: 'strong',
@@ -30,7 +31,7 @@ function generateAttribute(base: number, spread: number, rng: () => number): num
 }
 
 // Role-based attribute boosts — makes players feel distinct by position
-const ROLE_BOOSTS: Partial<Record<Role, Partial<Record<keyof PlayerAttributes, number>>>> = {
+export const ROLE_BOOSTS: Partial<Record<Role, Partial<Record<keyof PlayerAttributes, number>>>> = {
   GK:  { positioning: 0.10, aerial: 0.08, reflexes: 0.15, handling: 0.14, oneOnOnes: 0.12, distribution: 0.10, concentration: 0.08 },
   CB:  { tackling: 0.12, strength: 0.10, aerial: 0.10, heading: 0.12, concentration: 0.08 },
   LB:  { pace: 0.10, stamina: 0.08, crossing: 0.10, acceleration: 0.06 },
@@ -97,6 +98,55 @@ export const ROLES_25: Role[] = [
 ];
 
 /**
+ * Generate a single player with the given role and tier.
+ * Reusable by createAITeam and youth replacement logic.
+ */
+export function generatePlayer(
+  role: Role,
+  tier: TeamTier,
+  teamId: string,
+  rng: () => number,
+  options?: {
+    index?: number;
+    ageOverride?: number;
+    name?: PlayerName | string;
+  },
+): PlayerState {
+  const config = TIER_CONFIGS[tier];
+  const defaultNats = ['GB', 'ES', 'FR', 'DE', 'BR'];
+  const index = options?.index ?? 0;
+
+  const entry = options?.name;
+  const playerName = entry == null
+    ? generatePlayerName(rng)
+    : typeof entry === 'string' ? entry : entry.name;
+  const nationality = entry != null && typeof entry !== 'string'
+    ? entry.nationality
+    : defaultNats[Math.floor(rng() * defaultNats.length)]!;
+
+  const age = options?.ageOverride ?? (Math.floor(rng() * 18) + 17);
+
+  return {
+    id: `${teamId}-player-${index}`,
+    teamId: teamId as TeamId,
+    position: Vec2.zero(),
+    velocity: Vec2.zero(),
+    attributes: generateAttributes(config.base, config.spread, rng, role),
+    personality: generatePersonality(rng),
+    fatigue: 0,
+    role,
+    duty: Duty.SUPPORT,
+    formationAnchor: Vec2.zero(),
+    portraitSpec: createPortraitSpec(`${teamId}-player-${index}`, nationality),
+    name: playerName,
+    age,
+    height: Math.floor(rng() * 36) + 165,
+    shirtNumber: index + 1,
+    nationality,
+  };
+}
+
+/**
  * Create an AI team squad with 25 players.
  * @param names - Optional array of player names (with nationality) to use instead of generated ones
  */
@@ -107,34 +157,8 @@ export function createAITeam(
   rng: () => number,
   names?: PlayerName[] | string[],
 ): PlayerState[] {
-  const config = TIER_CONFIGS[tier];
-  const defaultNats = ['GB', 'ES', 'FR', 'DE', 'BR'];
-
   return ROLES_25.map((role, index): PlayerState => {
     const entry = names?.[index];
-    const playerName = entry == null
-      ? generatePlayerName(rng)
-      : typeof entry === 'string' ? entry : entry.name;
-    const nationality = entry != null && typeof entry !== 'string'
-      ? entry.nationality
-      : defaultNats[Math.floor(rng() * defaultNats.length)]!;
-
-    return {
-      id: `${teamId}-player-${index}`,
-      teamId: teamId as TeamId,
-      position: Vec2.zero(),
-      velocity: Vec2.zero(),
-      attributes: generateAttributes(config.base, config.spread, rng, role),
-      personality: generatePersonality(rng),
-      fatigue: 0,
-      role,
-      duty: Duty.SUPPORT,
-      formationAnchor: Vec2.zero(),
-      name: playerName,
-      age: Math.floor(rng() * 18) + 17,
-      height: Math.floor(rng() * 36) + 165,
-      shirtNumber: index + 1,
-      nationality,
-    };
+    return generatePlayer(role, tier, teamId, rng, entry != null ? { index, name: entry } : { index });
   });
 }

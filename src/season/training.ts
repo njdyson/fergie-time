@@ -8,11 +8,11 @@
  * a player can always improve, but gains shrink as they approach 1.0.
  * There is NO potential cap, NO max ceiling.
  *
- * BASE_DELTA tuned to 0.004 — verified by headless 5-season simulation:
- * players starting below 0.70 do not exceed 0.95 after 570 training sessions.
+ * BASE_DELTA tuned to 0.0024 — verified by headless 5-season simulation:
+ * players starting below 0.70 do not exceed 0.95 after 950 training sessions.
  */
 
-import type { PlayerState, PlayerAttributes, PersonalityVector } from '../simulation/types.ts';
+import type { PlayerState, PlayerAttributes, PersonalityVector, Role } from '../simulation/types.ts';
 import type { TrainingSchedule, TrainingDeltas } from './season.ts';
 
 // ---------------------------------------------------------------------------
@@ -76,29 +76,136 @@ export const DRILL_LABELS: Record<DrillType, string> = {
 };
 
 // ---------------------------------------------------------------------------
+// Training groups — squad split for per-group drill assignment
+// ---------------------------------------------------------------------------
+
+export const TrainingGroup = {
+  GK:  'GK',
+  DEF: 'DEF',
+  ATK: 'ATK',
+} as const;
+
+export type TrainingGroup = (typeof TrainingGroup)[keyof typeof TrainingGroup];
+
+export const TRAINING_GROUP_LABELS: Record<TrainingGroup, string> = {
+  GK:  'Goalkeepers',
+  DEF: 'Defenders',
+  ATK: 'Attackers',
+};
+
+/** Maps a player role to the default training group. */
+export function roleToTrainingGroup(role: Role | string): TrainingGroup {
+  switch (role) {
+    case 'GK': return TrainingGroup.GK;
+    case 'CB': case 'LB': case 'RB': case 'CDM': case 'CM': return TrainingGroup.DEF;
+    case 'CAM': case 'LW': case 'RW': case 'ST': return TrainingGroup.ATK;
+    default: return TrainingGroup.DEF;
+  }
+}
+
+/** Returns the effective training group for a player, checking overrides first. */
+export function getPlayerTrainingGroup(
+  player: PlayerState,
+  overrides?: Map<string, TrainingGroup>,
+): TrainingGroup {
+  return overrides?.get(player.id) ?? roleToTrainingGroup(player.role);
+}
+
+// ---------------------------------------------------------------------------
+// Training Day Presets — slot-based schedule with per-group attribute picks
+// ---------------------------------------------------------------------------
+
+/** A single time slot within a training day — each group trains one attribute. */
+export interface TrainingSlot {
+  gk: keyof PlayerAttributes | 'rest';
+  def: keyof PlayerAttributes | 'rest';
+  atk: keyof PlayerAttributes | 'rest';
+}
+
+export interface TrainingDayPreset {
+  id: string;
+  name: string;
+  slots: [TrainingSlot, TrainingSlot, TrainingSlot]; // Morning / Afternoon / Evening
+  intensity: number;  // 1-5, default 3. Higher = faster gains but more fatigue.
+}
+
+/** All trainable attribute keys — used for dropdown options in the UI. */
+export const ALL_TRAINABLE_ATTRS: Array<keyof PlayerAttributes> = [
+  'pace', 'strength', 'stamina', 'acceleration', 'agility',
+  'dribbling', 'passing', 'shooting', 'finishing', 'crossing',
+  'tackling', 'aerial', 'heading', 'positioning', 'vision', 'concentration',
+  'reflexes', 'handling', 'oneOnOnes', 'distribution',
+];
+
+/** Human-readable labels for attributes — used in training screen dropdowns. */
+export const ATTR_LABELS: Record<keyof PlayerAttributes, string> = {
+  pace: 'Pace', strength: 'Strength', stamina: 'Stamina',
+  dribbling: 'Dribbling', passing: 'Passing', shooting: 'Shooting',
+  tackling: 'Tackling', aerial: 'Aerial', positioning: 'Positioning',
+  vision: 'Vision', acceleration: 'Acceleration', crossing: 'Crossing',
+  finishing: 'Finishing', agility: 'Agility', heading: 'Heading',
+  concentration: 'Concentration', reflexes: 'Reflexes', handling: 'Handling',
+  oneOnOnes: '1v1s', distribution: 'Distribution',
+};
+
+export const SLOT_LABELS = ['Morning', 'Afternoon', 'Evening'] as const;
+
+export const INTENSITY_LABELS: Record<number, string> = {
+  1: 'Light', 2: 'Easy', 3: 'Moderate', 4: 'Hard', 5: 'Intense',
+};
+
+export const DEFAULT_PRESETS: TrainingDayPreset[] = [
+  {
+    id: 'preset-balanced', name: 'Balanced', intensity: 3,
+    slots: [
+      { gk: 'reflexes', def: 'pace', atk: 'pace' },
+      { gk: 'handling', def: 'tackling', atk: 'shooting' },
+      { gk: 'distribution', def: 'positioning', atk: 'finishing' },
+    ],
+  },
+  {
+    id: 'preset-match-prep', name: 'Match Prep', intensity: 3,
+    slots: [
+      { gk: 'positioning', def: 'concentration', atk: 'positioning' },
+      { gk: 'oneOnOnes', def: 'positioning', atk: 'vision' },
+      { gk: 'reflexes', def: 'tackling', atk: 'dribbling' },
+    ],
+  },
+  {
+    id: 'preset-physical', name: 'Physical', intensity: 4,
+    slots: [
+      { gk: 'pace', def: 'pace', atk: 'pace' },
+      { gk: 'strength', def: 'strength', atk: 'strength' },
+      { gk: 'stamina', def: 'stamina', atk: 'stamina' },
+    ],
+  },
+];
+
+// ---------------------------------------------------------------------------
 // Tuning constants
 // ---------------------------------------------------------------------------
 
 /**
  * Number of training days available between consecutive matchdays.
  *
- * Locked at 3 — this value was used in the Phase 11 headless economy simulation
- * (38 matchdays × 3 sessions = 114 sessions/season, 570 over 5 seasons).
+ * Set to 5 (Mon–Fri), with Saturday as match day and Sunday as enforced rest.
+ * 38 matchdays × 5 training days = 190 sessions/season, 950 over 5 seasons.
  * Changing this constant requires re-running the headless sim and potentially
  * re-tuning BASE_DELTA to keep player growth below the 0.95 ceiling.
  */
-export const TRAINING_DAYS_PER_MATCHDAY = 3;
+export const TRAINING_DAYS_PER_MATCHDAY = 5;
 
 /**
- * Base gain per training session, before age and personality modifiers.
+ * Base gain per training session, before age, personality, and intensity modifiers.
  * Tuned so players starting below 0.70 do not exceed 0.95 after 5 seasons
- * (570 sessions) when cycling all 8 drill types.
+ * (950 sessions) when cycling all 8 drill types.
  *
  * Derivation: with ageFactor=1.0 (peak), trainingFactor=1.4 (work_rate=1.0),
- * and currentValue=0.50 → gain ≈ 0.004 * 1.0 * 1.4 * 0.50 = 0.0028 per session.
- * Over 570 sessions at diminishing rate, a player peaks well below 0.95.
+ * intensityFactor=1.2 (intensity=3), and currentValue=0.50
+ * → gain ≈ 0.0024 * 1.0 * 1.4 * 1.2 * 0.50 = 0.002016 per session.
+ * Over 950 sessions at diminishing rate, a player peaks well below 0.95.
  */
-export const BASE_DELTA = 0.004;
+export const BASE_DELTA = 0.0024;
 
 // ---------------------------------------------------------------------------
 // Age factor
@@ -185,6 +292,54 @@ function applyDrillToPlayer(player: PlayerState, drill: DrillType): PlayerState 
  */
 export function applyDrill(players: PlayerState[], drill: DrillType): PlayerState[] {
   return players.map(p => applyDrillToPlayer(p, drill));
+}
+
+/**
+ * Applies a single-attribute training gain to one player.
+ * Returns a new PlayerState — original is never mutated.
+ */
+function applyAttributeToPlayer(
+  player: PlayerState,
+  attr: keyof PlayerAttributes,
+  intensityFactor: number = 1.0,
+): PlayerState {
+  const age = player.age ?? 25;
+  const ageFactor = getAgeFactor(age);
+  const trainingFactor = getTrainingFactor(player.personality);
+  const current = player.attributes[attr];
+  const gain = BASE_DELTA * ageFactor * trainingFactor * (1 - current) * intensityFactor;
+
+  const newAttributes: PlayerAttributes = { ...player.attributes };
+  (newAttributes as Record<keyof PlayerAttributes, number>)[attr] = Math.min(1, current + gain);
+  return { ...player, attributes: newAttributes };
+}
+
+/**
+ * Applies a full training day preset to a squad.
+ * Each slot trains one attribute per group. 3 slots = 3 attribute gains per group per day.
+ * Pure function — returns new PlayerState[], never mutates input.
+ */
+export function applyTrainingDay(
+  players: PlayerState[],
+  preset: TrainingDayPreset,
+  groupOverrides?: Map<string, TrainingGroup>,
+): PlayerState[] {
+  let current = players;
+  const intensityFactor = 0.6 + (preset.intensity ?? 3) * 0.2;
+  const groupKey: Record<TrainingGroup, 'gk' | 'def' | 'atk'> = {
+    GK: 'gk', DEF: 'def', ATK: 'atk',
+  };
+
+  for (const slot of preset.slots) {
+    current = current.map(p => {
+      const group = getPlayerTrainingGroup(p, groupOverrides);
+      const attr = slot[groupKey[group]];
+      if (attr === 'rest') return p;
+      return applyAttributeToPlayer(p, attr as keyof PlayerAttributes, intensityFactor);
+    });
+  }
+
+  return current;
 }
 
 /**

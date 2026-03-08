@@ -8,9 +8,10 @@ import { Vec2 } from '../simulation/math/vec2.ts';
 import { generatePlayerName } from './nameGen.ts';
 import type { PlayerSeasonStats } from './playerStats.ts';
 import type { SeasonTeam } from './season.ts';
-import { calculatePlayerValue, calculatePlayerRating, getSquadDepth } from './playerAnalysis.ts';
+import { calculatePlayerValue, getSquadDepth } from './playerAnalysis.ts';
 import type { InboxState } from './inbox.ts';
 import { sendMessage } from './inbox.ts';
+import { createPortraitSpec } from '../ui/portrait/portraitSpec.ts';
 
 // --- Types ---
 
@@ -149,6 +150,7 @@ export function generateFreeAgents(count: number, rng: () => number): PlayerStat
         role,
         duty: Duty.SUPPORT,
         formationAnchor: Vec2.zero(),
+        portraitSpec: createPortraitSpec(`free-agent-${idx}`, nationality),
         name: generatePlayerName(rng),
         age,
         height: Math.floor(rng() * 36) + 165,
@@ -589,19 +591,10 @@ export function executeTransfer(
 
   const buyingTeam = updatedTeams[buyingIdx]!;
 
-  // If squad is full (25), release worst-rated player
-  let releasedPlayer: PlayerState | undefined;
-  let squadToAdd = [...buyingTeam.squad];
+  // Block transfer if squad is full (25 players max)
+  const squadToAdd = [...buyingTeam.squad];
   if (squadToAdd.length >= 25) {
-    // Find worst-rated non-GK (keep at least 1 GK)
-    const sorted = [...squadToAdd].sort(
-      (a, b) => calculatePlayerRating(a) - calculatePlayerRating(b)
-    );
-    const gkCount = squadToAdd.filter(p => p.role === 'GK').length;
-    releasedPlayer = sorted.find(p => !(p.role === 'GK' && gkCount <= 1));
-    if (releasedPlayer) {
-      squadToAdd = squadToAdd.filter(p => p.id !== releasedPlayer!.id);
-    }
+    return { market, teams };
   }
 
   // Re-assign player's teamId and shirt number
@@ -624,18 +617,47 @@ export function executeTransfer(
   // Remove from transfer list
   updatedMarket = removeFromTransferList(updatedMarket, playerId);
 
-  // If a player was released, add them to free agents
-  if (releasedPlayer) {
-    updatedMarket.freeAgents = [...updatedMarket.freeAgents, releasedPlayer];
-    // List them automatically
-    const releasedValue = updatedMarket.playerValues.get(releasedPlayer.id) ?? 1000;
-    updatedMarket.listings = [...updatedMarket.listings, {
-      playerId: releasedPlayer.id,
+  return { market: updatedMarket, teams: updatedTeams };
+}
+
+export const MAX_SQUAD_SIZE = 25;
+
+/**
+ * Release a player from a team's squad, making them a free agent.
+ */
+export function releasePlayer(
+  market: TransferMarketState,
+  teams: SeasonTeam[],
+  teamId: string,
+  playerId: string,
+): { market: TransferMarketState; teams: SeasonTeam[] } {
+  const teamIdx = teams.findIndex(t => t.id === teamId);
+  if (teamIdx < 0) return { market, teams };
+
+  const team = teams[teamIdx]!;
+  const player = team.squad.find(p => p.id === playerId);
+  if (!player) return { market, teams };
+
+  // Remove player from squad
+  const updatedTeams = [...teams];
+  updatedTeams[teamIdx] = {
+    ...team,
+    squad: team.squad.filter(p => p.id !== playerId),
+  };
+
+  // Add to free agents and list them
+  const playerValue = market.playerValues.get(playerId) ?? 1000;
+  let updatedMarket = removeFromTransferList(market, playerId);
+  updatedMarket = {
+    ...updatedMarket,
+    freeAgents: [...updatedMarket.freeAgents, player],
+    listings: [...updatedMarket.listings, {
+      playerId: player.id,
       teamId: 'free-agent',
-      askingPrice: releasedValue,
+      askingPrice: playerValue,
       listedAt: 0,
-    }];
-  }
+    }],
+  };
 
   return { market: updatedMarket, teams: updatedTeams };
 }

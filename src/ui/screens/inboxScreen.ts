@@ -35,6 +35,12 @@ export class InboxScreen {
     this.container.style.height = '100%';
   }
 
+  /** Expand a specific message by its ID (used by View Report links). */
+  expandMessage(messageId: string): void {
+    this.folder = 'inbox';
+    this.expandedMessageId = messageId;
+  }
+
   onMarkRead(cb: (messageId: string) => void): void { this.markReadCallbacks.push(cb); }
   onArchive(cb: (messageId: string) => void): void { this.archiveCallbacks.push(cb); }
   onDelete(cb: (messageId: string) => void): void { this.deleteCallbacks.push(cb); }

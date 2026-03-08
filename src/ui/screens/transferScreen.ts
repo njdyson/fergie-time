@@ -41,6 +41,7 @@ export class TransferScreen {
   private listCallbacks: Array<(playerId: string) => void> = [];
   private unlistCallbacks: Array<(playerId: string) => void> = [];
   private signFreeAgentCallbacks: Array<(playerId: string) => void> = [];
+  private releaseCallbacks: Array<(playerId: string) => void> = [];
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -57,6 +58,7 @@ export class TransferScreen {
   onList(cb: (playerId: string) => void): void { this.listCallbacks.push(cb); }
   onUnlist(cb: (playerId: string) => void): void { this.unlistCallbacks.push(cb); }
   onSignFreeAgent(cb: (playerId: string) => void): void { this.signFreeAgentCallbacks.push(cb); }
+  onRelease(cb: (playerId: string) => void): void { this.releaseCallbacks.push(cb); }
 
   update(seasonState: SeasonState): void {
     this.render(seasonState);
@@ -128,8 +130,12 @@ export class TransferScreen {
     let html = '<div style="max-width: 1100px; margin: 0 auto;">';
     html += `<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">`;
     html += `<h2 style="color: ${TEXT_BRIGHT}; font-size: 22px; margin: 0;">Transfer Market</h2>`;
+    const squadCount = playerTeam.squad.length;
+    const squadFull = squadCount >= 25;
+    html += `<div style="display: flex; gap: 16px; align-items: center;">`;
+    html += `<div style="color: ${squadFull ? RED : TEXT}; font-size: 13px;">Squad: ${squadCount}/25</div>`;
     html += `<div style="color: ${GREEN}; font-size: 14px; font-weight: bold;">Budget: £${formatMoney(budget)}</div>`;
-    html += `</div>`;
+    html += `</div></div>`;
 
     // Tab bar
     const tabs: { id: ViewMode; label: string }[] = [
@@ -138,21 +144,38 @@ export class TransferScreen {
       { id: 'search', label: 'Squad Search' },
       { id: 'bids', label: 'My Bids' },
     ];
-    html += `<div style="display: flex; gap: 8px; margin-bottom: 16px;">`;
+    html += `<div style="display: flex; gap: 8px; margin-bottom: 16px; align-items: center; flex-wrap: wrap;">`;
     for (const tab of tabs) {
       const active = this.viewMode === tab.id;
       html += `<button data-view="${tab.id}" style="padding: 8px 20px; border-radius: 6px; border: 2px solid ${active ? ACCENT_BLUE : '#334155'}; background: ${active ? ACCENT_BLUE : '#0f172a'}; color: ${active ? '#000' : TEXT_BRIGHT}; font: bold 12px/1 'Segoe UI',system-ui,sans-serif; cursor: pointer;">${tab.label}</button>`;
     }
-    html += `</div>`;
-
-    // Position filter
-    html += `<div style="display: flex; gap: 8px; margin-bottom: 12px; align-items: center;">`;
-    html += `<span style="font-size: 11px; color: ${TEXT};">Filter:</span>`;
-    const positions = ['all', 'GK', 'DEF', 'MID', 'FWD'];
-    for (const pos of positions) {
-      const active = this.positionFilter === pos;
-      html += `<button data-pos-filter="${pos}" style="padding: 4px 12px; border-radius: 4px; border: 1px solid ${active ? ACCENT_ORANGE : '#334155'}; background: ${active ? '#3d2008' : 'transparent'}; color: ${active ? ACCENT_ORANGE : TEXT}; font: 11px/1 'Segoe UI',system-ui,sans-serif; cursor: pointer;">${pos === 'all' ? 'All' : pos}</button>`;
+    // Filters (pushed right)
+    html += `<div style="margin-left: auto; display: flex; gap: 6px; align-items: center;">`;
+    if (this.viewMode === 'bids') {
+      // Bid status dropdown
+      html += `<span style="font-size: 11px; color: ${TEXT};">Status:</span>`;
+      html += `<select data-bid-status-select style="padding: 4px 8px; background: #0f172a; color: ${TEXT_BRIGHT}; border: 1px solid #334155; border-radius: 4px; font: 11px/1 'Segoe UI',system-ui,sans-serif; cursor: pointer;">`;
+      const statuses: Array<{ id: string; label: string }> = [
+        { id: 'all', label: 'All' },
+        { id: 'pending', label: 'Pending' },
+        { id: 'accepted', label: 'Accepted' },
+        { id: 'rejected', label: 'Rejected' },
+      ];
+      for (const s of statuses) {
+        const selected = this.bidStatusFilter === s.id ? ' selected' : '';
+        html += `<option value="${s.id}"${selected}>${s.label}</option>`;
+      }
+      html += `</select>`;
+    } else {
+      // Position filter buttons
+      html += `<span style="font-size: 11px; color: ${TEXT};">Filter:</span>`;
+      const positions = ['all', 'GK', 'DEF', 'MID', 'FWD'];
+      for (const pos of positions) {
+        const active = this.positionFilter === pos;
+        html += `<button data-pos-filter="${pos}" style="padding: 4px 12px; border-radius: 4px; border: 1px solid ${active ? ACCENT_ORANGE : '#334155'}; background: ${active ? '#3d2008' : 'transparent'}; color: ${active ? ACCENT_ORANGE : TEXT}; font: 11px/1 'Segoe UI',system-ui,sans-serif; cursor: pointer;">${pos === 'all' ? 'All' : pos}</button>`;
+      }
     }
+    html += `</div>`;
     html += `</div>`;
 
     if (this.viewMode === 'listings') {
@@ -297,9 +320,9 @@ export class TransferScreen {
       }
     });
 
-    const cols = `minmax(120px,2fr) 36px 48px 52px 72px 80px`;
+    const cols = `minmax(120px,2fr) 36px 48px 52px 72px 80px 64px`;
 
-    let html = `<div style="overflow-x: auto;"><div class="mobile-no-minwidth" style="min-width: 500px;">`;
+    let html = `<div style="overflow-x: auto;"><div class="mobile-no-minwidth" style="min-width: 560px;">`;
 
     html += `<div class="transfer-grid" style="display: grid; grid-template-columns: ${cols}; gap: 4px; padding: 6px 8px; font-size: 10px; border-bottom: 1px solid #334155; align-items: center;">`;
     html += this.sortHeader('name', 'Name');
@@ -307,7 +330,8 @@ export class TransferScreen {
     html += this.sortHeader('pos', 'Pos', true);
     html += this.sortHeader('rating', 'Rtg', true);
     html += this.sortHeader('value', 'Value', true);
-    html += `<span style="text-align:center; color: ${TEXT};">Action</span>`;
+    html += `<span style="text-align:center; color: ${TEXT};">List</span>`;
+    html += `<span style="text-align:center; color: ${TEXT};"></span>`;
     html += `</div>`;
 
     for (let i = 0; i < sorted.length; i++) {
@@ -330,6 +354,8 @@ export class TransferScreen {
       } else {
         html += `<button data-list="${p.id}" style="padding: 3px 10px; border-radius: 4px; border: 1px solid ${ACCENT_ORANGE}; background: transparent; color: ${ACCENT_ORANGE}; font: bold 10px/1 'Segoe UI',system-ui,sans-serif; cursor: pointer;">List</button>`;
       }
+
+      html += `<button data-release="${p.id}" style="padding: 3px 10px; border-radius: 4px; border: 1px solid ${RED}; background: transparent; color: ${RED}; font: bold 10px/1 'Segoe UI',system-ui,sans-serif; cursor: pointer; opacity: 0.7;">Release</button>`;
 
       html += `</div>`;
     }
@@ -433,21 +459,7 @@ export class TransferScreen {
   }
 
   private renderBids(state: SeasonState, market: TransferMarketState, playerTeam: SeasonTeam): string {
-    // Status filter buttons
-    const statuses: Array<{ id: Bid['status'] | 'all'; label: string; color: string }> = [
-      { id: 'all', label: 'All', color: TEXT_BRIGHT },
-      { id: 'pending', label: 'Pending', color: ACCENT_BLUE },
-      { id: 'accepted', label: 'Accepted', color: GREEN },
-      { id: 'rejected', label: 'Rejected', color: RED },
-    ];
-
-    let html = `<div style="display: flex; gap: 8px; margin-bottom: 12px; align-items: center;">`;
-    html += `<span style="font-size: 11px; color: ${TEXT};">Status:</span>`;
-    for (const s of statuses) {
-      const active = this.bidStatusFilter === s.id;
-      html += `<button data-bid-status-filter="${s.id}" style="padding: 4px 12px; border-radius: 4px; border: 1px solid ${active ? s.color : '#334155'}; background: ${active ? 'rgba(255,255,255,0.08)' : 'transparent'}; color: ${active ? s.color : TEXT}; font: 11px/1 'Segoe UI',system-ui,sans-serif; cursor: pointer;">${s.label}</button>`;
-    }
-    html += `</div>`;
+    let html = '';
 
     // Filter bids to player team outgoing bids
     let bids = market.bids.filter(b => b.fromTeamId === playerTeam.id);
@@ -591,10 +603,19 @@ export class TransferScreen {
       btn.addEventListener('click', () => { this.unlistCallbacks.forEach(cb => cb(id)); });
     }
 
-    // Bid status filter
-    for (const btn of this.container.querySelectorAll('[data-bid-status-filter]')) {
-      const status = (btn as HTMLElement).dataset.bidStatusFilter as Bid['status'] | 'all';
-      btn.addEventListener('click', () => { this.bidStatusFilter = status; this.render(seasonState); });
+    // Release
+    for (const btn of this.container.querySelectorAll('[data-release]')) {
+      const id = (btn as HTMLElement).dataset.release!;
+      btn.addEventListener('click', () => { this.releaseCallbacks.forEach(cb => cb(id)); });
+    }
+
+    // Bid status filter (dropdown)
+    const bidStatusSelect = this.container.querySelector('[data-bid-status-select]') as HTMLSelectElement | null;
+    if (bidStatusSelect) {
+      bidStatusSelect.addEventListener('change', () => {
+        this.bidStatusFilter = bidStatusSelect.value as Bid['status'] | 'all';
+        this.render(seasonState);
+      });
     }
 
     // Team filter (search view)

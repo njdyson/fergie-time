@@ -283,7 +283,7 @@ describe('DrillType and DRILL_ATTRIBUTE_MAP', () => {
 // ---------------------------------------------------------------------------
 
 describe('Training economy — 5-season headless simulation', () => {
-  it('no attribute exceeds 0.95 for players starting below 0.70 after 5 seasons (570 sessions)', () => {
+  it('no attribute exceeds 0.95 for players starting below 0.70 after 5 seasons (950 sessions)', () => {
     const rng = seedrandom('train-economy-seed');
     const squad = createAITeam('weak', 'econ-test', 'Economy FC', rng);
 
@@ -291,9 +291,9 @@ describe('Training economy — 5-season headless simulation', () => {
     // We track all attributes for all players through the sim
     let players = squad;
 
-    const SESSIONS_PER_SEASON = 114; // 38 matchweeks × 3 training days
+    const SESSIONS_PER_SEASON = 190; // 38 matchweeks × 5 training days
     const SEASONS = 5;
-    const TOTAL_SESSIONS = SESSIONS_PER_SEASON * SEASONS; // 570
+    const TOTAL_SESSIONS = SESSIONS_PER_SEASON * SEASONS; // 950
 
     // Cycle through all drill types across sessions
     for (let session = 0; session < TOTAL_SESSIONS; session++) {
@@ -315,8 +315,8 @@ describe('Training economy — 5-season headless simulation', () => {
 // ---------------------------------------------------------------------------
 
 describe('TRAINING_DAYS_PER_MATCHDAY', () => {
-  it('equals 3 (matches Phase 11 economy tuning assumption)', () => {
-    expect(TRAINING_DAYS_PER_MATCHDAY).toBe(3);
+  it('equals 5 (matches Phase 11 economy tuning assumption)', () => {
+    expect(TRAINING_DAYS_PER_MATCHDAY).toBe(5);
   });
 });
 

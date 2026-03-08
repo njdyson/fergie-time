@@ -173,6 +173,15 @@ describe('HubScreen button rendering', () => {
     expect(continueBtn).toBeNull();
   });
 
+  it('renders the hub content inside a centered shell wrapper', () => {
+    const state = makeSeasonState(0);
+    screen.update(state, 'Test FC');
+
+    const shell = container.querySelector('[data-hub-shell="true"]');
+
+    expect(shell).not.toBeNull();
+  });
+
   it('still shows Kick Off at currentDay > TRAINING_DAYS_PER_MATCHDAY (already on match day)', () => {
     const state = makeSeasonState(TRAINING_DAYS_PER_MATCHDAY + 1);
     screen.update(state, 'Test FC');

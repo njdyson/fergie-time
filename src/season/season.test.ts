@@ -375,13 +375,18 @@ describe('startNewSeason', () => {
     }
   });
 
-  it('preserves player squad reference', () => {
+  it('preserves player squad players (with age progression)', () => {
     const squad = makeSquad('my-team');
     const state = createSeason('my-team', 'My Team FC', squad, 'new-season-seed');
     const next = startNewSeason(state, squad);
     const playerTeam = next.teams.find(t => t.isPlayerTeam);
     expect(playerTeam).toBeDefined();
-    expect(playerTeam!.squad).toBe(squad);
+    // Squad length preserved, same player IDs, ages incremented by 1
+    expect(playerTeam!.squad.length).toBe(squad.length);
+    for (let i = 0; i < squad.length; i++) {
+      expect(playerTeam!.squad[i]!.id).toBe(squad[i]!.id);
+      expect(playerTeam!.squad[i]!.age).toBe((squad[i]!.age ?? 25) + 1);
+    }
   });
 
   it('resets fatigueMap to 0 for all players', () => {
