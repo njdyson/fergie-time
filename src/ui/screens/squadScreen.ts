@@ -570,8 +570,8 @@ export class SquadScreen {
     html += `<button data-clear-all style="padding: 4px 12px; border-radius: 4px; border: 1px solid #475569; background: #0f172a; color: ${TEXT_BRIGHT}; font-size: 11px; cursor: pointer;">Clear All</button>`;
     html += `</div>`;
 
-    // Grid column template (badge, #, name, pos, nat, age, ht, 10 attrs, fit, G, A, App)
-    const gridCols = `56px 36px 140px 48px 36px 40px 48px ${ATTR_NAMES.map(() => '32px').join(' ')} 48px 28px 28px 32px`;
+    // Grid column template (badge, #, name, pos, nat, age, ht, 10 attrs, rtg, fit, G, A, App)
+    const gridCols = `56px 36px 140px 48px 36px 40px 48px ${ATTR_NAMES.map(() => '32px').join(' ')} 32px 48px 28px 28px 36px`;
 
     // Sortable header helper
     const sortArrow = (col: string) => this.sortColumn === col ? (this.sortAscending ? ' ▲' : ' ▼') : '';
