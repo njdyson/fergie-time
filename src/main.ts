@@ -30,7 +30,7 @@ import { TransferScreen } from './ui/screens/transferScreen.ts';
 import { InboxScreen } from './ui/screens/inboxScreen.ts';
 import { createSeason, validateSquadSelection, isSeasonComplete, getChampion, startNewSeason, recordPlayerResult, simOneAIFixture, finalizeMatchday } from './season/season.ts';
 import type { SeasonState, TrainingSchedule } from './season/season.ts';
-import { applyTrainingBlock } from './season/training.ts';
+import { advanceDay } from './season/dayLoop.ts';
 import { mergeAllMatchStats } from './season/playerStats.ts';
 import { saveGame, loadGame, logout } from './api/client.ts';
 import { serializeState, deserializeState } from '../server/serialize.ts';
@@ -1747,21 +1747,23 @@ hubScreenView.onScheduleChange((schedule: TrainingSchedule) => {
   saveGame(serializeState(seasonState), 1).catch(err => console.error('Auto-save (training schedule) failed:', err));
 });
 
-hubScreenView.onKickoff(() => {
-  // Apply training block before match (exactly once per kickoff)
-  const playerTeamForTraining = seasonState.teams.find(t => t.isPlayerTeam)!;
-  const trainingSchedule = seasonState.trainingSchedule ?? {};
-  const { updatedSquad, deltas } = applyTrainingBlock(playerTeamForTraining.squad, trainingSchedule);
-  seasonState = {
-    ...seasonState,
-    teams: seasonState.teams.map(t =>
-      t.isPlayerTeam ? { ...t, squad: updatedSquad } : t,
-    ),
-    trainingDeltas: deltas,
-    trainingSchedule: {},  // Reset for next training block
-  };
+hubScreenView.onContinue(() => {
+  const result = advanceDay(seasonState);
+  seasonState = result.state;
 
-  // Ensure squad screen has latest data for default selection
+  // === Day-advance extension point ===
+  // Phase 14 (COACH-01): Add coaching email generation here after training is applied.
+  // Phase 15 (XFER-02): Add transfer bid processing here (process pending bids that arrived "yesterday").
+  // Each phase hooks into this handler by adding its logic after advanceDay returns.
+
+  // Auto-save after each day advance
+  saveGame(serializeState(seasonState), 1).catch(err => console.error('Auto-save (day advance) failed:', err));
+  // Re-render hub to show updated day schedule
+  updateCurrentScreen();
+});
+
+hubScreenView.onKickoff(() => {
+  // Training already applied day-by-day via Continue — just start the match
   const playerTeam = seasonState.teams.find(t => t.isPlayerTeam)!;
   squadScreenViewInner.setFormationRoles(tacticsBoard.getPhaseRoles('inPossession'), tacticsBoard.getPhaseRoles('outOfPossession'));
   squadScreenViewInner.update(playerTeam.squad, seasonState.fatigueMap, seasonState.squadSelectionMap, seasonState.playerSeasonStats);
@@ -1774,14 +1776,21 @@ hubScreenView.onKickoff(() => {
 
 /** Migrate old save files that lack transferMarket/inbox fields. */
 function migrateSeasonState(state: SeasonState): SeasonState {
-  if (!state.transferMarket || !state.inbox) {
-    const rng = seedrandom(state.seed + '-migration');
+  let migrated = state;
+
+  if (!migrated.transferMarket || !migrated.inbox) {
+    const rng = seedrandom(migrated.seed + '-migration');
     const freeAgents = generateFreeAgents(100, rng);
-    const transferMarket = createTransferMarket(state.teams, state.playerTeamId, freeAgents, state.playerSeasonStats, state.currentMatchday);
+    const transferMarket = createTransferMarket(migrated.teams, migrated.playerTeamId, freeAgents, migrated.playerSeasonStats, migrated.currentMatchday);
     const inbox = createInbox();
-    return { ...state, transferMarket, inbox };
+    migrated = { ...migrated, transferMarket, inbox };
   }
-  return state;
+
+  if (migrated.currentDay === undefined) {
+    migrated = { ...migrated, currentDay: 0 };
+  }
+
+  return migrated;
 }
 
 async function boot(): Promise<void> {
