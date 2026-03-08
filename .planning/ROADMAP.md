@@ -55,7 +55,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 13: Hub Day Loop** — A day-by-day schedule replaces the 3-slot trainer; Continue advances one day, Kick Off launches when match day arrives (completed 2026-03-08)
 - [x] **Phase 14: Training Polish** — Training gains section removed; recently improved stats highlighted on squad and player pages; daily coaching report email generated after each training day (completed 2026-03-08)
-- [ ] **Phase 15: Transfer Overhaul** — Transfer responses arrive the next day; rival activity consolidates into one daily email; bid tracking with status filter; player overall rating on squad and profile
+- [x] **Phase 15: Transfer Overhaul** — Transfer responses arrive the next day; rival activity consolidates into one daily email; bid tracking with status filter; player overall rating on squad and profile (completed 2026-03-08)
 
 ## Phase Details
 
@@ -161,4 +161,4 @@ Plans:
 | 12. Training Scheduler | v1.2 | 2/2 | Complete | 2026-03-07 |
 | 13. Hub Day Loop | 2/2 | Complete    | 2026-03-08 | - |
 | 14. Training Polish | 2/2 | Complete    | 2026-03-08 | - |
-| 15. Transfer Overhaul | 1/2 | In Progress|  | - |
+| 15. Transfer Overhaul | 2/2 | Complete   | 2026-03-08 | - |

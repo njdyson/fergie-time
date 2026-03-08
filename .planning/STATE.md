@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Day Cycle
-status: unknown
-last_updated: "2026-03-08T01:23:44.282Z"
+status: in_progress
+last_updated: "2026-03-08T01:28:00Z"
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 25
-  completed_plans: 24
+  completed_plans: 25
 ---
 
 ---
@@ -44,16 +44,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-07)
 
 **Core value:** The match engine must produce emergent behavior that feels like real football — goals, mistakes, tactical dominance and individual brilliance all arising from physics, agent decisions and personality vectors, never from scripted events
-**Current focus:** Phase 14 — Training Polish (v1.3 Day Cycle)
+**Current focus:** Phase 15 — Transfer Overhaul (v1.3 Day Cycle)
 
 ## Current Position
 
-Phase: 14 of 15 (Training Polish)
-Plan: 2 of 2
+Phase: 15 of 15 (Transfer Overhaul)
+Plan: 1 of 2 (complete)
 Status: Complete
-Last activity: 2026-03-08 — Plan 02 complete: Coaching report email system — sends post-training summary to inbox after each drill day
+Last activity: 2026-03-08 — Plan 01 complete: Pending bid system with budget reservation, daily AI transfer digest, wired into main.ts Continue and bid handlers
 
-Progress: [██░░░░░░░░] 20%
+Progress: [████████████░░░░░░░░] 60%
 
 ## Performance Metrics
 
@@ -92,7 +92,9 @@ See PROJECT.md Key Decisions table for full history.
 - [Phase 14-training-polish P01]: Squad mini-bar green border-bottom on span container (not inner bar) — best visibility at 24x6px
 - [Phase 14-training-polish]: generateCoachingReport receives squadBefore/squadAfter pair for single-session gain precision, returns null for rest days/empty squad
 - [Phase 14-training-polish]: Coaching report improvers capped at top 3 sorted by total attribute gain; gracefully shows fewer if squad < 3
-- [Phase 15-transfer-overhaul]: My Bids tab shows outgoing bids only (fromTeamId === playerTeam.id); rating font-size 16px on profile for prominence
+- [Phase 15-transfer-overhaul P02]: My Bids tab shows outgoing bids only (fromTeamId === playerTeam.id); rating font-size 16px on profile for prominence
+- [Phase 15-transfer-overhaul P01]: Budget reserved immediately on bid submission (prevents multi-bid overspend); rejected bids refund reserved amount; processPendingBids refunds then re-deducts via executeTransfer to avoid double-deduction
+- [Phase 15-transfer-overhaul P01]: AI digest uses bullet list format; no email sent if no transfer activity that day
 
 ### Pending Todos
 
@@ -106,5 +108,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-08
-Stopped at: Phase 14 Plan 01 complete — Training delta attribute bar highlighting in player profile and squad screen, Training Gains panel removed
+Stopped at: Phase 15 Plan 01 complete — Pending bid system + daily AI digest implemented and wired into main.ts
 Resume file: None
