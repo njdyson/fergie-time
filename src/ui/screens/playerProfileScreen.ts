@@ -46,14 +46,6 @@ function getAttrBarColor(value: number): string {
   return RED;
 }
 
-/** Convert camelCase attribute name to Title Case: 'oneOnOnes' -> 'One On Ones' */
-function camelToTitle(s: string): string {
-  return s
-    .replace(/([A-Z])/g, ' $1')
-    .replace(/^./, c => c.toUpperCase())
-    .trim();
-}
-
 // ISO 2-letter → full name
 const NAT_NAMES: Record<string, string> = {
   GB: 'England', ES: 'Spain', FR: 'France', DE: 'Germany', BR: 'Brazil',
@@ -66,16 +58,18 @@ function getNationalityName(code?: string): string {
 }
 
 /** Render a horizontal attribute bar row. */
-function renderBar(label: string, value: number): string {
+function renderBar(label: string, value: number, improved?: boolean): string {
   const pct = Math.round(value * 100);
   const barColor = getAttrBarColor(value);
+  const borderLeft = improved ? `border-left: 3px solid ${GREEN}` : `border-left: 3px solid transparent`;
+  const arrow = improved ? `<span style="color:${GREEN}; font-size:9px; margin-left:2px;">▲</span>` : '';
   return `
-    <div style="display:flex; align-items:center; gap:8px; padding:3px 0;">
+    <div style="display:flex; align-items:center; gap:8px; padding:3px 0; ${borderLeft}; padding-left:4px;">
       <span style="color:${TEXT}; font-size:11px; min-width:90px; flex-shrink:0;">${label}</span>
       <div style="flex:1; height:8px; background:#334155; border-radius:4px; overflow:hidden;">
         <div style="width:${pct}%; height:100%; background:${barColor}; border-radius:4px; transition:width .2s;"></div>
       </div>
-      <span style="color:${TEXT_BRIGHT}; font-size:11px; min-width:26px; text-align:right;">${pct}</span>
+      <span style="color:${TEXT_BRIGHT}; font-size:11px; min-width:26px; text-align:right;">${pct}</span>${arrow}
     </div>
   `;
 }
@@ -122,31 +116,34 @@ export class PlayerProfileScreen {
     const attrs = player.attributes;
     const personality = player.personality;
 
+    // Extract player's training deltas for highlighting
+    const playerDeltas = trainingDeltas?.get(player.id);
+
     // Core attributes to display (plan spec: pace, shooting, passing, dribbling, defending, physical)
-    // Map to actual attribute names from PlayerAttributes
-    const coreAttrs: Array<[string, number]> = [
-      ['Pace', attrs.pace],
-      ['Shooting', attrs.shooting],
-      ['Passing', attrs.passing],
-      ['Dribbling', attrs.dribbling],
-      ['Defending', attrs.tackling],
-      ['Physical', attrs.strength],
+    // Map to actual attribute names from PlayerAttributes: [label, value, attrKey]
+    const coreAttrs: Array<[string, number, string]> = [
+      ['Pace', attrs.pace, 'pace'],
+      ['Shooting', attrs.shooting, 'shooting'],
+      ['Passing', attrs.passing, 'passing'],
+      ['Dribbling', attrs.dribbling, 'dribbling'],
+      ['Defending', attrs.tackling, 'tackling'],
+      ['Physical', attrs.strength, 'strength'],
     ];
 
     // Extended attributes
-    const extAttrs: Array<[string, number]> = [
-      ['Finishing', attrs.finishing],
-      ['Vision', attrs.vision],
-      ['Crossing', attrs.crossing],
-      ['Aerial', attrs.aerial],
-      ['Positioning', attrs.positioning],
-      ['Stamina', attrs.stamina],
-      ['Agility', attrs.agility],
-      ['Heading', attrs.heading],
-      ['Concentration', attrs.concentration],
-      ['Reflexes', attrs.reflexes],
-      ['Handling', attrs.handling],
-      ['1v1s', attrs.oneOnOnes],
+    const extAttrs: Array<[string, number, string]> = [
+      ['Finishing', attrs.finishing, 'finishing'],
+      ['Vision', attrs.vision, 'vision'],
+      ['Crossing', attrs.crossing, 'crossing'],
+      ['Aerial', attrs.aerial, 'aerial'],
+      ['Positioning', attrs.positioning, 'positioning'],
+      ['Stamina', attrs.stamina, 'stamina'],
+      ['Agility', attrs.agility, 'agility'],
+      ['Heading', attrs.heading, 'heading'],
+      ['Concentration', attrs.concentration, 'concentration'],
+      ['Reflexes', attrs.reflexes, 'reflexes'],
+      ['Handling', attrs.handling, 'handling'],
+      ['1v1s', attrs.oneOnOnes, 'oneOnOnes'],
     ];
 
     // Personality bars
@@ -237,14 +234,16 @@ export class PlayerProfileScreen {
     // Core Attributes panel
     html += `<div style="background:${PANEL_BG}; border-radius:8px; padding:14px;">`;
     html += `<div style="color:${ACCENT_BLUE}; font-size:12px; font-weight:bold; margin-bottom:10px; text-transform:uppercase; letter-spacing:0.05em;">Attributes</div>`;
-    for (const [label, value] of coreAttrs) {
-      html += renderBar(label, value);
+    for (const [label, value, attrKey] of coreAttrs) {
+      const improved = playerDeltas ? ((playerDeltas as Record<string, number>)[attrKey] ?? 0) > 0 : false;
+      html += renderBar(label, value, improved);
     }
     // GK-specific attributes only if GK
     if (player.role === 'GK') {
       html += `<div style="color:${TEXT}; font-size:10px; margin-top:8px; margin-bottom:4px; opacity:0.7;">Goalkeeper</div>`;
-      for (const [label, value] of extAttrs.filter(([l]) => ['Reflexes','Handling','1v1s'].includes(l))) {
-        html += renderBar(label, value);
+      for (const [label, value, attrKey] of extAttrs.filter(([l]) => ['Reflexes','Handling','1v1s'].includes(l))) {
+        const improved = playerDeltas ? ((playerDeltas as Record<string, number>)[attrKey] ?? 0) > 0 : false;
+        html += renderBar(label, value, improved);
       }
     }
     html += `</div>`;
@@ -292,29 +291,6 @@ export class PlayerProfileScreen {
       html += `</div>`;
     }
     html += `</div>`; // end stats panel
-
-    // ── Training Gains panel (only if deltas exist for this player) ──
-    if (trainingDeltas) {
-      const playerDeltas = trainingDeltas.get(player.id);
-      if (playerDeltas) {
-        const significantDeltas = Object.entries(playerDeltas).filter(([, v]) => v > 0.0005);
-        if (significantDeltas.length > 0) {
-          html += `<div style="background:${PANEL_BG}; border-radius:8px; padding:14px; margin-bottom:20px;">`;
-          html += `<div style="color:${GREEN}; font-size:12px; font-weight:bold; margin-bottom:12px; text-transform:uppercase; letter-spacing:0.05em;">Training Gains</div>`;
-          html += `<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(90px, 1fr)); gap:8px;">`;
-          for (const [attr, delta] of significantDeltas) {
-            const rounded = Math.round(delta * 100);
-            if (rounded === 0) continue;
-            html += `<div style="background:#0f172a; border-radius:6px; padding:8px; text-align:center;">`;
-            html += `<div style="color:${GREEN}; font-size:16px; font-weight:bold; margin-bottom:4px;">+${rounded}</div>`;
-            html += `<div style="color:${TEXT}; font-size:10px;">${camelToTitle(attr)}</div>`;
-            html += `</div>`;
-          }
-          html += `</div>`; // end grid
-          html += `</div>`; // end training gains panel
-        }
-      }
-    }
 
     html += `</div>`; // end max-width wrapper
     this.container.innerHTML = html;
