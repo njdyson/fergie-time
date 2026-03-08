@@ -157,5 +157,5 @@ Decimal phases appear between their surrounding integers in numeric order.
 | 11. Training Logic | v1.2 | 1/1 | Complete | 2026-03-07 |
 | 12. Training Scheduler | v1.2 | 2/2 | Complete | 2026-03-07 |
 | 13. Hub Day Loop | 2/2 | Complete    | 2026-03-08 | - |
-| 14. Training Polish | 2/2 | Complete   | 2026-03-08 | - |
+| 14. Training Polish | 2/2 | Complete    | 2026-03-08 | - |
 | 15. Transfer Overhaul | v1.3 | 0/? | Not started | - |
