@@ -21,7 +21,7 @@ Requirements for v1.3 Day Cycle milestone. Each maps to roadmap phases.
 
 ### Coaching Reports
 
-- [ ] **COACH-01**: Daily coaching report email sent after training day summarizing drill type, squad participation, and standout improvers
+- [x] **COACH-01**: Daily coaching report email sent after training day summarizing drill type, squad participation, and standout improvers
 
 ### Transfers
 
@@ -79,7 +79,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | HUB-04 | Phase 13 | Complete |
 | TDISP-01 | Phase 14 | Pending |
 | TDISP-02 | Phase 14 | Pending |
-| COACH-01 | Phase 14 | Pending |
+| COACH-01 | Phase 14 | Complete |
 | XFER-01 | Phase 15 | Pending |
 | XFER-02 | Phase 15 | Pending |
 | XFER-03 | Phase 15 | Pending |

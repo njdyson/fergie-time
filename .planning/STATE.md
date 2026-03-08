@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Day Cycle
 status: unknown
-last_updated: "2026-03-08T00:29:31.525Z"
+last_updated: "2026-03-08T00:46:04.168Z"
 progress:
-  total_phases: 4
+  total_phases: 5
   completed_phases: 4
-  total_plans: 21
-  completed_plans: 21
+  total_plans: 23
+  completed_plans: 22
 ---
 
 ---
@@ -31,16 +31,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-07)
 
 **Core value:** The match engine must produce emergent behavior that feels like real football — goals, mistakes, tactical dominance and individual brilliance all arising from physics, agent decisions and personality vectors, never from scripted events
-**Current focus:** Phase 13 — Hub Day Loop (v1.3 Day Cycle)
+**Current focus:** Phase 14 — Training Polish (v1.3 Day Cycle)
 
 ## Current Position
 
-Phase: 13 of 15 (Hub Day Loop)
+Phase: 14 of 15 (Training Polish)
 Plan: 2 of 2
 Status: Complete
-Last activity: 2026-03-08 — Plan 02 complete: Hub day schedule UI and Continue/Kick Off wiring — visually verified and approved
+Last activity: 2026-03-08 — Plan 02 complete: Coaching report email system — sends post-training summary to inbox after each drill day
 
-Progress: [█░░░░░░░░░] 10%
+Progress: [██░░░░░░░░] 20%
 
 ## Performance Metrics
 
@@ -56,6 +56,7 @@ Progress: [█░░░░░░░░░] 10%
 | 13-hub-day-loop | 2 | ~50 min | ~25 min |
 
 *Updated after each plan completion*
+| Phase 14-training-polish P02 | 4 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -72,6 +73,8 @@ See PROJECT.md Key Decisions table for full history.
 - `applyTrainingBlock` removed from Kick Off handler — training applied incrementally via Continue presses
 - `jsdom` installed as dev dep for UI unit tests; @vitest-environment jsdom per-file annotation
 - Past day drills read from state (locked), current/future read from DOM in onScheduleChange
+- [Phase 14-training-polish]: generateCoachingReport receives squadBefore/squadAfter pair for single-session gain precision, returns null for rest days/empty squad
+- [Phase 14-training-polish]: Coaching report improvers capped at top 3 sorted by total attribute gain; gracefully shows fewer if squad < 3
 
 ### Pending Todos
 
@@ -85,5 +88,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-08
-Stopped at: Phase 13 Plan 02 complete — Hub day schedule UI and Continue/Kick Off wiring complete, visually verified and approved
+Stopped at: Phase 14 Plan 02 complete — Coaching report email system implemented, all 691 tests passing
 Resume file: None
