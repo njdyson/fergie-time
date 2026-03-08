@@ -23,11 +23,11 @@ See: .planning/PROJECT.md (updated 2026-03-07)
 ## Current Position
 
 Phase: 13 of 15 (Hub Day Loop)
-Plan: — of —
-Status: Ready to plan
-Last activity: 2026-03-07 — v1.3 roadmap created (3 phases, 11 requirements mapped)
+Plan: 1 of 2
+Status: In progress
+Last activity: 2026-03-08 — Plan 01 complete: dayLoop data layer (advanceDay, getDaySchedule, isMatchDay)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█░░░░░░░░░] 10%
 
 ## Performance Metrics
 
@@ -50,6 +50,11 @@ Progress: [░░░░░░░░░░] 0%
 
 See PROJECT.md Key Decisions table for full history.
 
+**Phase 13, Plan 01 (2026-03-08):**
+- `currentDay` is a plain number on SeasonState — simplest representation, serializes transparently
+- `advanceDay` throws on match day (not error result) — enforces precondition at call site
+- `getDaySchedule` marks match day as `status='current'` when waiting for Kick Off
+
 ### Pending Todos
 
 None.
@@ -61,6 +66,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-07
-Stopped at: Roadmap created for v1.3 — ready to plan Phase 13
+Last session: 2026-03-08
+Stopped at: Phase 13 Plan 01 complete — dayLoop data layer (advanceDay, getDaySchedule, isMatchDay, SeasonState.currentDay)
 Resume file: None
