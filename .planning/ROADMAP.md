@@ -156,6 +156,6 @@ Decimal phases appear between their surrounding integers in numeric order.
 | 10. Portraits | v1.2 | 2/2 | Complete | 2026-03-07 |
 | 11. Training Logic | v1.2 | 1/1 | Complete | 2026-03-07 |
 | 12. Training Scheduler | v1.2 | 2/2 | Complete | 2026-03-07 |
-| 13. Hub Day Loop | 2/2 | Complete   | 2026-03-08 | - |
+| 13. Hub Day Loop | 2/2 | Complete    | 2026-03-08 | - |
 | 14. Training Polish | v1.3 | 0/? | Not started | - |
 | 15. Transfer Overhaul | v1.3 | 0/? | Not started | - |
