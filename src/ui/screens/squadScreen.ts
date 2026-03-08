@@ -571,7 +571,7 @@ export class SquadScreen {
     html += `</div>`;
 
     // Grid column template (badge, #, name, pos, nat, age, ht, 10 attrs, rtg, fit, G, A, App)
-    const gridCols = `56px 36px 140px 48px 36px 40px 48px ${ATTR_NAMES.map(() => '32px').join(' ')} 32px 48px 28px 28px 36px`;
+    const gridCols = `52px 34px 128px 40px 32px 32px 44px ${ATTR_NAMES.map(() => '30px').join(' ')} 30px 40px 24px 24px 30px`;
 
     // Sortable header helper
     const sortArrow = (col: string) => this.sortColumn === col ? (this.sortAscending ? ' ▲' : ' ▼') : '';
@@ -580,7 +580,7 @@ export class SquadScreen {
     // Attribute header row
     html += `<div class="squad-grid" style="display: grid; grid-template-columns: ${gridCols}; gap: 2px; padding: 4px 8px; font-size: 10px; color: ${TEXT}; border-bottom: 1px solid #334155; align-items: center;">`;
     html += '<span class="squad-col-badge"></span>'; // badge
-    html += `<span class="squad-col-shirt" data-sort="#" style="${hdrStyle}">#${sortArrow('#')}</span>`;
+    html += `<span class="squad-col-shirt" data-sort="#" style="${hdrStyle}">${sortArrow('#')}</span>`;
     html += `<span data-sort="name" style="${hdrStyle}">Name${sortArrow('name')}</span>`;
     html += `<span data-sort="pos" style="${hdrStyle}">Pos${sortArrow('pos')}</span>`;
     html += '<span class="squad-col-nat">Nat</span>';
