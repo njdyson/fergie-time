@@ -35,7 +35,10 @@ import { mergeAllMatchStats } from './season/playerStats.ts';
 import { saveGame, loadGame, logout } from './api/client.ts';
 import { serializeState, deserializeState } from '../server/serialize.ts';
 import { transferListPlayer, removeFromTransferList, processPlayerBid, formatMoney, generateFreeAgents, createTransferMarket } from './season/transferMarket.ts';
-import { markAsRead, archiveMessage, deleteMessage, getUnreadCount, createInbox } from './season/inbox.ts';
+import { markAsRead, archiveMessage, deleteMessage, getUnreadCount, createInbox, sendMessage } from './season/inbox.ts';
+import { generateCoachingReport } from './season/coachingReport.ts';
+import { pickAssistantLineup, buildFormationTacticalConfig } from './season/assistantPicks.ts';
+import { choosePreferredBuiltInTacticName, loadBuiltInTacticSystem, getDefaultBuiltInTacticName } from './season/tacticalPresets.ts';
 
 // ============================================================
 // Canvas setup
@@ -224,7 +227,7 @@ function updateCurrentScreen(): void {
   }
   if (currentScreen === ScreenId.SQUAD) {
     squadScreenViewInner.setFormationRoles(tacticsBoard.getPhaseRoles('inPossession'), tacticsBoard.getPhaseRoles('outOfPossession'));
-    squadScreenViewInner.update(playerTeam.squad, seasonState.fatigueMap, seasonState.squadSelectionMap, seasonState.playerSeasonStats);
+    squadScreenViewInner.update(playerTeam.squad, seasonState.fatigueMap, seasonState.squadSelectionMap, seasonState.playerSeasonStats, seasonState.trainingDeltas);
   }
   if (currentScreen === ScreenId.STATS) statsScreenView.update(seasonState);
   if (currentScreen === ScreenId.FIXTURES) fixturesScreenView.update(seasonState, seasonState.playerTeamId);
@@ -619,6 +622,31 @@ const tacticSelectorEl = document.getElementById('tactic-selector')!;
 const tacticSelector = new TacticSelector(tacticSelectorEl);
 tacticSelector.refresh(listTactics());
 
+function persistHomeTacticsToSeason(selectedName?: string): void {
+  if (!seasonState) return;
+  seasonState.homeTacticState = buildSavedTactic('Active Setup', tacticsBoard, tacticsOverlay);
+  seasonState.homeTacticPresetName = selectedName ?? tacticSelector.getSelectedName();
+}
+
+function restoreHomeTacticsFromSeason(): void {
+  if (!seasonState) return;
+
+  const selectedName = seasonState.homeTacticPresetName ?? '';
+  const savedState = seasonState.homeTacticState;
+
+  if (savedState) {
+    applySavedTactic(savedState, tacticsBoard, tacticsOverlay);
+  } else if (selectedName) {
+    const tactic = loadTactic(selectedName);
+    if (tactic) applySavedTactic(tactic, tacticsBoard, tacticsOverlay);
+  }
+
+  tacticSelector.refresh(listTactics(), selectedName || undefined);
+  const phase = tacticsOverlay.getCurrentPhase() as 'inPossession' | 'outOfPossession';
+  tacticsBoard.setPhase(phase);
+  tacticsBoard.render();
+}
+
 /** Push current board+overlay configs to engine after a tactic load */
 function pushAllTacticsToEngine(): void {
   if (!engine) return;
@@ -645,6 +673,7 @@ tacticSelector.onSave((name) => {
   const tactic = buildSavedTactic(name, tacticsBoard, tacticsOverlay);
   saveTactic(tactic);
   tacticSelector.refresh(listTactics(), name);
+  persistHomeTacticsToSeason(name);
 });
 
 tacticSelector.onLoad((name) => {
@@ -656,11 +685,13 @@ tacticSelector.onLoad((name) => {
   tacticsBoard.setPhase(phase);
   tacticsBoard.render();
   pushAllTacticsToEngine();
+  persistHomeTacticsToSeason(name);
 });
 
 tacticSelector.onDelete((name) => {
   deleteTactic(name);
   tacticSelector.refresh(listTactics());
+  persistHomeTacticsToSeason('');
 });
 
 // When overlay controls change, push updated config to engine.
@@ -675,6 +706,7 @@ tacticsOverlay.onChanged(() => {
   );
   tacticsBoard.setDuties(overlayState.duties);
   tacticsBoard.setFreedomValues(overlayState.multipliers.map(m => m.freedom));
+  persistHomeTacticsToSeason();
 
   if (!engine) return;
   const baseInPoss = tacticsBoard.getTacticalConfig();
@@ -702,6 +734,7 @@ tacticsOverlay.onPhaseChanged(() => {
   // Always sync board phase (works pre-match without engine)
   const phase = tacticsOverlay.getCurrentPhase() as 'inPossession' | 'outOfPossession';
   tacticsBoard.setPhase(phase);
+  persistHomeTacticsToSeason();
 
   if (!engine) return;
 
@@ -722,6 +755,7 @@ tacticsOverlay.onPhaseChanged(() => {
 tacticsOverlay.onQuickShape((formationId) => {
   const f = formationId as FormationId;
   tacticsBoard.applyPresetPositions(f);
+  persistHomeTacticsToSeason();
   if (engine) {
     const baseInPoss = tacticsBoard.getTacticalConfig();
     const baseOop = tacticsBoard.getOutOfPossessionConfig();
@@ -742,6 +776,7 @@ tacticsBoard.onPlayerSelected((index) => {
 
 // Wire TacticsBoard config changes (drag complete) → push to engine
 tacticsBoard.onConfigChanged(() => {
+  persistHomeTacticsToSeason();
   if (!engine) return;
   const baseInPoss = tacticsBoard.getTacticalConfig();
   const baseOop = tacticsBoard.getOutOfPossessionConfig();
@@ -790,6 +825,8 @@ const commentaryEl = document.getElementById('commentary');
 
 /** Tracks which side (home/away) the player's team is on in the current match */
 let currentMatchPlayerSide: 'home' | 'away' = 'home';
+/** Tracks whether the player's real fixture (table context) had them as home team. */
+let currentFixturePlayerWasHome: boolean = true;
 
 /**
  * Initialize and start a match with the given roster config.
@@ -800,6 +837,8 @@ function initMatchWithConfig(config: {
   homeBench: import('./simulation/types.ts').PlayerState[];
   awayRoster: import('./simulation/types.ts').PlayerState[];
   awayBench: import('./simulation/types.ts').PlayerState[];
+  awayTacticalConfig?: import('./simulation/engine.ts').TacticalConfig;
+  awayTacticalConfigOOP?: import('./simulation/engine.ts').TacticalConfig;
   seed?: string;
 }): void {
   // Stop any existing loop and polls
@@ -822,7 +861,7 @@ function initMatchWithConfig(config: {
   const inPossConfig = tacticsBoard.getTacticalConfig();
   const oopConfig = tacticsBoard.getOutOfPossessionConfig();
 
-  engine = new SimulationEngine({
+  const engineConfig: import('./simulation/engine.ts').MatchConfig = {
     seed: config.seed ?? 'fergie-time-match-' + Date.now(),
     homeRoster: config.homeRoster,
     awayRoster: config.awayRoster,
@@ -830,7 +869,11 @@ function initMatchWithConfig(config: {
     awayBench: config.awayBench,
     homeTacticalConfig: inPossConfig,
     homeTacticalConfigOOP: oopConfig,
-  });
+    ...(config.awayTacticalConfig ? { awayTacticalConfig: config.awayTacticalConfig } : {}),
+    ...(config.awayTacticalConfigOOP ? { awayTacticalConfigOOP: config.awayTacticalConfigOOP } : {}),
+  };
+
+  engine = new SimulationEngine(engineConfig);
   homeDebugOverlay = new DebugOverlay(debugCanvasEl, engine.decisionLog, 'home');
   awayDebugOverlay = new DebugOverlay(debugCanvasAwayEl, engine.decisionLog, 'away');
   selectedDebugPlayerId = null;
@@ -902,7 +945,7 @@ function initMatchWithConfig(config: {
 
           // 2. Record player result, then sim AI fixtures one-by-one with vidiprinter
           const playerResult = { homeGoals: snap.score[0], awayGoals: snap.score[1] };
-          const playerWasHome = currentMatchPlayerSide === 'home';
+          const playerWasHome = currentFixturePlayerWasHome;
           const progress = recordPlayerResult(seasonState, playerResult, playerWasHome);
           seasonState = progress.state;
 
@@ -927,6 +970,7 @@ function startMatch(): void {
   // Legacy/dev path: use createMatchRosters
   const { home, away, homeBench, awayBench } = createMatchRosters();
   currentMatchPlayerSide = 'home';
+  currentFixturePlayerWasHome = true;
   initMatchWithConfig({
     homeRoster: home,
     homeBench,
@@ -1714,32 +1758,42 @@ function startMatchFromSquad(): void {
   // Apply fatigueMap to player squad
   const fatigueMap = seasonState.fatigueMap;
   const playerStarters = selection.starters.map(p => ({
-    ...p, fatigue: fatigueMap.get(p.id) ?? 0, teamId: (playerIsHome ? 'home' : 'away') as 'home' | 'away',
+    ...p, fatigue: fatigueMap.get(p.id) ?? 0, teamId: 'home' as const,
   }));
   const playerBench = selection.bench.map(p => ({
-    ...p, fatigue: fatigueMap.get(p.id) ?? 0, teamId: (playerIsHome ? 'home' : 'away') as 'home' | 'away',
+    ...p, fatigue: fatigueMap.get(p.id) ?? 0, teamId: 'home' as const,
   }));
 
   // Build opponent roster with fatigue
   const opponentSquad = opponentTeam.squad.map(p => ({
-    ...p, fatigue: fatigueMap.get(p.id) ?? 0, teamId: (playerIsHome ? 'away' : 'home') as 'home' | 'away',
+    ...p, fatigue: fatigueMap.get(p.id) ?? 0, teamId: 'away' as const,
   }));
-  const opponentStarters = opponentSquad.slice(0, 11);
-  const opponentBench = opponentSquad.slice(11, 18);
+  const opponentSystem = opponentTeam.preferredTacticName ? loadBuiltInTacticSystem(opponentTeam.preferredTacticName) : null;
+  const opponentFormation = opponentSystem?.inPossessionFormation ?? opponentTeam.preferredFormation ?? '4-4-2';
+  const opponentLineup = pickAssistantLineup(opponentSquad, opponentFormation, fatigueMap);
 
-  // Set which side the player is on for post-match fatigue capture
-  currentMatchPlayerSide = playerIsHome ? 'home' : 'away';
+  // Engine always treats player as home side; keep real fixture side for table result mapping.
+  currentMatchPlayerSide = 'home';
+  currentFixturePlayerWasHome = playerIsHome;
 
-  // Build match config with correct home/away assignment
-  const homeRoster = playerIsHome ? playerStarters : opponentStarters;
-  const homeBench = playerIsHome ? playerBench : opponentBench;
-  const awayRoster = playerIsHome ? opponentStarters : playerStarters;
-  const awayBench = playerIsHome ? opponentBench : playerBench;
+  // Build match config (player home in-engine; fixture home/away preserved via currentFixturePlayerWasHome).
+  const homeRoster = playerStarters;
+  const homeBench = playerBench;
+  const awayRoster = opponentLineup.starters;
+  const awayBench = opponentLineup.bench;
 
   const matchSeed = `${seasonState.seed}-md-${seasonState.currentMatchday}-player`;
 
   showScreen(ScreenId.MATCH);
-  initMatchWithConfig({ homeRoster, homeBench, awayRoster, awayBench, seed: matchSeed });
+  initMatchWithConfig({
+    homeRoster,
+    homeBench,
+    awayRoster,
+    awayBench,
+    awayTacticalConfig: opponentSystem?.inPossession ?? buildFormationTacticalConfig(opponentFormation),
+    awayTacticalConfigOOP: opponentSystem?.outOfPossession ?? buildFormationTacticalConfig(opponentFormation),
+    seed: matchSeed,
+  });
 }
 
 hubScreenView.onScheduleChange((schedule: TrainingSchedule) => {
@@ -1748,11 +1802,31 @@ hubScreenView.onScheduleChange((schedule: TrainingSchedule) => {
 });
 
 hubScreenView.onContinue(() => {
+  // Capture pre-advance state for coaching report (COACH-01)
+  const prevDay = seasonState.currentDay;
+  const dayPlan = seasonState.trainingSchedule?.[prevDay] ?? 'rest';
+  const playerTeamBefore = seasonState.teams.find(t => t.isPlayerTeam)!;
+  const squadBefore = playerTeamBefore.squad;
+
   const result = advanceDay(seasonState);
   seasonState = result.state;
 
+  // COACH-01: Generate coaching report email after training
+  if (dayPlan !== 'rest') {
+    const playerTeamAfter = seasonState.teams.find(t => t.isPlayerTeam)!;
+    const report = generateCoachingReport(dayPlan, prevDay + 1, playerTeamAfter.squad, squadBefore);
+    if (report) {
+      seasonState = {
+        ...seasonState,
+        inbox: sendMessage(seasonState.inbox, {
+          ...report,
+          matchday: seasonState.currentMatchday,
+        }),
+      };
+    }
+  }
+
   // === Day-advance extension point ===
-  // Phase 14 (COACH-01): Add coaching email generation here after training is applied.
   // Phase 15 (XFER-02): Add transfer bid processing here (process pending bids that arrived "yesterday").
   // Each phase hooks into this handler by adding its logic after advanceDay returns.
 
@@ -1766,7 +1840,7 @@ hubScreenView.onKickoff(() => {
   // Training already applied day-by-day via Continue — just start the match
   const playerTeam = seasonState.teams.find(t => t.isPlayerTeam)!;
   squadScreenViewInner.setFormationRoles(tacticsBoard.getPhaseRoles('inPossession'), tacticsBoard.getPhaseRoles('outOfPossession'));
-  squadScreenViewInner.update(playerTeam.squad, seasonState.fatigueMap, seasonState.squadSelectionMap, seasonState.playerSeasonStats);
+  squadScreenViewInner.update(playerTeam.squad, seasonState.fatigueMap, seasonState.squadSelectionMap, seasonState.playerSeasonStats, seasonState.trainingDeltas);
   startMatchFromSquad();
 });
 
@@ -1777,6 +1851,27 @@ hubScreenView.onKickoff(() => {
 /** Migrate old save files that lack transferMarket/inbox fields. */
 function migrateSeasonState(state: SeasonState): SeasonState {
   let migrated = state;
+
+  if (migrated.teams.some(t => !t.preferredFormation || !t.preferredTacticName)) {
+    migrated = {
+      ...migrated,
+      teams: migrated.teams.map((team) => {
+        let preferredTacticName = team.preferredTacticName;
+        if (!preferredTacticName) {
+          if (team.isPlayerTeam) preferredTacticName = getDefaultBuiltInTacticName();
+          else {
+            const rng = seedrandom(`${migrated.seed}-pref-tactic-${team.id}`);
+            preferredTacticName = choosePreferredBuiltInTacticName(team.tier, rng);
+          }
+        }
+
+        const system = preferredTacticName ? loadBuiltInTacticSystem(preferredTacticName) : null;
+        const preferredFormation = team.preferredFormation ?? system?.inPossessionFormation ?? '4-4-2';
+
+        return { ...team, preferredTacticName, preferredFormation };
+      }),
+    };
+  }
 
   if (!migrated.transferMarket || !migrated.inbox) {
     const rng = seedrandom(migrated.seed + '-migration');
@@ -1790,6 +1885,10 @@ function migrateSeasonState(state: SeasonState): SeasonState {
     migrated = { ...migrated, currentDay: 0 };
   }
 
+  if (!migrated.homeTacticPresetName) {
+    migrated = { ...migrated, homeTacticPresetName: getDefaultBuiltInTacticName() };
+  }
+
   return migrated;
 }
 
@@ -1800,6 +1899,7 @@ async function boot(): Promise<void> {
     if (loadResult.hasState && loadResult.gameState) {
       const envelope = deserializeState(loadResult.gameState);
       seasonState = migrateSeasonState(envelope.state);
+      restoreHomeTacticsFromSeason();
       showScreen(ScreenId.HUB);
       updateInboxBadge();
       console.log('[Fergie Time] Session restored — welcome back.');
@@ -1819,6 +1919,7 @@ async function boot(): Promise<void> {
       const playerSquad = createAITeam('mid', 'player-team', teamName, seedrandom('player-' + teamName), names.slice(0, 25));
       // Create season with remaining names for AI teams
       seasonState = createSeason('player-team', teamName, playerSquad, 'season-1', names.slice(25));
+      restoreHomeTacticsFromSeason();
       // Auto-save the fresh season immediately
       const json = serializeState(seasonState);
       saveGame(json, 1).catch(err => console.error('Initial save failed:', err));
@@ -1826,6 +1927,7 @@ async function boot(): Promise<void> {
       // Restore from loaded state
       const envelope = deserializeState(gameStateJson);
       seasonState = migrateSeasonState(envelope.state);
+      restoreHomeTacticsFromSeason();
     }
     loginScreenView.hide();
     showScreen(ScreenId.HUB);
