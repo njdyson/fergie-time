@@ -1056,7 +1056,7 @@ function initMatchWithConfig(config: {
             name: p.name ?? p.id,
             role: p.role,
             teamId: p.teamId,
-            shirtNumber: p.shirtNumber,
+            ...(p.shirtNumber != null ? { shirtNumber: p.shirtNumber } : {}),
           })),
           playerStats,
         );

@@ -144,7 +144,7 @@ describe('generateCoachingReport', () => {
   });
 
   it('returns null when squad is empty (no deltas possible)', () => {
-    const result = generateCoachingReport('fitness', 1, [], []);
+    generateCoachingReport('fitness', 1, [], []);
     // Empty squad on a drill day — may return null or a report with "0 players"; either is acceptable
     // but the report (if any) should not crash
     expect(() => generateCoachingReport('fitness', 1, [], [])).not.toThrow();

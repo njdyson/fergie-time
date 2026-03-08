@@ -74,7 +74,7 @@ function makePlayer(overrides?: {
     fatigue: 0,
     role: 'CM',
     duty: Duty.SUPPORT,
-    age: overrides?.age,
+    age: overrides?.age ?? 25,
   };
 }
 
@@ -303,7 +303,7 @@ describe('Training economy — 5-season headless simulation', () => {
 
     // Check that no attribute on any player exceeds 0.95
     for (const player of players) {
-      for (const [attr, value] of Object.entries(player.attributes)) {
+      for (const [, value] of Object.entries(player.attributes)) {
         expect(value).toBeLessThanOrEqual(0.95);
       }
     }

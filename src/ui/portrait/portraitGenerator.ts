@@ -69,18 +69,8 @@ const SKIN_PIXELS: readonly Pixel[] = [
   [8, 15], [9, 15], [10, 15], [11, 15],
 ];
 
-const LEFT_EAR: readonly Pixel[] = [[4, 7], [4, 8]];
-const RIGHT_EAR: readonly Pixel[] = [[15, 7], [15, 8]];
-const NOSE: readonly Pixel[] = [[9, 10], [10, 10]];
-const LEFT_EYE: readonly Pixel[] = [[7, 7], [8, 7]];
-const RIGHT_EYE: readonly Pixel[] = [[11, 7], [12, 7]];
-const MOUTH: readonly Pixel[] = [[8, 12], [9, 12], [10, 12], [11, 12]];
-const FACIAL_HAIR: readonly Pixel[] = [
-  [8, 11], [9, 11], [10, 11], [11, 11],
-  [7, 13], [8, 13], [9, 13], [10, 13], [11, 13], [12, 13],
-];
 
-const HAIR_STYLES_SRC: readonly Array<{ back: readonly Pixel[]; front: readonly Pixel[]; highlight: readonly Pixel[] }> = [
+const HAIR_STYLES_SRC: ReadonlyArray<{ back: readonly Pixel[]; front: readonly Pixel[]; highlight: readonly Pixel[] }> = [
   {
     back: [
       [5, 4], [5, 5], [5, 6],
@@ -174,8 +164,8 @@ function pixelKey([x, y]: Pixel): string {
 }
 
 function parsePixelKey(key: string): Pixel {
-  const [x, y] = key.split(',').map(Number);
-  return [x, y];
+  const parts = key.split(',').map(Number);
+  return [parts[0]!, parts[1]!];
 }
 
 function sortPixels(a: Pixel, b: Pixel): number {
@@ -412,7 +402,7 @@ const MOUTH_VARIANTS = [
   },
 ] as const;
 
-const ALL_PORTRAIT_PIXELS: readonly Pixel[][] = [
+const ALL_PORTRAIT_PIXELS: readonly (readonly Pixel[])[] = [
   SKIN_BASE,
   EAR_LEFT_BASE,
   EAR_RIGHT_BASE,

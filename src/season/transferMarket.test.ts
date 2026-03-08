@@ -93,14 +93,11 @@ const fakeRng = () => 0.5;
 describe('submitPlayerBid', () => {
   let teams: SeasonTeam[];
   let market: TransferMarketState;
-  let inbox: InboxState;
-
   beforeEach(() => {
     const seller = makeTeam('seller', [makePlayer('p1', 'seller')]);
     const buyer = makeTeam('buyer', []);
     teams = [seller, buyer];
     market = makeMarket(teams, [], { buyer: 200_000, seller: 300_000 });
-    inbox = createInbox();
   });
 
   it('records a pending bid on market.bids', () => {

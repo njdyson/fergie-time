@@ -337,14 +337,14 @@ export function simOneAIFixture(
     }
     return {
       ...p,
-      teamId: 'home',
+      teamId: 'home' as const,
       attributes: boosted,
       fatigue: state.fatigueMap.get(p.id) ?? 0,
     };
   });
   const awaySquad = awayTeam.squad.map(p => ({
     ...p,
-    teamId: 'away',
+    teamId: 'away' as const,
     fatigue: state.fatigueMap.get(p.id) ?? 0,
   }));
 
@@ -373,14 +373,14 @@ export function simOneAIFixture(
       name: p.name ?? p.id,
       role: p.role,
       teamId: 'home' as const,
-      shirtNumber: p.shirtNumber,
+      ...(p.shirtNumber != null ? { shirtNumber: p.shirtNumber } : {}),
     })),
     ...awayLineup.starters.map((p) => ({
       id: p.id,
       name: p.name ?? p.id,
       role: p.role,
       teamId: 'away' as const,
-      shirtNumber: p.shirtNumber,
+      ...(p.shirtNumber != null ? { shirtNumber: p.shirtNumber } : {}),
     })),
   ];
   const matchStats = createFixtureMatchStats(reportPlayers, simResult.playerStats ?? new Map());
@@ -649,6 +649,6 @@ export function startNewSeason(
     seed: newSeed,
     trainingPresets: state.trainingPresets ?? [...DEFAULT_PRESETS],
     trainingGroupOverrides: state.trainingGroupOverrides ?? new Map(),
-    trainingSchedule: state.trainingSchedule,
+    ...(state.trainingSchedule != null ? { trainingSchedule: state.trainingSchedule } : {}),
   };
 }

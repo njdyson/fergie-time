@@ -4,6 +4,7 @@ import { generatePortrait } from './portraitGenerator.ts';
 import { getPalette, FALLBACK_PALETTE, NATIONALITY_PALETTES } from './palettes.ts';
 import { getOrGeneratePortrait, clearPortraitCache } from './portraitCache.ts';
 import type { PlayerState } from '../../simulation/types.ts';
+import { Vec2 } from '../../simulation/math/vec2.ts';
 
 // --- Canvas mock helpers ---
 
@@ -73,14 +74,14 @@ function makePlayer(overrides: Partial<PlayerState> = {}): PlayerState {
   return {
     id: 'test-player-001',
     teamId: 'team-a' as PlayerState['teamId'],
-    position: { x: 0, y: 0 },
-    velocity: { x: 0, y: 0 },
+    position: Vec2.zero(),
+    velocity: Vec2.zero(),
     attributes: {} as PlayerState['attributes'],
     personality: {} as PlayerState['personality'],
     fatigue: 0,
     role: 'CM',
     duty: 'support' as PlayerState['duty'],
-    formationAnchor: { x: 0, y: 0 },
+    formationAnchor: Vec2.zero(),
     nationality: 'GB',
     ...overrides,
   };
