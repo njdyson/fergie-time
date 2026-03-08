@@ -28,17 +28,19 @@ import { PlayerProfileScreen } from './ui/screens/playerProfileScreen.ts';
 import type { ProfileTransferInfo } from './ui/screens/playerProfileScreen.ts';
 import { TransferScreen } from './ui/screens/transferScreen.ts';
 import { InboxScreen } from './ui/screens/inboxScreen.ts';
+import { RivalSquadScreen } from './ui/screens/rivalSquadScreen.ts';
 import { createSeason, validateSquadSelection, isSeasonComplete, getChampion, startNewSeason, recordPlayerResult, simOneAIFixture, finalizeMatchday } from './season/season.ts';
 import type { SeasonState, TrainingSchedule } from './season/season.ts';
 import { advanceDay } from './season/dayLoop.ts';
 import { mergeAllMatchStats } from './season/playerStats.ts';
 import { saveGame, loadGame, logout } from './api/client.ts';
 import { serializeState, deserializeState } from '../server/serialize.ts';
-import { transferListPlayer, removeFromTransferList, processPlayerBid, formatMoney, generateFreeAgents, createTransferMarket } from './season/transferMarket.ts';
+import { transferListPlayer, removeFromTransferList, processPlayerBid, submitPlayerBid, processPendingBids, formatMoney, generateFreeAgents, createTransferMarket } from './season/transferMarket.ts';
 import { markAsRead, archiveMessage, deleteMessage, getUnreadCount, createInbox, sendMessage } from './season/inbox.ts';
 import { generateCoachingReport } from './season/coachingReport.ts';
 import { pickAssistantLineup, buildFormationTacticalConfig } from './season/assistantPicks.ts';
 import { choosePreferredBuiltInTacticName, loadBuiltInTacticSystem, getDefaultBuiltInTacticName } from './season/tacticalPresets.ts';
+import { createFixtureMatchStats, fixtureMatchStatsToPlayerStatsMap } from './season/fixtures.ts';
 
 // ============================================================
 // Canvas setup
@@ -104,23 +106,26 @@ function hideTacticsCanvas(): void {
 // Screen routing + Season state
 // ============================================================
 
-const ScreenId = { LOGIN: 'LOGIN', HUB: 'HUB', SQUAD: 'SQUAD', STATS: 'STATS', FIXTURES: 'FIXTURES', TABLE: 'TABLE', TACTICS: 'TACTICS', MATCH: 'MATCH', PROFILE: 'PROFILE', TRANSFER: 'TRANSFER', INBOX: 'INBOX' } as const;
+const ScreenId = { LOGIN: 'LOGIN', HUB: 'HUB', SQUAD: 'SQUAD', STATS: 'STATS', FIXTURES: 'FIXTURES', TABLE: 'TABLE', TACTICS: 'TACTICS', MATCH: 'MATCH', PROFILE: 'PROFILE', TRANSFER: 'TRANSFER', INBOX: 'INBOX', RIVAL_SQUAD: 'RIVAL_SQUAD' } as const;
 type ScreenId = (typeof ScreenId)[keyof typeof ScreenId];
 let currentScreen: ScreenId = ScreenId.HUB;
 let previousScreen: ScreenId = ScreenId.HUB;
 let profilePlayerId: string | null = null;
+let rivalTeamId: string | null = null;
 
 const hubScreenEl = document.getElementById('hub-screen')!;
 const squadScreenEl = document.getElementById('squad-screen')!;
 const statsScreenEl = document.getElementById('stats-screen')!;
 const fixturesScreenEl = document.getElementById('fixtures-screen')!;
 const tableScreenEl = document.getElementById('table-screen')!;
+const rivalSquadScreenEl = document.getElementById('rival-squad-screen')!;
 
 const hubScreenView = new HubScreen(hubScreenEl);
 // SquadScreen is created below with an inner container (see squad kickoff button section)
 const statsScreenView = new StatsScreen(statsScreenEl);
 const fixturesScreenView = new FixturesScreen(fixturesScreenEl);
 const tableScreenView = new TableScreen(tableScreenEl);
+const rivalSquadScreenView = new RivalSquadScreen(rivalSquadScreenEl);
 
 // Transfer screen
 const transferScreenEl = document.getElementById('transfer-screen')!;
@@ -199,6 +204,13 @@ function showPlayerProfile(playerId: string): void {
   showScreen(ScreenId.PROFILE);
 }
 
+/** Navigate to a rival team's read-only squad view. */
+function showRivalSquad(teamId: string): void {
+  rivalTeamId = teamId;
+  previousScreen = currentScreen;
+  showScreen(ScreenId.RIVAL_SQUAD);
+}
+
 // Season state — assigned in boot()
 let seasonState: SeasonState;
 
@@ -270,6 +282,12 @@ function updateCurrentScreen(): void {
       playerProfileScreenView.update(foundPlayer, foundTeam, pStats, seasonState.seasonNumber, transferInfo, seasonState.trainingDeltas);
     }
   }
+  if (currentScreen === ScreenId.RIVAL_SQUAD && rivalTeamId) {
+    const team = seasonState.teams.find(t => t.id === rivalTeamId);
+    if (team) {
+      rivalSquadScreenView.update(team, seasonState.fatigueMap, seasonState.playerSeasonStats);
+    }
+  }
 }
 
 const tacticsCenterEl = document.getElementById('tactics-center')!;
@@ -291,9 +309,9 @@ function showScreen(screen: ScreenId): void {
   const map: Record<string, string> = {
     LOGIN: 'login-screen', HUB: 'hub-screen', SQUAD: 'squad-screen', STATS: 'stats-screen',
     FIXTURES: 'fixtures-screen', TABLE: 'table-screen', TACTICS: 'tactics-screen', MATCH: 'pitch-area',
-    PROFILE: 'profile-screen', TRANSFER: 'transfer-screen', INBOX: 'inbox-screen',
+    PROFILE: 'profile-screen', TRANSFER: 'transfer-screen', INBOX: 'inbox-screen', RIVAL_SQUAD: 'rival-squad-screen',
   };
-  const flexScreens = new Set(['MATCH', 'SQUAD', 'LOGIN', 'TACTICS']);
+  const flexScreens = new Set(['MATCH', 'SQUAD', 'LOGIN', 'TACTICS', 'RIVAL_SQUAD']);
   for (const [key, id] of Object.entries(map)) {
     const el = document.getElementById(id);
     if (el) el.style.display = key === screen ? (flexScreens.has(key) ? 'flex' : 'block') : 'none';
@@ -396,21 +414,50 @@ transferScreenView.onBid((playerId, toTeamId, amount) => {
     alert(`Insufficient budget. You have £${formatMoney(budget)} available.`);
     return;
   }
-  const rng = seedrandom(`${seasonState.seed}-player-bid-${Date.now()}`);
-  const result = processPlayerBid(
-    seasonState.transferMarket,
-    seasonState.teams,
-    seasonState.playerSeasonStats,
-    seasonState.inbox,
-    { fromTeamId: playerTeam.id, toTeamId, playerId, amount, matchday: seasonState.currentMatchday },
-    rng,
-  );
-  seasonState = {
-    ...seasonState,
-    transferMarket: result.market,
-    teams: result.teams,
-    inbox: result.inbox,
-  };
+
+  if (toTeamId === 'free-agent') {
+    // Free agent signings remain instant
+    const rng = seedrandom(`${seasonState.seed}-player-bid-${Date.now()}`);
+    const result = processPlayerBid(
+      seasonState.transferMarket,
+      seasonState.teams,
+      seasonState.playerSeasonStats,
+      seasonState.inbox,
+      { fromTeamId: playerTeam.id, toTeamId, playerId, amount, matchday: seasonState.currentMatchday },
+      rng,
+    );
+    seasonState = {
+      ...seasonState,
+      transferMarket: result.market,
+      teams: result.teams,
+      inbox: result.inbox,
+    };
+  } else {
+    // Non-free-agent bids are submitted as pending — resolved on next Continue
+    const updatedMarket = submitPlayerBid(seasonState.transferMarket, {
+      fromTeamId: playerTeam.id,
+      toTeamId,
+      playerId,
+      amount,
+      matchday: seasonState.currentMatchday,
+    });
+    // Find player name for confirmation message
+    const sellingTeam = seasonState.teams.find(t => t.id === toTeamId);
+    const playerName = sellingTeam?.squad.find(p => p.id === playerId)?.name ?? 'Unknown Player';
+    const updatedInbox = sendMessage(seasonState.inbox, {
+      subject: 'Bid Submitted',
+      body: `Your £${formatMoney(amount)} bid for ${playerName} has been submitted. You'll receive a response tomorrow.`,
+      from: 'Transfer Committee',
+      matchday: seasonState.currentMatchday,
+      category: 'transfer',
+    });
+    seasonState = {
+      ...seasonState,
+      transferMarket: updatedMarket,
+      inbox: updatedInbox,
+    };
+  }
+
   saveGame(serializeState(seasonState), 1).catch(err => console.error('Auto-save failed:', err));
   updateCurrentScreen();
   updateInboxBadge();
@@ -498,6 +545,26 @@ squadScreenViewInner.setOnPlayerClick((playerId: string) => showPlayerProfile(pl
 
 // Wire player profile navigation from stats screen
 statsScreenView.onPlayerClick((playerId: string) => showPlayerProfile(playerId));
+// Wire team drill-down from fixtures/table
+fixturesScreenView.onTeamClick((teamId: string) => showRivalSquad(teamId));
+fixturesScreenView.onStatsClick((fixture) => {
+  if (!seasonState || !fixture.result || !fixture.matchStats) return;
+
+  const homeName = seasonState.teams.find(t => t.id === fixture.homeTeamId)?.name ?? 'Home';
+  const awayName = seasonState.teams.find(t => t.id === fixture.awayTeamId)?.name ?? 'Away';
+  showFullTimeOverlay(
+    document.body,
+    [fixture.result.homeGoals, fixture.result.awayGoals],
+    fixture.matchStats.players,
+    fixtureMatchStatsToPlayerStatsMap(fixture.matchStats),
+    undefined,
+    { homeLabel: homeName, awayLabel: awayName, buttonLabel: 'Close' },
+  );
+});
+tableScreenView.onTeamClick((teamId: string) => showRivalSquad(teamId));
+// Rival squad screen callbacks
+rivalSquadScreenView.onBack(() => showScreen(previousScreen));
+rivalSquadScreenView.onPlayerClick((playerId: string) => showPlayerProfile(playerId));
 
 // Persist squad selection changes into season state
 squadScreenViewInner.onSelectionChange(() => {
@@ -929,6 +996,16 @@ function initMatchWithConfig(config: {
           home: snap.score[1],  // home team concedes away team's goals
           away: snap.score[0],  // away team concedes home team's goals
         };
+        const matchStats = createFixtureMatchStats(
+          snap.players.map(p => ({
+            id: p.id,
+            name: p.name ?? p.id,
+            role: p.role,
+            teamId: p.teamId,
+            shirtNumber: p.shirtNumber,
+          })),
+          playerStats,
+        );
         seasonState.playerSeasonStats = mergeAllMatchStats(
           seasonState.playerSeasonStats ?? new Map(),
           playerStats,
@@ -946,7 +1023,7 @@ function initMatchWithConfig(config: {
           // 2. Record player result, then sim AI fixtures one-by-one with vidiprinter
           const playerResult = { homeGoals: snap.score[0], awayGoals: snap.score[1] };
           const playerWasHome = currentFixturePlayerWasHome;
-          const progress = recordPlayerResult(seasonState, playerResult, playerWasHome);
+          const progress = recordPlayerResult(seasonState, playerResult, playerWasHome, matchStats);
           seasonState = progress.state;
 
           // Show vidiprinter (manages its own screen visibility)
@@ -1638,7 +1715,7 @@ document.addEventListener('keydown', (e) => {
 
 function showVidiprinter(aiFixtures: import('./season/fixtures.ts').Fixture[]): void {
   // Hide all screens and nav
-  for (const id of ['hub-screen', 'squad-screen', 'stats-screen', 'fixtures-screen', 'table-screen', 'pitch-area']) {
+  for (const id of ['hub-screen', 'squad-screen', 'stats-screen', 'fixtures-screen', 'table-screen', 'rival-squad-screen', 'pitch-area']) {
     const el = document.getElementById(id);
     if (el) el.style.display = 'none';
   }
@@ -1826,9 +1903,21 @@ hubScreenView.onContinue(() => {
     }
   }
 
-  // === Day-advance extension point ===
-  // Phase 15 (XFER-02): Add transfer bid processing here (process pending bids that arrived "yesterday").
-  // Each phase hooks into this handler by adding its logic after advanceDay returns.
+  // Phase 15 (XFER-02): Resolve pending transfer bids submitted before this Continue press
+  const bidRng = seedrandom(`${seasonState.seed}-bids-day-${seasonState.currentDay}`);
+  const bidResult = processPendingBids(
+    seasonState.transferMarket,
+    seasonState.teams,
+    seasonState.playerSeasonStats,
+    seasonState.inbox,
+    bidRng,
+  );
+  seasonState = {
+    ...seasonState,
+    transferMarket: bidResult.market,
+    teams: bidResult.teams,
+    inbox: bidResult.inbox,
+  };
 
   // Auto-save after each day advance
   saveGame(serializeState(seasonState), 1).catch(err => console.error('Auto-save (day advance) failed:', err));
