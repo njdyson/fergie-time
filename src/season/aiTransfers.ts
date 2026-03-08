@@ -45,6 +45,9 @@ export function processAITransfers(state: SeasonState, rng: () => number): AITra
   const matchday = state.currentMatchday;
   const playerStats = state.playerSeasonStats;
 
+  // Collect digest events instead of sending one message per transfer
+  const digestEvents: string[] = [];
+
   // Phase 1: AI teams list players
   for (let i = 0; i < teams.length; i++) {
     const team = teams[i]!;
@@ -64,23 +67,17 @@ export function processAITransfers(state: SeasonState, rng: () => number): AITra
     // List with asking price = value * random factor (0.9..1.1)
     const value = market.playerValues.get(player.id) ?? 1000;
     const askFactor = 0.9 + rng() * 0.2;
+    const askingPrice = Math.round(value * askFactor / 100) * 100;
     market = transferListPlayer(market, player.id, team.id, matchday);
     // Update asking price
     const listIdx = market.listings.findIndex(l => l.playerId === player.id);
     if (listIdx >= 0) {
       const listings = [...market.listings];
-      listings[listIdx] = { ...listings[listIdx]!, askingPrice: Math.round(value * askFactor / 100) * 100 };
+      listings[listIdx] = { ...listings[listIdx]!, askingPrice };
       market = { ...market, listings };
     }
 
-    // Notify player
-    inbox = sendMessage(inbox, {
-      subject: `Transfer Listed: ${player.name ?? 'Unknown'}`,
-      body: `${team.name} have transfer listed ${player.name ?? 'Unknown'} (${player.role}) for £${formatMoney(Math.round(value * askFactor / 100) * 100)}.`,
-      from: 'Transfer News',
-      matchday,
-      category: 'transfer',
-    });
+    digestEvents.push(`• ${team.name} listed ${player.name ?? 'Unknown'} (${player.role}) for £${formatMoney(askingPrice)}`);
   }
 
   // Phase 2: AI teams buy players to fill gaps
@@ -112,10 +109,16 @@ export function processAITransfers(state: SeasonState, rng: () => number): AITra
     const playerName = candidate.playerName;
     const isFreeAgent = fromTeamId === 'free-agent';
     const fromTeamName = isFreeAgent ? 'free agency' : (teams.find(t => t.id === fromTeamId)?.name ?? 'another club');
+    const costStr = isFreeAgent ? '' : ` for £${formatMoney(cost)}`;
 
+    digestEvents.push(`• ${team.name} signed ${playerName} (${targetRole}) from ${fromTeamName}${costStr}`);
+  }
+
+  // Send a single daily digest email if any events occurred
+  if (digestEvents.length > 0) {
     inbox = sendMessage(inbox, {
-      subject: `Transfer Complete: ${playerName}`,
-      body: `${team.name} have signed ${playerName} (${targetRole}) from ${fromTeamName}${isFreeAgent ? '' : ` for £${formatMoney(cost)}`}.`,
+      subject: 'Daily Transfer Round-Up',
+      body: digestEvents.join('\n'),
       from: 'Transfer News',
       matchday,
       category: 'transfer',

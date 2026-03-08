@@ -264,6 +264,126 @@ export function removeFromTransferList(market: TransferMarketState, playerId: st
 let _bidCounter = 0;
 
 /**
+ * Submit a player bid as pending. Reserves the bid amount from the buyer's budget immediately.
+ * Does NOT evaluate or execute the transfer — that happens in processPendingBids.
+ * Returns updated market only (no teams/inbox changes).
+ */
+export function submitPlayerBid(
+  market: TransferMarketState,
+  bid: { fromTeamId: string; toTeamId: string; playerId: string; amount: number; matchday: number },
+): TransferMarketState {
+  const bidId = `bid-${Date.now()}-${++_bidCounter}`;
+  const bidRecord: Bid = {
+    id: bidId,
+    fromTeamId: bid.fromTeamId,
+    toTeamId: bid.toTeamId,
+    playerId: bid.playerId,
+    amount: bid.amount,
+    status: 'pending',
+    matchday: bid.matchday,
+  };
+
+  // Reserve funds from buyer's budget
+  const currentBudget = market.teamBudgets.get(bid.fromTeamId) ?? 0;
+  const updatedBudgets = new Map(market.teamBudgets);
+  updatedBudgets.set(bid.fromTeamId, currentBudget - bid.amount);
+
+  return {
+    ...market,
+    bids: [...market.bids, bidRecord],
+    teamBudgets: updatedBudgets,
+  };
+}
+
+/**
+ * Resolve all pending bids. Evaluates each via evaluateBid, executes accepted transfers,
+ * updates bid statuses, sends accept/reject inbox messages.
+ * For rejected bids, refunds the reserved amount back to the buyer's budget.
+ * Returns updated { market, teams, inbox }.
+ */
+export function processPendingBids(
+  market: TransferMarketState,
+  teams: SeasonTeam[],
+  playerSeasonStats: Map<string, PlayerSeasonStats>,
+  inbox: InboxState,
+  rng: () => number,
+): { market: TransferMarketState; teams: SeasonTeam[]; inbox: InboxState } {
+  const pendingBids = market.bids.filter(b => b.status === 'pending');
+  if (pendingBids.length === 0) {
+    return { market, teams, inbox };
+  }
+
+  let updatedMarket = { ...market };
+  let updatedTeams = [...teams];
+  let updatedInbox = { ...inbox };
+
+  for (const bid of pendingBids) {
+    // Find player info for messages
+    let playerName = 'Unknown Player';
+    let playerObj: PlayerState | undefined;
+    let sellingTeamName = 'Free Agent';
+
+    if (bid.toTeamId === 'free-agent') {
+      playerObj = updatedMarket.freeAgents.find(p => p.id === bid.playerId);
+      playerName = playerObj?.name ?? playerName;
+    } else {
+      const sellingTeam = updatedTeams.find(t => t.id === bid.toTeamId);
+      sellingTeamName = sellingTeam?.name ?? sellingTeamName;
+      playerObj = sellingTeam?.squad.find(p => p.id === bid.playerId);
+      playerName = playerObj?.name ?? playerName;
+    }
+
+    const result = evaluateBid(bid, updatedMarket, updatedTeams, playerSeasonStats, rng);
+
+    if (result === 'accepted' && playerObj) {
+      // Execute the transfer (budget already reserved, so don't double-deduct)
+      // We need to refund the reserved amount first, then let executeTransfer deduct normally
+      const refundedBudgets = new Map(updatedMarket.teamBudgets);
+      refundedBudgets.set(bid.fromTeamId, (refundedBudgets.get(bid.fromTeamId) ?? 0) + bid.amount);
+      updatedMarket = { ...updatedMarket, teamBudgets: refundedBudgets };
+
+      const transferResult = executeTransfer(updatedMarket, updatedTeams, bid.fromTeamId, bid.toTeamId, bid.playerId, bid.amount);
+      updatedMarket = transferResult.market;
+      updatedTeams = transferResult.teams;
+
+      const isFreeAgent = bid.toTeamId === 'free-agent';
+      updatedInbox = sendMessage(updatedInbox, {
+        subject: `Transfer Complete: ${playerName}`,
+        body: isFreeAgent
+          ? `${playerName} has signed for your club as a free agent.`
+          : `${sellingTeamName} have accepted your £${formatMoney(bid.amount)} bid for ${playerName}. The player has joined your squad.`,
+        from: 'Transfer Committee',
+        matchday: bid.matchday,
+        category: 'transfer',
+      });
+    } else {
+      // Rejected — refund the reserved amount
+      const refundedBudgets = new Map(updatedMarket.teamBudgets);
+      refundedBudgets.set(bid.fromTeamId, (refundedBudgets.get(bid.fromTeamId) ?? 0) + bid.amount);
+      updatedMarket = { ...updatedMarket, teamBudgets: refundedBudgets };
+
+      updatedInbox = sendMessage(updatedInbox, {
+        subject: `Bid Rejected: ${playerName}`,
+        body: `${sellingTeamName} have rejected your £${formatMoney(bid.amount)} bid for ${playerName}.`,
+        from: 'Transfer Committee',
+        matchday: bid.matchday,
+        category: 'transfer',
+      });
+    }
+
+    // Update bid status in market
+    updatedMarket = {
+      ...updatedMarket,
+      bids: updatedMarket.bids.map(b =>
+        b.id === bid.id ? { ...b, status: result } : b
+      ),
+    };
+  }
+
+  return { market: updatedMarket, teams: updatedTeams, inbox: updatedInbox };
+}
+
+/**
  * Evaluate whether a bid should be accepted or rejected.
  */
 export function evaluateBid(
