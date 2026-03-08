@@ -8,7 +8,7 @@
  */
 
 import type { SeasonState, SeasonTeam } from '../../season/season.ts';
-import type { TransferMarketState } from '../../season/transferMarket.ts';
+import type { TransferMarketState, Bid } from '../../season/transferMarket.ts';
 import { formatMoney } from '../../season/transferMarket.ts';
 import { calculatePlayerRating } from '../../season/playerAnalysis.ts';
 import type { PlayerState } from '../../simulation/types.ts';
@@ -22,7 +22,7 @@ const GREEN = '#4ade80';
 const ACCENT_ORANGE = '#fb923c';
 const RED = '#f87171';
 
-type ViewMode = 'listings' | 'squad' | 'search';
+type ViewMode = 'listings' | 'squad' | 'search' | 'bids';
 type SortColumn = 'name' | 'age' | 'pos' | 'rating' | 'team' | 'price' | 'value';
 
 export class TransferScreen {
@@ -32,6 +32,8 @@ export class TransferScreen {
   private sortAsc: boolean = false;
   private positionFilter: string = 'all';
   private searchTeamFilter: string = 'all';
+
+  private bidStatusFilter: Bid['status'] | 'all' = 'all';
 
   // Callbacks
   private playerClickCallbacks: Array<(playerId: string) => void> = [];
@@ -134,6 +136,7 @@ export class TransferScreen {
       { id: 'listings', label: 'Transfer List' },
       { id: 'squad', label: 'My Squad' },
       { id: 'search', label: 'Squad Search' },
+      { id: 'bids', label: 'My Bids' },
     ];
     html += `<div style="display: flex; gap: 8px; margin-bottom: 16px;">`;
     for (const tab of tabs) {
@@ -156,6 +159,8 @@ export class TransferScreen {
       html += this.renderListings(seasonState, market, playerTeam);
     } else if (this.viewMode === 'squad') {
       html += this.renderMySquad(seasonState, market, playerTeam);
+    } else if (this.viewMode === 'bids') {
+      html += this.renderBids(seasonState, market, playerTeam);
     } else {
       html += this.renderSearch(seasonState, market, playerTeam);
     }
@@ -427,6 +432,96 @@ export class TransferScreen {
     return html;
   }
 
+  private renderBids(state: SeasonState, market: TransferMarketState, playerTeam: SeasonTeam): string {
+    // Status filter buttons
+    const statuses: Array<{ id: Bid['status'] | 'all'; label: string; color: string }> = [
+      { id: 'all', label: 'All', color: TEXT_BRIGHT },
+      { id: 'pending', label: 'Pending', color: ACCENT_BLUE },
+      { id: 'accepted', label: 'Accepted', color: GREEN },
+      { id: 'rejected', label: 'Rejected', color: RED },
+    ];
+
+    let html = `<div style="display: flex; gap: 8px; margin-bottom: 12px; align-items: center;">`;
+    html += `<span style="font-size: 11px; color: ${TEXT};">Status:</span>`;
+    for (const s of statuses) {
+      const active = this.bidStatusFilter === s.id;
+      html += `<button data-bid-status-filter="${s.id}" style="padding: 4px 12px; border-radius: 4px; border: 1px solid ${active ? s.color : '#334155'}; background: ${active ? 'rgba(255,255,255,0.08)' : 'transparent'}; color: ${active ? s.color : TEXT}; font: 11px/1 'Segoe UI',system-ui,sans-serif; cursor: pointer;">${s.label}</button>`;
+    }
+    html += `</div>`;
+
+    // Filter bids to player team outgoing bids
+    let bids = market.bids.filter(b => b.fromTeamId === playerTeam.id);
+    if (this.bidStatusFilter !== 'all') {
+      bids = bids.filter(b => b.status === this.bidStatusFilter);
+    }
+    // Sort newest first
+    bids = [...bids].sort((a, b) => b.matchday - a.matchday);
+
+    if (bids.length === 0) {
+      html += `<p style="color: ${TEXT}; text-align: center; padding: 40px 0;">No bids placed yet.</p>`;
+      return html;
+    }
+
+    const cols = `minmax(120px,2fr) 48px minmax(80px,1.5fr) 80px 80px 64px`;
+
+    html += `<div style="overflow-x: auto;"><div class="mobile-no-minwidth" style="min-width: 520px;">`;
+
+    // Header
+    html += `<div style="display: grid; grid-template-columns: ${cols}; gap: 4px; padding: 6px 8px; font-size: 10px; border-bottom: 1px solid #334155; align-items: center; color: ${TEXT};">`;
+    html += `<span>Player</span>`;
+    html += `<span style="text-align:center;">Pos</span>`;
+    html += `<span>To Team</span>`;
+    html += `<span style="text-align:center;">Amount</span>`;
+    html += `<span style="text-align:center;">Status</span>`;
+    html += `<span style="text-align:center;">Day</span>`;
+    html += `</div>`;
+
+    for (let i = 0; i < bids.length; i++) {
+      const bid = bids[i]!;
+      const rowBg = i % 2 === 0 ? PANEL_BG : '#151f2e';
+
+      // Resolve player and team names
+      let playerName = 'Unknown';
+      let playerRole = '-';
+      let toTeamName = 'Unknown';
+
+      for (const team of state.teams) {
+        const p = team.squad.find(pl => pl.id === bid.playerId);
+        if (p) { playerName = p.name ?? 'Unknown'; playerRole = p.role as string; break; }
+      }
+      if (!playerName || playerName === 'Unknown') {
+        const fa = market.freeAgents.find(p => p.id === bid.playerId);
+        if (fa) { playerName = fa.name ?? 'Unknown'; playerRole = fa.role as string; }
+      }
+
+      if (bid.toTeamId === 'free-agent') {
+        toTeamName = 'Free Agent';
+      } else {
+        const toTeam = state.teams.find(t => t.id === bid.toTeamId);
+        toTeamName = toTeam?.name ?? bid.toTeamId;
+      }
+
+      // Status badge styling
+      let statusColor = TEXT;
+      let statusBg = 'transparent';
+      if (bid.status === 'pending') { statusColor = ACCENT_BLUE; statusBg = 'rgba(96,165,250,0.12)'; }
+      else if (bid.status === 'accepted') { statusColor = GREEN; statusBg = 'rgba(74,222,128,0.12)'; }
+      else if (bid.status === 'rejected') { statusColor = RED; statusBg = 'rgba(248,113,113,0.12)'; }
+
+      html += `<div style="display: grid; grid-template-columns: ${cols}; gap: 4px; padding: 6px 8px; font-size: 12px; background: ${rowBg}; border-radius: 2px; align-items: center;">`;
+      html += `<span data-player-click="${bid.playerId}" style="color: ${ACCENT_BLUE}; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${playerName}</span>`;
+      html += `<span style="text-align:center; color: ${ACCENT_ORANGE}; font-weight: bold; font-size: 11px;">${playerRole}</span>`;
+      html += `<span style="color: ${TEXT}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px;">${toTeamName}</span>`;
+      html += `<span style="text-align:center; color: ${TEXT_BRIGHT};">£${formatMoney(bid.amount)}</span>`;
+      html += `<span style="text-align:center;"><span style="padding: 2px 8px; border-radius: 4px; background: ${statusBg}; color: ${statusColor}; font-size: 11px; font-weight: bold;">${bid.status.charAt(0).toUpperCase() + bid.status.slice(1)}</span></span>`;
+      html += `<span style="text-align:center; color: ${TEXT}; font-size: 11px;">${bid.matchday}</span>`;
+      html += `</div>`;
+    }
+
+    html += `</div></div>`;
+    return html;
+  }
+
   private sortHeader(col: SortColumn, label: string, center = false, className = ''): string {
     const active = this.sortCol === col;
     const arrow = active ? (this.sortAsc ? ' ▲' : ' ▼') : '';
@@ -494,6 +589,12 @@ export class TransferScreen {
     for (const btn of this.container.querySelectorAll('[data-unlist]')) {
       const id = (btn as HTMLElement).dataset.unlist!;
       btn.addEventListener('click', () => { this.unlistCallbacks.forEach(cb => cb(id)); });
+    }
+
+    // Bid status filter
+    for (const btn of this.container.querySelectorAll('[data-bid-status-filter]')) {
+      const status = (btn as HTMLElement).dataset.bidStatusFilter as Bid['status'] | 'all';
+      btn.addEventListener('click', () => { this.bidStatusFilter = status; this.render(seasonState); });
     }
 
     // Team filter (search view)
