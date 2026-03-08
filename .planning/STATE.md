@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-03-07)
 ## Current Position
 
 Phase: 13 of 15 (Hub Day Loop)
-Plan: 1 of 2
-Status: In progress
-Last activity: 2026-03-08 — Plan 01 complete: dayLoop data layer (advanceDay, getDaySchedule, isMatchDay)
+Plan: 2 of 2
+Status: Checkpoint — awaiting human verification
+Last activity: 2026-03-08 — Plan 02 complete (pending visual verify): Hub day schedule UI, Continue/Kick Off wiring
 
 Progress: [█░░░░░░░░░] 10%
 
@@ -55,6 +55,11 @@ See PROJECT.md Key Decisions table for full history.
 - `advanceDay` throws on match day (not error result) — enforces precondition at call site
 - `getDaySchedule` marks match day as `status='current'` when waiting for Kick Off
 
+**Phase 13, Plan 02 (2026-03-08):**
+- `applyTrainingBlock` removed from Kick Off handler — training applied incrementally via Continue presses
+- `jsdom` installed as dev dep for UI unit tests; @vitest-environment jsdom per-file annotation
+- Past day drills read from state (locked), current/future read from DOM in onScheduleChange
+
 ### Pending Todos
 
 None.
@@ -67,5 +72,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-08
-Stopped at: Phase 13 Plan 01 complete — dayLoop data layer (advanceDay, getDaySchedule, isMatchDay, SeasonState.currentDay)
+Stopped at: Phase 13 Plan 02 checkpoint:human-verify — Hub day schedule UI and Continue/Kick Off wiring complete, awaiting visual verification
 Resume file: None
