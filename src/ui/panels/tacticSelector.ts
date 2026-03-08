@@ -125,6 +125,7 @@ export class TacticSelector {
   onSave(cb: (name: string) => void): void { this._onSave = cb; }
   onLoad(cb: (name: string) => void): void { this._onLoad = cb; }
   onDelete(cb: (name: string) => void): void { this._onDelete = cb; }
+  getSelectedName(): string { return this.select.value || this.currentName || ''; }
 
   show(): void { this.el.classList.add('open'); }
   hide(): void { this.el.classList.remove('open'); }

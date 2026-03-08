@@ -2,11 +2,50 @@
  * Berger round-robin fixture generation for a double round-robin season.
  */
 
+import type { PlayerLogStats } from '../simulation/match/gameLog.ts';
+import type { TeamId } from '../simulation/types.ts';
+
+export interface FixtureReportPlayer {
+  readonly id: string;
+  readonly name: string;
+  readonly role: string;
+  readonly teamId: TeamId;
+  readonly shirtNumber?: number;
+}
+
+export interface FixtureMatchStats {
+  readonly players: FixtureReportPlayer[];
+  readonly playerStats: PlayerLogStats[];
+}
+
 export interface Fixture {
   readonly matchday: number;
   readonly homeTeamId: string;
   readonly awayTeamId: string;
   result?: { homeGoals: number; awayGoals: number };
+  matchStats?: FixtureMatchStats;
+}
+
+export function createFixtureMatchStats(
+  players: readonly FixtureReportPlayer[],
+  playerStats: ReadonlyMap<string, PlayerLogStats>,
+): FixtureMatchStats {
+  return {
+    players: players.map(p => ({
+      id: p.id,
+      name: p.name,
+      role: p.role,
+      teamId: p.teamId,
+      ...(typeof p.shirtNumber === 'number' ? { shirtNumber: p.shirtNumber } : {}),
+    })),
+    playerStats: Array.from(playerStats.values()).map((s) => ({ ...s })),
+  };
+}
+
+export function fixtureMatchStatsToPlayerStatsMap(
+  matchStats: FixtureMatchStats,
+): Map<string, PlayerLogStats> {
+  return new Map(matchStats.playerStats.map((s) => [s.playerId, { ...s }]));
 }
 
 /**

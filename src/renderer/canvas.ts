@@ -16,8 +16,8 @@ const PITCH_PADDING = 20;
 // Player rendering
 const PLAYER_RADIUS = 10; // canvas pixels
 const DIRECTION_LINE_LENGTH = 12; // canvas pixels
-const SHIRT_FONT = 'bold 9px sans-serif';
-const ROLE_FONT = '8px monospace';
+const SHIRT_FONT = 'bold 10px sans-serif';
+const ROLE_FONT = '9px monospace';
 const ROLE_LABEL_OFFSET_Y = -14; // pixels above player center
 
 // Ball rendering

@@ -2,6 +2,13 @@ import type { TeamControls, PressConfig, PressHeight, TacticsPhase, Mentality, A
 import { defaultTeamControls, defaultPressConfig, defaultExtendedTeamControls } from '../../simulation/types.ts';
 
 const QUICK_SHAPES = ['4-4-2', '4-3-3', '4-5-1', '3-5-2', '4-2-3-1'] as const;
+const MENTALITY_OPTIONS = [
+  { label: 'Ultra Def', value: 'ultraDefensive' },
+  { label: 'Defensive', value: 'defensive' },
+  { label: 'Balanced', value: 'balanced' },
+  { label: 'Attacking', value: 'attacking' },
+  { label: 'Ultra Att', value: 'ultraAttacking' },
+] as const;
 
 /**
  * Left panel — team-level controls.
@@ -49,13 +56,13 @@ export class TeamPanel {
 
     // V2: Mentality preset — shown in both phases
     this._addHeading('Mentality');
-    this._addSegment<string>('Mentality', 'mentality', this.extended.mentality, [
-      { label: 'Ultra Def', value: 'ultraDefensive' },
-      { label: 'Defensive', value: 'defensive' },
-      { label: 'Balanced', value: 'balanced' },
-      { label: 'Attacking', value: 'attacking' },
-      { label: 'Ultra Att', value: 'ultraAttacking' },
-    ], 'Global mentality shifts line height, width, tempo, and pressing as a preset.');
+    this._addSteppedSlider(
+      'Mentality',
+      'mentality',
+      this.extended.mentality,
+      MENTALITY_OPTIONS,
+      'Global mentality shifts line height, width, tempo, and pressing as a preset.',
+    );
 
     if (this.phase === 'inPossession') {
       this._addHeading('Tempo');
@@ -181,6 +188,50 @@ export class TeamPanel {
       seg.appendChild(btn);
     }
     this.el.appendChild(seg);
+  }
+
+  private _addSteppedSlider<T extends string | number>(
+    label: string,
+    key: string,
+    value: T,
+    options: readonly { label: string; value: T }[],
+    tooltip?: string,
+  ): void {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'stepped-slider';
+    if (tooltip) wrapper.title = tooltip;
+
+    const lbl = document.createElement('div');
+    lbl.className = 'notch-label';
+    const initialIdx = Math.max(0, options.findIndex(o => o.value === value));
+    lbl.innerHTML = `<span>${label}</span><span class="notch-value">${options[initialIdx]?.label ?? ''}</span>`;
+    wrapper.appendChild(lbl);
+
+    const input = document.createElement('input');
+    input.type = 'range';
+    input.min = '0';
+    input.max = String(Math.max(0, options.length - 1));
+    input.step = '1';
+    input.value = String(initialIdx);
+    input.className = 'stepped-slider-input';
+    input.addEventListener('input', () => {
+      const idx = Math.max(0, Math.min(options.length - 1, Number(input.value)));
+      const selected = options[idx];
+      if (!selected) return;
+      const valSpan = lbl.querySelector('.notch-value') as HTMLElement | null;
+      if (valSpan) valSpan.textContent = selected.label;
+      this._setControlValue(key, selected.value);
+    });
+    wrapper.appendChild(input);
+
+    if (options.length >= 2) {
+      const ends = document.createElement('div');
+      ends.className = 'stepped-slider-ends';
+      ends.innerHTML = `<span>${options[0]!.label}</span><span>${options[options.length - 1]!.label}</span>`;
+      wrapper.appendChild(ends);
+    }
+
+    this.el.appendChild(wrapper);
   }
 
   private _addToggle(label: string, key: string, value: boolean, tooltip?: string): void {

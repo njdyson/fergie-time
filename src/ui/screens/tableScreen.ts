@@ -10,11 +10,13 @@ import { sortTable } from '../../season/leagueTable.ts';
 const PANEL_BG = '#1e293b';
 const TEXT = '#94a3b8';
 const TEXT_BRIGHT = '#e2e8f0';
+const ACCENT_BLUE = '#60a5fa';
 const HIGHLIGHT_BG = '#1e3a5f';
 const HEADER_TEXT = '#64748b';
 
 export class TableScreen {
   private container: HTMLElement;
+  private teamClickCallbacks: Array<(teamId: string) => void> = [];
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -56,7 +58,7 @@ export class TableScreen {
 
       html += `<div class="table-grid" style="display: grid; grid-template-columns: 32px 1fr repeat(9, 40px); padding: 8px 12px; font-size: 13px; color: ${textColor}; background: ${bg}; border-radius: 2px;">`;
       html += `<span>${i + 1}</span>`;
-      html += `<span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${row.teamName}</span>`;
+      html += `<span data-table-team="${row.teamId}" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: ${ACCENT_BLUE}; cursor: pointer;" title="View squad">${row.teamName}</span>`;
       html += `<span style="text-align: center;">${row.played}</span>`;
       html += `<span style="text-align: center;">${row.won}</span>`;
       html += `<span style="text-align: center;">${row.drawn}</span>`;
@@ -70,6 +72,20 @@ export class TableScreen {
 
     html += '</div>';
     this.container.innerHTML = html;
+
+    const teamLinks = this.container.querySelectorAll('[data-table-team]');
+    for (const link of teamLinks) {
+      const teamId = (link as HTMLElement).dataset.tableTeam!;
+      link.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (teamId === playerTeamId) return;
+        for (const cb of this.teamClickCallbacks) cb(teamId);
+      });
+    }
+  }
+
+  onTeamClick(cb: (teamId: string) => void): void {
+    this.teamClickCallbacks.push(cb);
   }
 
   getElement(): HTMLElement {

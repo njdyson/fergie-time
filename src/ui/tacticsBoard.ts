@@ -14,8 +14,8 @@ const PITCH_H = 68;
 // Rendering constants
 const PITCH_PADDING = 20; // canvas pixels of padding around pitch (must match CanvasRenderer)
 const PLAYER_RADIUS = 14; // canvas pixels — larger than match view for easy clicking
-const SHIRT_FONT = 'bold 11px sans-serif';
-const ROLE_FONT = '9px monospace';
+const SHIRT_FONT = 'bold 12px sans-serif';
+const ROLE_FONT = '10px monospace';
 
 // Colors
 const PLAYER_COLOR = '#3366cc';

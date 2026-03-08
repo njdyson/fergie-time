@@ -327,10 +327,17 @@ export function simOneAIFixture(
     for (const key of Object.keys(boosted) as (keyof typeof boosted)[]) {
       boosted[key] = Math.min(1, boosted[key] + HOME_BOOST);
     }
-    return { ...p, attributes: boosted, fatigue: state.fatigueMap.get(p.id) ?? 0 };
+    return {
+      ...p,
+      teamId: 'home',
+      attributes: boosted,
+      fatigue: state.fatigueMap.get(p.id) ?? 0,
+    };
   });
   const awaySquad = awayTeam.squad.map(p => ({
-    ...p, fatigue: state.fatigueMap.get(p.id) ?? 0,
+    ...p,
+    teamId: 'away',
+    fatigue: state.fatigueMap.get(p.id) ?? 0,
   }));
 
   const homeSystem = homeTeam.preferredTacticName ? loadBuiltInTacticSystem(homeTeam.preferredTacticName) : null;
@@ -389,9 +396,9 @@ export function simOneAIFixture(
   );
 
   // Merge AI fixture player stats into season stats (guard against missing stats in tests/mocks)
-  const goalsConceded: Record<string, number> = {
-    [fixture.homeTeamId]: simResult.awayGoals,
-    [fixture.awayTeamId]: simResult.homeGoals,
+  const goalsConceded: Record<'home' | 'away', number> = {
+    home: simResult.awayGoals,
+    away: simResult.homeGoals,
   };
   const matchPlayerStats = simResult.playerStats ?? new Map();
   const updatedPlayerSeasonStats = mergeAllMatchStats(

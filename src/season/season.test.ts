@@ -16,6 +16,7 @@ import {
   createSeason,
   validateSquadSelection,
   advanceMatchday,
+  recordPlayerResult,
   isSeasonComplete,
   getChampion,
   startNewSeason,
@@ -92,6 +93,17 @@ describe('createSeason', () => {
     const state = createSeason('my-team', 'My Team FC', squad, 'test-seed');
     const aiTeams = state.teams.filter(t => !t.isPlayerTeam);
     expect(aiTeams).toHaveLength(19);
+  });
+
+  it('assigns each AI team a preferred tactic and formation', () => {
+    const squad = makeSquad('my-team');
+    const state = createSeason('my-team', 'My Team FC', squad, 'test-seed');
+    const aiTeams = state.teams.filter(t => !t.isPlayerTeam);
+    for (const team of aiTeams) {
+      expect(team.preferredTacticName).toBeDefined();
+      expect(team.preferredTacticName!.length).toBeGreaterThan(0);
+      expect(team.preferredFormation).toBeDefined();
+    }
   });
 
   it('distributes AI team tiers as 4 strong, 10 mid, 6 weak', () => {
@@ -263,6 +275,22 @@ describe('advanceMatchday', () => {
     for (const fatigue of next.fatigueMap.values()) {
       expect(fatigue).toBeLessThan(0.8);
     }
+  });
+});
+
+describe('recordPlayerResult', () => {
+  it('persists optional fixture match stats payload on player fixture', () => {
+    const squad = makeSquad('my-team');
+    const state = createSeason('my-team', 'My Team FC', squad, 'stats-seed');
+    const matchStats = {
+      players: [{ id: 'home-0', name: 'Example', role: 'ST', teamId: 'home' as const }],
+      playerStats: [],
+    };
+    const progress = recordPlayerResult(state, { homeGoals: 2, awayGoals: 1 }, true, matchStats);
+    const playerFixture = progress.state.fixtures.find(
+      f => f.matchday === 1 && (f.homeTeamId === 'my-team' || f.awayTeamId === 'my-team')
+    );
+    expect(playerFixture?.matchStats).toEqual(matchStats);
   });
 });
 
