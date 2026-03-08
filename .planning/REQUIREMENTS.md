@@ -27,11 +27,11 @@ Requirements for v1.3 Day Cycle milestone. Each maps to roadmap phases.
 
 - [ ] **XFER-01**: Rival transfer activity consolidated into a single daily summary email instead of per-transfer notifications
 - [ ] **XFER-02**: Transfer bid acceptance/rejection arrives the following day (processed on next Continue press) instead of instantly
-- [ ] **XFER-03**: Transfers page shows bid tracking with status filter (pending, accepted, rejected)
+- [x] **XFER-03**: Transfers page shows bid tracking with status filter (pending, accepted, rejected)
 
 ### Player Rating
 
-- [ ] **RATE-01**: Player overall rating calculated from attributes and displayed on squad screen and player profile
+- [x] **RATE-01**: Player overall rating calculated from attributes and displayed on squad screen and player profile
 
 ## Future Requirements
 
@@ -82,8 +82,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | COACH-01 | Phase 14 | Complete |
 | XFER-01 | Phase 15 | Pending |
 | XFER-02 | Phase 15 | Pending |
-| XFER-03 | Phase 15 | Pending |
-| RATE-01 | Phase 15 | Pending |
+| XFER-03 | Phase 15 | Complete |
+| RATE-01 | Phase 15 | Complete |
 
 **Coverage:**
 - v1.3 requirements: 11 total

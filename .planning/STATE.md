@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Day Cycle
 status: unknown
-last_updated: "2026-03-08T00:50:54.172Z"
+last_updated: "2026-03-08T01:23:44.282Z"
 progress:
-  total_phases: 5
+  total_phases: 6
   completed_phases: 5
-  total_plans: 23
-  completed_plans: 23
+  total_plans: 25
+  completed_plans: 24
 ---
 
 ---
@@ -70,6 +70,7 @@ Progress: [██░░░░░░░░] 20%
 
 *Updated after each plan completion*
 | Phase 14-training-polish P02 | 4 | 2 tasks | 3 files |
+| Phase 15-transfer-overhaul P02 | 12 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -91,6 +92,7 @@ See PROJECT.md Key Decisions table for full history.
 - [Phase 14-training-polish P01]: Squad mini-bar green border-bottom on span container (not inner bar) — best visibility at 24x6px
 - [Phase 14-training-polish]: generateCoachingReport receives squadBefore/squadAfter pair for single-session gain precision, returns null for rest days/empty squad
 - [Phase 14-training-polish]: Coaching report improvers capped at top 3 sorted by total attribute gain; gracefully shows fewer if squad < 3
+- [Phase 15-transfer-overhaul]: My Bids tab shows outgoing bids only (fromTeamId === playerTeam.id); rating font-size 16px on profile for prominence
 
 ### Pending Todos
 
