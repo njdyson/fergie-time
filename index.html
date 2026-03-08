@@ -984,6 +984,27 @@
         border-color: #3b82f6;
       }
 
+      .stepped-slider {
+        display: flex;
+        flex-direction: column;
+        margin-bottom: 10px;
+      }
+
+      .stepped-slider-input {
+        width: 100%;
+        accent-color: #3b82f6;
+      }
+
+      .stepped-slider-ends {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 2px;
+        color: #64748b;
+        font: 10px/1 'Segoe UI', system-ui, sans-serif;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+      }
+
       /* ── Tactic selector (above phase bar) ─────────────────── */
       #tactic-selector {
         display: none;
@@ -1364,8 +1385,8 @@
       }
       /* ── Mobile responsive (view-only mode) ────────────── */
 
-      /* Rating column: hidden on desktop */
-      .squad-col-rating { display: none; }
+      /* Rating column */
+      .squad-col-rating { display: block; }
 
       @media (max-width: 768px) {
         /* Allow body scroll on mobile */
@@ -1576,6 +1597,7 @@
       <div id="stats-screen"    class="screen-bg" style="display:none; flex:1; overflow:auto; padding:16px;"></div>
       <div id="fixtures-screen" class="screen-bg" style="display:none; flex:1; overflow:auto; padding:16px;"></div>
       <div id="table-screen"    class="screen-bg" style="display:none; flex:1; overflow:auto; padding:16px;"></div>
+      <div id="rival-squad-screen" class="screen-bg" style="display:none; flex:1; overflow:auto; padding:16px;"></div>
       <div id="transfer-screen" class="screen-bg" style="display:none; flex:1; overflow:auto; padding:16px;"></div>
       <div id="inbox-screen"    class="screen-bg" style="display:none; flex:1; overflow:auto; padding:16px;"></div>
       <div id="profile-screen"  class="screen-bg" style="display:none; flex:1; overflow:auto;"></div>
@@ -1691,3 +1713,4 @@
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
+
