@@ -4,17 +4,21 @@
  */
 
 import seedrandom from 'seedrandom';
-import type { PlayerState, PlayerAttributes } from '../simulation/types.ts';
+import type { PlayerState, PlayerAttributes, FormationId } from '../simulation/types.ts';
+import type { SavedTactic } from '../ui/tacticStore.ts';
 import type { DrillType } from './training.ts';
 import type { TeamTier } from './teamGen.ts';
 import { createAITeam } from './teamGen.ts';
 import type { PlayerName } from './nameService.ts';
-import type { Fixture } from './fixtures.ts';
+import type { Fixture, FixtureMatchStats, FixtureReportPlayer } from './fixtures.ts';
 import { generateFixtures } from './fixtures.ts';
+import { createFixtureMatchStats } from './fixtures.ts';
 import type { TeamRecord } from './leagueTable.ts';
 import { createInitialTable, updateTable, sortTable } from './leagueTable.ts';
 import type { MatchConfig } from '../simulation/engine.ts';
 import { quickSimMatch } from './quickSim.ts';
+import { pickAssistantLineup, buildFormationTacticalConfig } from './assistantPicks.ts';
+import { choosePreferredBuiltInTacticName, loadBuiltInTacticSystem, getDefaultBuiltInTacticName } from './tacticalPresets.ts';
 import type { PlayerSeasonStats } from './playerStats.ts';
 import { mergeAllMatchStats } from './playerStats.ts';
 import type { TransferMarketState } from './transferMarket.ts';
@@ -51,6 +55,8 @@ export interface SeasonTeam {
   id: string;
   name: string;
   tier: TeamTier;
+  preferredFormation?: FormationId;
+  preferredTacticName?: string;
   squad: PlayerState[];     // 25 players
   isPlayerTeam: boolean;
 }
@@ -77,6 +83,8 @@ export interface SeasonState {
   currentDay: number;        // position in training block: 0-2 = training, 3 = match day (TRAINING_DAYS_PER_MATCHDAY)
   fatigueMap: Map<string, number>;  // playerId -> current fatigue (0..1)
   squadSelectionMap?: Map<string, SquadSlot>;  // playerId -> selection state (player team only)
+  homeTacticPresetName?: string;  // currently selected tactic name in dropdown (player team)
+  homeTacticState?: SavedTactic;  // full player-team tactic snapshot (in/out phases + instructions)
   playerSeasonStats: Map<string, PlayerSeasonStats>;  // playerId -> accumulated season stats
   transferMarket: TransferMarketState;
   inbox: InboxState;
@@ -145,7 +153,17 @@ export function createSeason(
     const teamId = `ai-team-${index}`;
     const teamName = AI_TEAM_NAMES[index]!;
     const squad = createAITeam(tier, teamId, teamName, rng, names?.slice(index * 25, (index + 1) * 25));
-    return { id: teamId, name: teamName, tier, squad, isPlayerTeam: false };
+    const preferredTacticName = choosePreferredBuiltInTacticName(tier, rng);
+    const system = loadBuiltInTacticSystem(preferredTacticName);
+    return {
+      id: teamId,
+      name: teamName,
+      tier,
+      preferredTacticName,
+      preferredFormation: system?.inPossessionFormation ?? '4-4-2',
+      squad,
+      isPlayerTeam: false,
+    };
   });
 
   // Player team
@@ -153,6 +171,8 @@ export function createSeason(
     id: playerTeamId,
     name: playerTeamName,
     tier: 'mid' as TeamTier,  // Player team has no inherent tier
+    preferredTacticName: getDefaultBuiltInTacticName(),
+    preferredFormation: '4-4-2',
     squad: playerSquad,
     isPlayerTeam: true,
   };
@@ -245,6 +265,7 @@ export function recordPlayerResult(
   state: SeasonState,
   playerResult: { homeGoals: number; awayGoals: number },
   playerWasHome: boolean,
+  matchStats?: FixtureMatchStats,
 ): MatchdayProgress {
   const md = state.currentMatchday;
   const mdFixtures = state.fixtures.filter(f => f.matchday === md);
@@ -264,6 +285,7 @@ export function recordPlayerResult(
     updatedFixtures[fixtureIndex] = {
       ...updatedFixtures[fixtureIndex]!,
       result: { homeGoals, awayGoals },
+      ...(matchStats ? { matchStats } : {}),
     };
 
     updatedTable = updateTable(
@@ -311,14 +333,42 @@ export function simOneAIFixture(
     ...p, fatigue: state.fatigueMap.get(p.id) ?? 0,
   }));
 
+  const homeSystem = homeTeam.preferredTacticName ? loadBuiltInTacticSystem(homeTeam.preferredTacticName) : null;
+  const awaySystem = awayTeam.preferredTacticName ? loadBuiltInTacticSystem(awayTeam.preferredTacticName) : null;
+  const homeFormation = homeSystem?.inPossessionFormation ?? homeTeam.preferredFormation ?? '4-4-2';
+  const awayFormation = awaySystem?.inPossessionFormation ?? awayTeam.preferredFormation ?? '4-4-2';
+  const homeLineup = pickAssistantLineup(homeSquad, homeFormation, state.fatigueMap);
+  const awayLineup = pickAssistantLineup(awaySquad, awayFormation, state.fatigueMap);
+
   const matchConfig: MatchConfig = {
     seed: `${state.seed}-md-${md}-${fixture.homeTeamId}-${fixture.awayTeamId}`,
-    homeRoster: homeSquad.slice(0, 11),
-    awayRoster: awaySquad.slice(0, 11),
-    homeBench: homeSquad.slice(11, 18),
-    awayBench: awaySquad.slice(11, 18),
+    homeRoster: homeLineup.starters,
+    awayRoster: awayLineup.starters,
+    homeBench: homeLineup.bench,
+    awayBench: awayLineup.bench,
+    homeTacticalConfig: homeSystem?.inPossession ?? buildFormationTacticalConfig(homeFormation),
+    homeTacticalConfigOOP: homeSystem?.outOfPossession ?? buildFormationTacticalConfig(homeFormation),
+    awayTacticalConfig: awaySystem?.inPossession ?? buildFormationTacticalConfig(awayFormation),
+    awayTacticalConfigOOP: awaySystem?.outOfPossession ?? buildFormationTacticalConfig(awayFormation),
   };
   const simResult = quickSimMatch(matchConfig);
+  const reportPlayers: FixtureReportPlayer[] = [
+    ...homeLineup.starters.map((p) => ({
+      id: p.id,
+      name: p.name ?? p.id,
+      role: p.role,
+      teamId: 'home' as const,
+      shirtNumber: p.shirtNumber,
+    })),
+    ...awayLineup.starters.map((p) => ({
+      id: p.id,
+      name: p.name ?? p.id,
+      role: p.role,
+      teamId: 'away' as const,
+      shirtNumber: p.shirtNumber,
+    })),
+  ];
+  const matchStats = createFixtureMatchStats(reportPlayers, simResult.playerStats ?? new Map());
 
   const updatedFixtures = [...state.fixtures];
   const fixtureIndex = updatedFixtures.findIndex(
@@ -328,6 +378,7 @@ export function simOneAIFixture(
     updatedFixtures[fixtureIndex] = {
       ...updatedFixtures[fixtureIndex]!,
       result: { homeGoals: simResult.homeGoals, awayGoals: simResult.awayGoals },
+      matchStats,
     };
   }
 
@@ -403,7 +454,7 @@ export function finalizeMatchday(state: SeasonState): SeasonState {
     }
   }
 
-  return { ...updated, currentMatchday: updated.currentMatchday + 1, currentDay: 0, fatigueMap: finalFatigueMap };
+  return { ...updated, currentMatchday: updated.currentMatchday + 1, currentDay: 0, fatigueMap: finalFatigueMap, trainingDeltas: new Map() };
 }
 
 /**
@@ -441,12 +492,25 @@ export function startNewSeason(
   const tiers = getAITierDistribution();
   const newTeams: SeasonTeam[] = state.teams.map((team, index) => {
     if (team.isPlayerTeam) {
-      return { ...team, squad: playerSquad };
+      return {
+        ...team,
+        squad: playerSquad,
+        preferredTacticName: team.preferredTacticName ?? getDefaultBuiltInTacticName(),
+        preferredFormation: team.preferredFormation ?? '4-4-2',
+      };
     }
     const aiIndex = index - 1; // offset because player team is at 0
     const tier = tiers[aiIndex]!;
     const newSquad = createAITeam(tier, team.id, team.name, rng);
-    return { ...team, tier, squad: newSquad };
+    const preferredTacticName = choosePreferredBuiltInTacticName(tier, rng);
+    const system = loadBuiltInTacticSystem(preferredTacticName);
+    return {
+      ...team,
+      tier,
+      preferredTacticName,
+      preferredFormation: system?.inPossessionFormation ?? '4-4-2',
+      squad: newSquad,
+    };
   });
 
   // Generate fresh fixtures with same team IDs

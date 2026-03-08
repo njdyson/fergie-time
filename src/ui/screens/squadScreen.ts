@@ -638,12 +638,15 @@ export class SquadScreen {
         const val = p.attributes[attr];
         const pct = Math.round(val * 100);
         const barColor = getAttrBarColor(val);
-        const improved = playerDeltas ? ((playerDeltas as Record<string, number>)[attr] ?? 0) > 0 : false;
-        const cellBorder = improved ? `border-bottom: 2px solid ${GREEN}` : '';
-        html += `<span class="squad-col-attr" style="text-align: center; ${cellBorder}" title="${attr}: ${pct}%${improved ? ' ▲ improved' : ''}">`;
+        const delta = playerDeltas ? ((playerDeltas as Record<string, number>)[attr] ?? 0) : 0;
+        const improved = delta >= 0.005;
+        const declined = delta <= -0.005;
+        const dotBg = improved ? GREEN : declined ? RED : 'transparent';
+        html += `<span class="squad-col-attr" style="text-align: center;" title="${attr}: ${pct}%${improved ? ' ▲ improved' : declined ? ' ▼ declined' : ''}">`;
         html += `<div style="width: 24px; height: 6px; background: #334155; border-radius: 2px; margin: 0 auto;">`;
         html += `<div style="width: ${pct}%; height: 100%; background: ${barColor}; border-radius: 2px;"></div>`;
         html += `</div>`;
+        html += `<div style="width:5px; height:5px; border-radius:50%; background:${dotBg}; margin:3px auto 0;"></div>`;
         html += `</span>`;
       }
 

@@ -61,15 +61,15 @@ function getNationalityName(code?: string): string {
 function renderBar(label: string, value: number, improved?: boolean): string {
   const pct = Math.round(value * 100);
   const barColor = getAttrBarColor(value);
-  const borderLeft = improved ? `border-left: 3px solid ${GREEN}` : `border-left: 3px solid transparent`;
-  const arrow = improved ? `<span style="color:${GREEN}; font-size:9px; margin-left:2px;">▲</span>` : '';
+  const arrow = improved ? `▲` : '';
   return `
-    <div style="display:flex; align-items:center; gap:8px; padding:3px 0; ${borderLeft}; padding-left:4px;">
-      <span style="color:${TEXT}; font-size:11px; min-width:90px; flex-shrink:0;">${label}</span>
+    <div style="display:flex; align-items:center; gap:8px; padding:3px 0;">
+      <span style="color:${TEXT}; font-size:11px; width:90px; flex-shrink:0;">${label}</span>
       <div style="flex:1; height:8px; background:#334155; border-radius:4px; overflow:hidden;">
         <div style="width:${pct}%; height:100%; background:${barColor}; border-radius:4px; transition:width .2s;"></div>
       </div>
-      <span style="color:${TEXT_BRIGHT}; font-size:11px; min-width:26px; text-align:right;">${pct}</span>${arrow}
+      <span style="color:${TEXT_BRIGHT}; font-size:11px; width:24px; text-align:right; flex-shrink:0;">${pct}</span>
+      <span style="color:${GREEN}; font-size:9px; width:10px; flex-shrink:0; text-align:center;">${arrow}</span>
     </div>
   `;
 }
@@ -235,14 +235,14 @@ export class PlayerProfileScreen {
     html += `<div style="background:${PANEL_BG}; border-radius:8px; padding:14px;">`;
     html += `<div style="color:${ACCENT_BLUE}; font-size:12px; font-weight:bold; margin-bottom:10px; text-transform:uppercase; letter-spacing:0.05em;">Attributes</div>`;
     for (const [label, value, attrKey] of coreAttrs) {
-      const improved = playerDeltas ? ((playerDeltas as Record<string, number>)[attrKey] ?? 0) > 0 : false;
+      const improved = playerDeltas ? ((playerDeltas as Record<string, number>)[attrKey] ?? 0) >= 0.005 : false;
       html += renderBar(label, value, improved);
     }
     // GK-specific attributes only if GK
     if (player.role === 'GK') {
       html += `<div style="color:${TEXT}; font-size:10px; margin-top:8px; margin-bottom:4px; opacity:0.7;">Goalkeeper</div>`;
       for (const [label, value, attrKey] of extAttrs.filter(([l]) => ['Reflexes','Handling','1v1s'].includes(l))) {
-        const improved = playerDeltas ? ((playerDeltas as Record<string, number>)[attrKey] ?? 0) > 0 : false;
+        const improved = playerDeltas ? ((playerDeltas as Record<string, number>)[attrKey] ?? 0) >= 0.005 : false;
         html += renderBar(label, value, improved);
       }
     }
