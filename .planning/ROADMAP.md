@@ -138,7 +138,10 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. Rival transfer activity from each day is consolidated into a single summary email rather than one notification per transfer
   3. The transfers page has a status filter showing pending, accepted, and rejected bids
   4. Each player's overall rating is visible as a single number on the squad screen and on their profile page
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 15-01-PLAN.md — Delayed bids + daily AI transfer digest
+- [ ] 15-02-PLAN.md — Bid tracking UI + player overall rating display
 
 ## Progress
 
