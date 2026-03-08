@@ -589,7 +589,7 @@ export class SquadScreen {
     for (const attr of ATTR_NAMES) {
       html += `<span class="squad-col-attr" data-sort="${attr}" style="text-align: center; ${hdrStyle}" title="${attr}">${ATTR_SHORT[attr]}${sortArrow(attr)}</span>`;
     }
-    html += `<span class="squad-col-rating" style="text-align: center; display: none;">Rtg</span>`;
+    html += `<span class="squad-col-rating" style="text-align: center;">Rtg</span>`;
     html += `<span data-sort="fit" style="text-align: center; ${hdrStyle}">FIT${sortArrow('fit')}</span>`;
     html += `<span class="squad-col-stat" style="text-align: center; color: #4ade80; font-weight: bold;" title="Goals this season">G</span>`;
     html += `<span class="squad-col-stat" style="text-align: center; color: #60a5fa; font-weight: bold;" title="Assists this season">A</span>`;
@@ -653,7 +653,7 @@ export class SquadScreen {
       // Rating (hidden on desktop, shown on mobile)
       const playerRating = calculatePlayerRating(p);
       const ratingColor = playerRating >= 70 ? GREEN : playerRating >= 50 ? ACCENT_ORANGE : RED;
-      html += `<span class="squad-col-rating" style="text-align: center; display: none; color: ${ratingColor}; font-weight: bold; font-size: 11px;">${playerRating}</span>`;
+      html += `<span class="squad-col-rating" style="text-align: center; color: ${ratingColor}; font-weight: bold; font-size: 11px;">${playerRating}</span>`;
 
       // Fitness bar (inverted fatigue)
       const fitPct = Math.round(fitness * 100);

@@ -201,7 +201,7 @@ export class PlayerProfileScreen {
     html += infoRow('Age', player.age ?? '-');
     html += infoRow('Height', player.height ? `${player.height}cm` : '-');
     html += infoRow('Nationality', getNationalityName(player.nationality));
-    html += `<div><div style="color:${TEXT}; font-size:10px; margin-bottom:2px;">Rating</div><div style="color:${ratingColor}; font-size:13px; font-weight:bold;">${rating}</div></div>`;
+    html += `<div><div style="color:${TEXT}; font-size:10px; margin-bottom:2px;">Rating</div><div style="color:${ratingColor}; font-size:16px; font-weight:bold;">${rating}</div></div>`;
     if (transferInfo) {
       html += `<div><div style="color:${TEXT}; font-size:10px; margin-bottom:2px;">Value</div><div style="color:${GREEN}; font-size:13px; font-weight:bold;">£${formatMoney(transferInfo.value)}</div></div>`;
     }
