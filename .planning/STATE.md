@@ -73,6 +73,9 @@ See PROJECT.md Key Decisions table for full history.
 - `applyTrainingBlock` removed from Kick Off handler — training applied incrementally via Continue presses
 - `jsdom` installed as dev dep for UI unit tests; @vitest-environment jsdom per-file annotation
 - Past day drills read from state (locked), current/future read from DOM in onScheduleChange
+- [Phase 14-training-polish P01]: Training Gains panel removed from player profile — highlights displayed inline on attribute bars instead
+- [Phase 14-training-polish P01]: attrKey stored as third tuple element [label, value, attrKey] for delta lookup; renderBar() accepts optional improved boolean
+- [Phase 14-training-polish P01]: Squad mini-bar green border-bottom on span container (not inner bar) — best visibility at 24x6px
 - [Phase 14-training-polish]: generateCoachingReport receives squadBefore/squadAfter pair for single-session gain precision, returns null for rest days/empty squad
 - [Phase 14-training-polish]: Coaching report improvers capped at top 3 sorted by total attribute gain; gracefully shows fewer if squad < 3
 
@@ -88,5 +91,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-08
-Stopped at: Phase 14 Plan 02 complete — Coaching report email system implemented, all 691 tests passing
+Stopped at: Phase 14 Plan 01 complete — Training delta attribute bar highlighting in player profile and squad screen, Training Gains panel removed
 Resume file: None

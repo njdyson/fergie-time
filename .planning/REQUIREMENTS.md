@@ -16,8 +16,8 @@ Requirements for v1.3 Day Cycle milestone. Each maps to roadmap phases.
 
 ### Training Display
 
-- [ ] **TDISP-01**: Player profile no longer shows the "Player Training Gains" section
-- [ ] **TDISP-02**: Squad and player pages highlight recently changed attributes (visual indicator for stats that increased since last match)
+- [x] **TDISP-01**: Player profile no longer shows the "Player Training Gains" section
+- [x] **TDISP-02**: Squad and player pages highlight recently changed attributes (visual indicator for stats that increased since last match)
 
 ### Coaching Reports
 
@@ -77,8 +77,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | HUB-02 | Phase 13 | Complete |
 | HUB-03 | Phase 13 | Complete |
 | HUB-04 | Phase 13 | Complete |
-| TDISP-01 | Phase 14 | Pending |
-| TDISP-02 | Phase 14 | Pending |
+| TDISP-01 | Phase 14 | Complete |
+| TDISP-02 | Phase 14 | Complete |
 | COACH-01 | Phase 14 | Complete |
 | XFER-01 | Phase 15 | Pending |
 | XFER-02 | Phase 15 | Pending |
